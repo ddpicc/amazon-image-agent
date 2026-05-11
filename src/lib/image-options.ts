@@ -1,0 +1,64 @@
+export type RenderSize = '1024x1024' | '1536x1024' | '1024x1536'
+export type AspectRatio = '1:1' | '3:2' | '2:3'
+
+export interface SizeOption {
+  value: RenderSize
+  label: string
+  note: string
+  aspectRatio: AspectRatio
+}
+
+export const SIZE_OPTIONS: SizeOption[] = [
+  {
+    value: '1024x1024',
+    label: '1024 × 1024',
+    note: 'Square output, good for listing and generic tests',
+    aspectRatio: '1:1',
+  },
+  {
+    value: '1536x1024',
+    label: '1536 × 1024',
+    note: 'Landscape output, suitable for wider scenes and A+ style layouts',
+    aspectRatio: '3:2',
+  },
+  {
+    value: '1024x1536',
+    label: '1024 × 1536',
+    note: 'Portrait output, useful for tall compositions',
+    aspectRatio: '2:3',
+  },
+]
+
+export const ASPECT_RATIO_OPTIONS: Array<{
+  value: AspectRatio
+  label: string
+  description: string
+}> = [
+  {
+    value: '1:1',
+    label: '1:1',
+    description: 'Balanced square composition',
+  },
+  {
+    value: '3:2',
+    label: '3:2',
+    description: 'Wider landscape composition',
+  },
+  {
+    value: '2:3',
+    label: '2:3',
+    description: 'Taller portrait composition',
+  },
+]
+
+export function getSizesForAspectRatio(aspectRatio: AspectRatio): SizeOption[] {
+  return SIZE_OPTIONS.filter((option) => option.aspectRatio === aspectRatio)
+}
+
+export function getDefaultSizeForAspectRatio(aspectRatio: AspectRatio): RenderSize {
+  return getSizesForAspectRatio(aspectRatio)[0]?.value || '1024x1024'
+}
+
+export function getAspectRatioForSize(size: RenderSize): AspectRatio {
+  return SIZE_OPTIONS.find((option) => option.value === size)?.aspectRatio || '1:1'
+}
