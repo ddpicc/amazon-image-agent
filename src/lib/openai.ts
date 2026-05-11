@@ -10,7 +10,6 @@ interface GenerateImageInput {
   }>
   size?: RenderSize
   aspectRatio?: AspectRatio
-  requestUrl?: string
 }
 
 interface GenerateImageOutput {
@@ -57,7 +56,7 @@ function toImageFile(
 }
 
 export async function generateImage(input: GenerateImageInput): Promise<GenerateImageOutput> {
-  const { prompt, referenceImages, size = '1024x1024', aspectRatio, requestUrl } = input
+  const { prompt, referenceImages, size = '1024x1024', aspectRatio } = input
 
   if (!referenceImages.length) {
     throw new Error('At least one reference image is required')
@@ -88,8 +87,8 @@ export async function generateImage(input: GenerateImageInput): Promise<Generate
 
     const imageData = response.data[0]
     const rawImageUrl = (imageData as any).url || ''
-    const imageUrl = requestUrl && rawImageUrl && isProxyableImageUrl(rawImageUrl)
-      ? createSignedImageProxyUrl(rawImageUrl, requestUrl)
+    const imageUrl = rawImageUrl && isProxyableImageUrl(rawImageUrl)
+      ? createSignedImageProxyUrl(rawImageUrl)
       : rawImageUrl
 
     return {
