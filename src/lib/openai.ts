@@ -1,5 +1,6 @@
 import OpenAI from 'openai'
 import { AspectRatio, RenderSize } from '@/lib/image-options'
+import { createSignedImageProxyUrl, isProxyableImageUrl } from '@/lib/image-proxy'
 
 interface GenerateImageInput {
   prompt: string
@@ -9,6 +10,7 @@ interface GenerateImageInput {
   }>
   size?: RenderSize
   aspectRatio?: AspectRatio
+  requestUrl?: string
 }
 
 interface GenerateImageOutput {
@@ -55,7 +57,7 @@ function toImageFile(
 }
 
 export async function generateImage(input: GenerateImageInput): Promise<GenerateImageOutput> {
-  const { prompt, referenceImages, size = '1024x1024', aspectRatio } = input
+  const { prompt, referenceImages, size = '1024x1024', aspectRatio, requestUrl } = input
 
   if (!referenceImages.length) {
     throw new Error('At least one reference image is required')
@@ -85,9 +87,13 @@ export async function generateImage(input: GenerateImageInput): Promise<Generate
     }
 
     const imageData = response.data[0]
+    const rawImageUrl = (imageData as any).url || ''
+    const imageUrl = requestUrl && rawImageUrl && isProxyableImageUrl(rawImageUrl)
+      ? createSignedImageProxyUrl(rawImageUrl, requestUrl)
+      : rawImageUrl
 
     return {
-      imageUrl: (imageData as any).url || '',
+      imageUrl,
       revisedPrompt: (imageData as any).revised_prompt || prompt,
       size,
       aspectRatio,

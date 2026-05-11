@@ -58,6 +58,7 @@ export async function POST(request: NextRequest) {
       referenceImages: imagePayloads,
       size: validSize,
       aspectRatio,
+      requestUrl: request.url,
     })
 
     return NextResponse.json({
