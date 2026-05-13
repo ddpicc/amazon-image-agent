@@ -41,6 +41,7 @@ export interface AnalyzeProductOutput {
   complianceChecklist: string[]
   imageContentSuggestions: string[]
   visualStyleRecommendations: string[]
+  visualSystemGuidance: string[]
   promptingPrinciples: string[]
   referenceImageAdvice: ReferenceImageAdvice
   canGeneratePrompts: boolean
@@ -49,6 +50,15 @@ export interface AnalyzeProductOutput {
 export interface GeneratePromptsOutput {
   recommendedImagePlan: RecommendedImagePlanItem[]
   suggestedPrompts: Record<string, string>
+}
+
+export interface PromptGenerationProgress {
+  key: string
+  plan: RecommendedImagePlanItem
+  prompt: string
+  completed: number
+  total: number
+  usedFallback: boolean
 }
 
 function getSuggestedPromptKey(type: AmazonImageType, index: number): string {
@@ -134,6 +144,7 @@ export async function analyzeProduct(input: AnalyzeProductInput): Promise<Analyz
 - complianceChecklist: 5-8 条中文检查项，便于生成后人工复核。
 - imageContentSuggestions: 6-10 条中文建议，写适合出现在图片里的内容方向。
 - visualStyleRecommendations: 4-6 条中文风格建议。
+- visualSystemGuidance: 4-6 条中文建议，专门说明整组图片如何保持统一视觉系统，例如字体气质、配色、版式节奏、图标语言、场景后期质感应如何统一，特别是卖点图和场景图要像同一套 listing 资产。
 - promptingPrinciples: 4-6 条中文提示词原则，强调"写明是亚马逊商品图，图片内文字必须是英文"。
 - referenceImageAdvice: 对象，包含：
   - needMoreReferences: boolean
@@ -201,6 +212,12 @@ export async function analyzeProduct(input: AnalyzeProductInput): Promise<Analyz
         '真实可信的材质表现',
         '重点突出产品而非背景',
       ],
+      visualSystemGuidance: parsed.visualSystemGuidance || [
+        '整组图片保持统一的品牌级电商视觉语境，不要每张图像来自不同店铺。',
+        '卖点图尽量统一字体气质、主辅色和信息层级，形成一套版式系统。',
+        '场景图尽量统一光线、色温、后期质感和道具审美，像同一次拍摄或同一套 campaign。',
+        '若使用图标、标注框或信息卡片，整组图中保持同一种设计语言。',
+      ],
       promptingPrinciples: parsed.promptingPrinciples || [
         '提示词中写明亚马逊商品图用途',
         '图片内文字必须为英文',
@@ -256,6 +273,12 @@ export async function analyzeProduct(input: AnalyzeProductInput): Promise<Analyz
         '让商品始终是视觉主角',
         '光线和色彩服务于产品卖点',
       ],
+      visualSystemGuidance: [
+        '整组图片要像同一套 Amazon listing 资产，避免每张图风格割裂。',
+        '卖点图统一字体气质、主辅色、标注样式和信息模块节奏。',
+        '场景图统一色温、光线倾向、后期质感和生活方式审美。',
+        '如果出现图标、数字标签或信息框，整组图使用同一种视觉语言。',
+      ],
       promptingPrinciples: [
         '要在提示词里明确这是亚马逊商品图',
         '图片内文字必须为英文',
@@ -283,6 +306,7 @@ function buildAnalysisSummaryForPromptGeneration(result: AnalyzeProductOutput): 
     result.amazonImageGuidelines.length ? `Amazon 图片规范：${result.amazonImageGuidelines.join('；')}` : '',
     result.imageContentSuggestions.length ? `建议图片内容：${result.imageContentSuggestions.join('；')}` : '',
     result.visualStyleRecommendations.length ? `视觉风格建议：${result.visualStyleRecommendations.join('；')}` : '',
+    result.visualSystemGuidance.length ? `整组视觉系统建议：${result.visualSystemGuidance.join('；')}` : '',
     result.promptingPrinciples.length ? `提示词原则：${result.promptingPrinciples.join('；')}` : '',
     `参考图建议：${result.referenceImageAdvice.reason}`,
     result.referenceImageAdvice.recommendedShots.length ? `建议补充参考图：${result.referenceImageAdvice.recommendedShots.join('；')}` : '',
@@ -355,6 +379,7 @@ ${contextText}
 - 语气像专业图片策划，不要像僵硬的参数堆砌
 - 重点告诉 AI 你想要什么效果和感觉
 - 白底主图 1 张、尺寸图 1 张、细节图 1 张、卖点图 2 张、场景图 2 张；当前只生成其中一张，要体现它在整套图里的职责
+- 这张图必须与整套 Amazon listing image 保持统一视觉系统，尤其卖点图和场景图要统一字体气质、配色逻辑、版式语言、图标风格和后期质感，不能像来自两套模板
 - 卖点图不要把信息塞得过满，允许拆成两张图分担信息
 - 场景图一优先做最常见使用场景；如果产品适合多样化使用，场景图二可做综合或第二场景
 - 如果当前生成的是卖点图二或场景图二，必须主动避开上一张已经占用的核心表达，换一个更明确的侧重点、使用语境或信息结构
@@ -440,31 +465,36 @@ ${priorPromptContext}
   }
 }
 
-export async function generateAllPrompts(
+function buildPlanForPromptKey(promptKey: string): RecommendedImagePlanItem {
+  const config = IMAGE_TYPE_CONFIG[promptKey]
+  const lastHyphenIndex = promptKey.lastIndexOf('-')
+  const hasIndex = lastHyphenIndex > 0 && /\d$/.test(promptKey)
+  const type = hasIndex ? promptKey.slice(0, lastHyphenIndex) : promptKey
+  const indexStr = hasIndex ? promptKey.slice(lastHyphenIndex + 1) : null
+  const index = indexStr ? parseInt(indexStr, 10) : 1
+
+  return {
+    type: type as AmazonImageType,
+    index,
+    title: config.name,
+    goal: config.goal,
+    notes: config.notes,
+  }
+}
+
+async function generateSinglePromptWithFallback(
+  promptKey: string,
   productName: string,
   description: string,
   category: string,
   targetAudience: string,
   referenceImages: Array<{ data: string; mediaType: string }> = [],
   analysisSummary = '',
-): Promise<GeneratePromptsOutput> {
-  const promptKeys = ['main-white', 'size', 'detail', 'infographic-1', 'infographic-2', 'lifestyle-1', 'lifestyle-2']
-  const results: Array<{ plan: RecommendedImagePlanItem; prompt: string }> = []
-  const promptContextByKey: Record<string, string> = {}
-
-  for (const key of promptKeys) {
-    let priorPromptContext = ''
-
-    if (key === 'infographic-2') {
-      priorPromptContext = promptContextByKey['infographic-1'] || ''
-    }
-
-    if (key === 'lifestyle-2') {
-      priorPromptContext = promptContextByKey['lifestyle-1'] || ''
-    }
-
+  priorPromptContext?: string,
+): Promise<{ plan: RecommendedImagePlanItem; prompt: string; usedFallback: boolean }> {
+  try {
     const result = await generateSinglePrompt(
-      key,
+      promptKey,
       productName,
       description,
       category,
@@ -474,20 +504,123 @@ export async function generateAllPrompts(
       priorPromptContext,
     )
 
-    results.push(result)
-    promptContextByKey[key] = result.prompt
+    return {
+      ...result,
+      usedFallback: false,
+    }
+  } catch {
+    return {
+      plan: buildPlanForPromptKey(promptKey),
+      prompt: DEFAULT_PROMPTS[promptKey],
+      usedFallback: true,
+    }
   }
+}
 
-  const recommendedImagePlan = results.map((r) => r.plan)
+export async function generatePromptsWithProgress(
+  productName: string,
+  description: string,
+  category: string,
+  targetAudience: string,
+  referenceImages: Array<{ data: string; mediaType: string }> = [],
+  analysisSummary = '',
+  onProgress?: (progress: PromptGenerationProgress) => void | Promise<void>,
+): Promise<GeneratePromptsOutput> {
+  const total = 7
+  let completed = 0
   const suggestedPrompts: Record<string, string> = {}
+  const recommendedImagePlan: RecommendedImagePlanItem[] = []
+  const promptContextByKey: Record<string, string> = {}
 
-  for (const result of results) {
-    const key = getSuggestedPromptKey(result.plan.type, result.plan.index)
-    suggestedPrompts[key] = result.prompt
+  const emitProgress = async (
+    key: string,
+    plan: RecommendedImagePlanItem,
+    prompt: string,
+    usedFallback: boolean,
+  ) => {
+    suggestedPrompts[key] = prompt
+    recommendedImagePlan.push(plan)
+    promptContextByKey[key] = prompt
+    completed += 1
+
+    await onProgress?.({
+      key,
+      plan,
+      prompt,
+      completed,
+      total,
+      usedFallback,
+    })
   }
+
+  const runBatch = async (keys: string[]) => {
+    const batchResults = await Promise.all(
+      keys.map(async (key) => {
+        const priorPromptContext =
+          key === 'infographic-2'
+            ? promptContextByKey['infographic-1'] || ''
+            : key === 'lifestyle-2'
+              ? promptContextByKey['lifestyle-1'] || ''
+              : ''
+
+        const result = await generateSinglePromptWithFallback(
+          key,
+          productName,
+          description,
+          category,
+          targetAudience,
+          referenceImages,
+          analysisSummary,
+          priorPromptContext,
+        )
+
+        return { key, ...result }
+      }),
+    )
+
+    for (const result of batchResults) {
+      await emitProgress(result.key, result.plan, result.prompt, result.usedFallback)
+    }
+  }
+
+  await runBatch(['main-white', 'size', 'detail', 'infographic-1', 'lifestyle-1'])
+  await runBatch(['infographic-2', 'lifestyle-2'])
 
   return {
     recommendedImagePlan,
     suggestedPrompts,
+  }
+}
+
+export async function generateAllPrompts(
+  productName: string,
+  description: string,
+  category: string,
+  targetAudience: string,
+  referenceImages: Array<{ data: string; mediaType: string }> = [],
+  analysisSummary = '',
+): Promise<GeneratePromptsOutput> {
+  const result = await generatePromptsWithProgress(
+    productName,
+    description,
+    category,
+    targetAudience,
+    referenceImages,
+    analysisSummary,
+  )
+
+  return {
+    recommendedImagePlan: result.recommendedImagePlan.sort((a, b) => {
+      const order = ['main-white', 'size', 'detail', 'infographic', 'lifestyle']
+      const orderDelta = order.indexOf(a.type) - order.indexOf(b.type)
+      if (orderDelta !== 0) return orderDelta
+      return a.index - b.index
+    }),
+    suggestedPrompts: Object.fromEntries(
+      Object.entries(result.suggestedPrompts).sort(([keyA], [keyB]) => {
+        const promptOrder = ['main-white', 'size', 'detail', 'infographic-1', 'infographic-2', 'lifestyle-1', 'lifestyle-2']
+        return promptOrder.indexOf(keyA) - promptOrder.indexOf(keyB)
+      }),
+    ),
   }
 }

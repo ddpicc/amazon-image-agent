@@ -5,7 +5,7 @@ import Link from 'next/link'
 import axios from 'axios'
 import ProductInput from '@/components/ProductInput'
 import HistorySidebar from '@/components/HistorySidebar'
-import { SkeletonBlock } from '@/components/LoadingSpinner'
+import LoadingSpinner, { SkeletonBlock } from '@/components/LoadingSpinner'
 import { RenderSize } from '@/lib/image-options'
 
 type AmazonImageType = 'main-white' | 'lifestyle' | 'infographic' | 'detail' | 'size'
@@ -61,6 +61,7 @@ interface BasicAnalysisResult {
   complianceChecklist: string[]
   imageContentSuggestions: string[]
   visualStyleRecommendations: string[]
+  visualSystemGuidance: string[]
   promptingPrinciples: string[]
   referenceImageAdvice: ReferenceImageAdvice
   canGeneratePrompts: boolean
@@ -74,6 +75,38 @@ interface AnalysisResult extends BasicAnalysisResult {
 interface PromptGenerationResult {
   recommendedImagePlan: RecommendedImagePlanItem[]
   suggestedPrompts: Record<string, string>
+}
+
+type AnalysisStage = 'idle' | 'preparing' | 'analyzing' | 'prompting' | 'completed' | 'error'
+
+interface PromptProgressState {
+  completed: number
+  total: number
+  current: string
+}
+
+interface AnalyzeStreamEvent {
+  type: 'stage' | 'partial-analysis' | 'prompt-progress' | 'prompt-item' | 'warning' | 'error' | 'done'
+  stage?: Exclude<AnalysisStage, 'idle' | 'error'>
+  label?: string
+  progress?: number
+  data?: BasicAnalysisResult
+  completed?: number
+  total?: number
+  current?: string
+  key?: string
+  plan?: RecommendedImagePlanItem
+  prompt?: string
+  message?: string
+  recoverable?: boolean
+}
+
+interface AnalyzeFormInput {
+  productName: string
+  description: string
+  category: string
+  targetAudience: string
+  referenceImages: File[]
 }
 
 const imageTypeOptions: ImageTypeOption[] = [
@@ -134,6 +167,18 @@ function getBaseType(type: string): AmazonImageType {
 function getSuggestedPrompt(analysisResult: AnalysisResult | null, type: string): string {
   if (!analysisResult) return ''
   return analysisResult.suggestedPrompts[type] || fallbackPrompts[type as PromptImageType] || ''
+}
+
+function getPromptKeyFromPlan(plan: RecommendedImagePlanItem): PromptImageType {
+  if (plan.type === 'main-white' || plan.type === 'size' || plan.type === 'detail') {
+    return plan.type
+  }
+
+  return `${plan.type}-${plan.index}` as PromptImageType
+}
+
+function getPromptOrderIndex(key: string) {
+  return imageTypeOrder.indexOf(key as PromptImageType)
 }
 
 function buildReferenceAwarePromptHint(type: string, analysisResult: AnalysisResult): string {
@@ -237,6 +282,7 @@ function buildAnalysisSummaryPayload(result: BasicAnalysisResult): string {
     result.amazonImageGuidelines.length ? `Amazon 图片规范：${result.amazonImageGuidelines.join('；')}` : '',
     result.imageContentSuggestions.length ? `建议图片内容：${result.imageContentSuggestions.join('；')}` : '',
     result.visualStyleRecommendations.length ? `视觉风格建议：${result.visualStyleRecommendations.join('；')}` : '',
+    result.visualSystemGuidance.length ? `整组视觉系统建议：${result.visualSystemGuidance.join('；')}` : '',
     result.promptingPrinciples.length ? `提示词原则：${result.promptingPrinciples.join('；')}` : '',
     `参考图建议：${result.referenceImageAdvice.reason}`,
     result.referenceImageAdvice.recommendedShots.length ? `建议补充参考图：${result.referenceImageAdvice.recommendedShots.join('；')}` : '',
@@ -275,11 +321,99 @@ function AnalysisPlanSkeleton() {
   )
 }
 
+function AnalysisStatusPanel({
+  stage,
+  label,
+  progress,
+  promptProgress,
+  warnings,
+}: {
+  stage: AnalysisStage
+  label: string
+  progress: number
+  promptProgress: PromptProgressState
+  warnings: string[]
+}) {
+  const steps = [
+    { key: 'preparing', label: '准备素材' },
+    { key: 'analyzing', label: '基础分析' },
+    { key: 'prompting', label: '生成图片规划与 Prompt' },
+    { key: 'completed', label: '完成' },
+  ] as const
+
+  const activeIndex = steps.findIndex((step) => step.key === stage)
+
+  return (
+    <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5 md:col-span-2">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="text-sm font-semibold text-slate-900">任务状态</div>
+          <p className="mt-2 text-sm leading-6 text-slate-600">{label}</p>
+          <p className="mt-2 text-xs text-slate-500">
+            Prompt 进度 {promptProgress.completed}/{promptProgress.total}
+            {promptProgress.current ? ` · 当前：${promptProgress.current}` : ''}
+          </p>
+          <p className="mt-2 text-xs text-slate-500">
+            预计总等待约 1-2 分钟，参考图越多、Prompt 套餐越完整，等待时间越长。
+          </p>
+        </div>
+        <div className="min-w-[220px]">
+          <div className="h-2 overflow-hidden rounded-full bg-slate-200">
+            <div
+              className="h-full rounded-full bg-amazon-orange transition-all duration-300"
+              style={{ width: `${Math.min(progress, 100)}%` }}
+            />
+          </div>
+          <div className="mt-2 text-right text-xs font-medium text-slate-500">{progress}%</div>
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-3 md:grid-cols-4">
+        {steps.map((step, index) => {
+          const isComplete = activeIndex > index || stage === 'completed'
+          const isActive = activeIndex === index
+          return (
+            <div
+              key={step.key}
+              className={`rounded-2xl border px-4 py-3 text-sm ${
+                isComplete
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                  : isActive
+                    ? 'border-amazon-orange bg-orange-50 text-amazon-orange'
+                    : 'border-slate-200 bg-white text-slate-500'
+              }`}
+            >
+              {step.label}
+            </div>
+          )
+        })}
+      </div>
+
+      {warnings.length > 0 && (
+        <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          {warnings.join(' ')}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function AmazonPage() {
   const [history, setHistory] = useState<HistoryItem[]>([])
   const [referenceImages, setReferenceImages] = useState<File[]>([])
   const [currentStep, setCurrentStep] = useState<'input' | 'analysis' | 'generate'>('input')
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [analysisStage, setAnalysisStage] = useState<AnalysisStage>('idle')
+  const [analysisStageLabel, setAnalysisStageLabel] = useState('')
+  const [analysisProgress, setAnalysisProgress] = useState(0)
+  const [promptProgress, setPromptProgress] = useState<PromptProgressState>({
+    completed: 0,
+    total: imageTypeOrder.length,
+    current: '',
+  })
+  const [analysisWarnings, setAnalysisWarnings] = useState<string[]>([])
+  const [streamError, setStreamError] = useState('')
+  const [isStreamCompleted, setIsStreamCompleted] = useState(false)
   const [basicAnalysisResult, setBasicAnalysisResult] = useState<BasicAnalysisResult | null>(null)
   const [promptGenerationResult, setPromptGenerationResult] = useState<PromptGenerationResult | null>(null)
   const [promptGenerationError, setPromptGenerationError] = useState('')
@@ -290,8 +424,9 @@ export default function AmazonPage() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([])
   const [editingImage, setEditingImage] = useState<GeneratedImage | null>(null)
-  const [isGeneratingPrompts, setIsGeneratingPrompts] = useState(false)
   const analyzeRequestIdRef = useRef(0)
+  const analyzeAbortControllerRef = useRef<AbortController | null>(null)
+  const lastAnalyzeInputRef = useRef<AnalyzeFormInput | null>(null)
 
   const analysisResult = useMemo<AnalysisResult | null>(() => {
     if (!basicAnalysisResult) return null
@@ -306,10 +441,10 @@ export default function AmazonPage() {
   const canProceedToGeneration = useMemo(() => {
     return Boolean(
       analysisResult &&
-      !isGeneratingPrompts &&
-      Object.keys(analysisResult.suggestedPrompts).length > 0,
+      isStreamCompleted &&
+      Object.keys(analysisResult.suggestedPrompts).length === imageTypeOrder.length,
     )
-  }, [analysisResult, isGeneratingPrompts])
+  }, [analysisResult, isStreamCompleted])
 
   const buildPrompt = useCallback((type: string, promptBody?: string) => {
     if (!analysisResult) return ''
@@ -355,19 +490,23 @@ export default function AmazonPage() {
     }
   }, [analysisResult, buildPrompt, referenceImages])
 
-  const handleAnalyze = useCallback(async (data: {
-    productName: string
-    description: string
-    category: string
-    targetAudience: string
-    referenceImages: File[]
-  }) => {
+  const handleAnalyze = useCallback(async (data: AnalyzeFormInput) => {
     const requestId = analyzeRequestIdRef.current + 1
     analyzeRequestIdRef.current = requestId
+    analyzeAbortControllerRef.current?.abort()
+    const abortController = new AbortController()
+    analyzeAbortControllerRef.current = abortController
+    lastAnalyzeInputRef.current = data
 
     setIsAnalyzing(true)
-    setIsGeneratingPrompts(false)
     setPromptGenerationError('')
+    setStreamError('')
+    setAnalysisWarnings([])
+    setIsStreamCompleted(false)
+    setAnalysisStage('preparing')
+    setAnalysisStageLabel('正在读取商品信息与参考图')
+    setAnalysisProgress(10)
+    setPromptProgress({ completed: 0, total: imageTypeOrder.length, current: '' })
     setReferenceImages(data.referenceImages)
     setGeneratedImages([])
     setEditingImage(null)
@@ -378,16 +517,8 @@ export default function AmazonPage() {
     setSelectedImageType('main-white')
     setSelectedSize('1024x1024')
     setEditedPrompt('')
-
-    const imagePayloadPromise = Promise.all(
-      data.referenceImages.slice(0, 3).map(async (image) => {
-        const arrayBuffer = await image.arrayBuffer()
-        return {
-          data: Buffer.from(arrayBuffer).toString('base64'),
-          mediaType: image.type || 'image/jpeg',
-        }
-      }),
-    )
+    let receivedBasicAnalysis = false
+    let streamFinished = false
 
     try {
       const formData = new FormData()
@@ -399,60 +530,142 @@ export default function AmazonPage() {
         formData.append('referenceImages', image)
       })
 
-      const response = await axios.post('/api/analyze', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+      const response = await fetch('/api/analyze/stream', {
+        method: 'POST',
+        body: formData,
+        signal: abortController.signal,
       })
 
-      if (analyzeRequestIdRef.current !== requestId) return
-
-      const basicResult = response.data as BasicAnalysisResult
-      setBasicAnalysisResult(basicResult)
-      setIsAnalyzing(false)
-
-      if (!basicResult.canGeneratePrompts) {
-        return
+      if (!response.ok || !response.body) {
+        throw new Error('Failed to start analysis stream')
       }
 
-      setIsGeneratingPrompts(true)
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
 
-      try {
-        const imagePayloads = await imagePayloadPromise
-        const promptsResponse = await axios.post('/api/analyze/prompts', {
-          productName: data.productName,
-          description: data.description,
-          category: data.category,
-          targetAudience: data.targetAudience,
-          referenceImages: imagePayloads,
-          analysisSummary: buildAnalysisSummaryPayload(basicResult),
-        })
+      while (true) {
+        const { value, done } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
 
-        if (analyzeRequestIdRef.current !== requestId) return
+        for (const line of lines) {
+          if (!line.trim()) continue
+          const event = JSON.parse(line) as AnalyzeStreamEvent
 
-        const promptsResult = promptsResponse.data as PromptGenerationResult
-        setPromptGenerationResult(promptsResult)
-        setSelectedImageType('main-white')
-        setSelectedSize('1024x1024')
-        setEditedPrompt(promptsResult.suggestedPrompts['main-white'] || fallbackPrompts['main-white'])
-      } catch (promptError) {
-        if (analyzeRequestIdRef.current !== requestId) return
-        console.error('Error generating prompts:', promptError)
-        setPromptGenerationError('基础分析已完成，但推荐图片规划和提示词生成失败。你可以重新分析后再试。')
-      } finally {
-        if (analyzeRequestIdRef.current === requestId) {
-          setIsGeneratingPrompts(false)
+          if (analyzeRequestIdRef.current !== requestId) {
+            return
+          }
+
+          if (event.type === 'stage') {
+            setAnalysisStage(event.stage || 'analyzing')
+            setAnalysisStageLabel(event.label || '')
+            setAnalysisProgress(event.progress || 0)
+            continue
+          }
+
+          if (event.type === 'partial-analysis' && event.data) {
+            receivedBasicAnalysis = true
+            setBasicAnalysisResult(event.data)
+            continue
+          }
+
+          if (event.type === 'prompt-progress') {
+            setPromptProgress({
+              completed: event.completed || 0,
+              total: event.total || imageTypeOrder.length,
+              current: event.current || '',
+            })
+            continue
+          }
+
+          if (event.type === 'prompt-item' && event.key && event.plan && event.prompt) {
+            setPromptGenerationResult((prev) => {
+              const incomingPlan = event.plan as RecommendedImagePlanItem
+              const nextPrompts = {
+                ...(prev?.suggestedPrompts || {}),
+                [event.key as string]: event.prompt as string,
+              }
+              const nextPlan = [
+                ...(prev?.recommendedImagePlan || []).filter(
+                  (item) => !(item.type === incomingPlan.type && item.index === incomingPlan.index),
+                ),
+                incomingPlan,
+              ].sort((a, b) => getPromptOrderIndex(getPromptKeyFromPlan(a)) - getPromptOrderIndex(getPromptKeyFromPlan(b)))
+
+              return {
+                recommendedImagePlan: nextPlan,
+                suggestedPrompts: nextPrompts,
+              }
+            })
+            continue
+          }
+
+          if (event.type === 'warning' && event.message) {
+            setAnalysisWarnings((prev) => [...prev, event.message as string])
+            continue
+          }
+
+          if (event.type === 'error') {
+            setStreamError(event.message || '分析失败')
+            setPromptGenerationError(event.recoverable ? event.message || 'Prompt 生成失败' : '')
+            setAnalysisStage('error')
+            setAnalysisStageLabel(event.message || '分析失败')
+            setIsAnalyzing(false)
+            continue
+          }
+
+          if (event.type === 'done') {
+            streamFinished = true
+            setIsStreamCompleted(true)
+            setIsAnalyzing(false)
+            setAnalysisStage('completed')
+            setAnalysisStageLabel('分析完成，可以进入图片生成')
+            setAnalysisProgress(100)
+            setSelectedImageType('main-white')
+            setSelectedSize('1024x1024')
+          }
         }
+      }
+
+      if (buffer.trim() && analyzeRequestIdRef.current === requestId) {
+        const event = JSON.parse(buffer) as AnalyzeStreamEvent
+        if (event.type === 'done') {
+          streamFinished = true
+          setIsStreamCompleted(true)
+          setIsAnalyzing(false)
+          setAnalysisStage('completed')
+          setAnalysisStageLabel('分析完成，可以进入图片生成')
+          setAnalysisProgress(100)
+        }
+      }
+
+      if (!streamFinished && analyzeRequestIdRef.current === requestId) {
+        throw new Error('分析流意外中断')
       }
     } catch (error) {
       if (analyzeRequestIdRef.current !== requestId) return
+      if (abortController.signal.aborted) {
+        return
+      }
       console.error('Error analyzing product:', error)
-      alert('Failed to analyze product. Please check your API keys.')
-      setCurrentStep('input')
-      setBasicAnalysisResult(null)
-      setPromptGenerationResult(null)
-      setPromptGenerationError('')
+      const message = error instanceof Error ? error.message : 'Failed to analyze product. Please check your API keys.'
+      setStreamError(message)
+      setAnalysisStage('error')
+      setAnalysisStageLabel(message)
+      if (!receivedBasicAnalysis) {
+        setCurrentStep('input')
+        setBasicAnalysisResult(null)
+        setPromptGenerationResult(null)
+        setPromptGenerationError('')
+      } else {
+        setPromptGenerationError('基础分析已完成，但完整 Prompt 套餐未完成。请重试。')
+      }
       setIsAnalyzing(false)
     }
-  }, [])
+  }, [basicAnalysisResult])
 
   const handleProceedToGeneration = useCallback(() => {
     if (!analysisResult || !canProceedToGeneration) return
@@ -460,6 +673,67 @@ export default function AmazonPage() {
     setEditedPrompt(getSuggestedPrompt(analysisResult, selectedImageType))
     setCurrentStep('generate')
   }, [analysisResult, canProceedToGeneration, selectedImageType])
+
+  const handleRetryPromptGeneration = useCallback(async () => {
+    if (!lastAnalyzeInputRef.current || !basicAnalysisResult) return
+
+    setIsAnalyzing(true)
+    setPromptGenerationError('')
+    setStreamError('')
+    setAnalysisWarnings([])
+    setAnalysisStage('prompting')
+    setAnalysisStageLabel('正在重新生成完整 Prompt 套餐（0/7）')
+    setAnalysisProgress(45)
+    setPromptProgress({ completed: 0, total: imageTypeOrder.length, current: '' })
+    setPromptGenerationResult(null)
+    setIsStreamCompleted(false)
+
+    try {
+      const imagePayloads = await Promise.all(
+        lastAnalyzeInputRef.current.referenceImages.slice(0, 3).map(async (image) => {
+          const arrayBuffer = await image.arrayBuffer()
+          const bytes = new Uint8Array(arrayBuffer)
+          let binary = ''
+          bytes.forEach((byte) => {
+            binary += String.fromCharCode(byte)
+          })
+
+          return {
+            data: btoa(binary),
+            mediaType: image.type || 'image/jpeg',
+          }
+        }),
+      )
+
+      const promptsResponse = await axios.post('/api/analyze/prompts', {
+        productName: lastAnalyzeInputRef.current.productName,
+        description: lastAnalyzeInputRef.current.description,
+        category: lastAnalyzeInputRef.current.category,
+        targetAudience: lastAnalyzeInputRef.current.targetAudience,
+        referenceImages: imagePayloads,
+        analysisSummary: buildAnalysisSummaryPayload(basicAnalysisResult),
+      })
+
+      const promptsResult = promptsResponse.data as PromptGenerationResult
+      setPromptGenerationResult(promptsResult)
+      setPromptProgress({
+        completed: imageTypeOrder.length,
+        total: imageTypeOrder.length,
+        current: '',
+      })
+      setAnalysisStage('completed')
+      setAnalysisStageLabel('分析完成，可以进入图片生成')
+      setAnalysisProgress(100)
+      setIsStreamCompleted(true)
+    } catch (error) {
+      console.error('Error regenerating prompts:', error)
+      setPromptGenerationError('基础分析已完成，但完整 Prompt 套餐未完成。请重试。')
+      setAnalysisStage('error')
+      setAnalysisStageLabel('Prompt 套餐重新生成失败')
+    } finally {
+      setIsAnalyzing(false)
+    }
+  }, [basicAnalysisResult])
 
   const handleGenerateSingle = useCallback(async () => {
     if (!analysisResult) return
@@ -662,16 +936,43 @@ export default function AmazonPage() {
                       先展示基础分析，再继续生成推荐图片规划和默认提示词。
                     </p>
                   </div>
-                  <button
-                    onClick={handleProceedToGeneration}
-                    disabled={!canProceedToGeneration}
-                    className="inline-flex rounded-2xl bg-amazon-orange px-5 py-3 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-slate-400"
-                  >
-                    {isGeneratingPrompts ? '正在生成提示词...' : '继续进入图片生成'}
-                  </button>
+                  <div className="flex flex-col gap-3 sm:flex-row">
+                    {promptGenerationError && basicAnalysisResult && (
+                      <button
+                        onClick={handleRetryPromptGeneration}
+                        disabled={isAnalyzing}
+                        className="inline-flex rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:text-slate-400"
+                      >
+                        重新生成 Prompt 套餐
+                      </button>
+                    )}
+                    <button
+                      onClick={handleProceedToGeneration}
+                      disabled={!canProceedToGeneration}
+                      className="inline-flex rounded-2xl bg-amazon-orange px-5 py-3 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-slate-400"
+                    >
+                      {canProceedToGeneration
+                        ? '继续进入图片生成'
+                        : `正在生成完整 Prompt 套餐（${promptProgress.completed}/${promptProgress.total}）`}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2">
+                  <AnalysisStatusPanel
+                    stage={analysisStage}
+                    label={analysisStageLabel}
+                    progress={analysisProgress}
+                    promptProgress={promptProgress}
+                    warnings={analysisWarnings}
+                  />
+
+                  {streamError && (
+                    <div className="rounded-3xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700 md:col-span-2">
+                      {streamError}
+                    </div>
+                  )}
+
                   {basicAnalysisResult ? (
                     <>
                       <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5 md:col-span-2">
@@ -775,6 +1076,18 @@ export default function AmazonPage() {
                         </div>
                       </div>
 
+                      <div className="rounded-3xl border border-slate-200 bg-white p-5">
+                        <h4 className="text-sm font-semibold text-slate-800">整组视觉系统建议</h4>
+                        <ul className="mt-3 space-y-2 text-sm text-slate-600">
+                          {basicAnalysisResult.visualSystemGuidance.map((item, idx) => (
+                            <li key={idx} className="flex gap-2">
+                              <span className="mt-2 h-1.5 w-1.5 rounded-full bg-slate-400" />
+                              <span>{item}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+
                       <div className="rounded-3xl border border-slate-200 bg-white p-5 md:col-span-2">
                         <h4 className="text-sm font-semibold text-slate-800">提示词策略</h4>
                         <ul className="mt-3 space-y-2 text-sm text-slate-600">
@@ -789,6 +1102,12 @@ export default function AmazonPage() {
                     </>
                   ) : (
                     <>
+                      <div className="rounded-3xl border border-slate-200 bg-white p-6 md:col-span-2">
+                        <LoadingSpinner message="正在完成第一步商品分析，预计约 1-2 分钟..." />
+                        <p className="text-center text-xs text-slate-500">
+                          当前正在理解商品卖点、参考图内容和 Amazon 规范，结果出来后会立即开始展示。
+                        </p>
+                      </div>
                       <AnalysisCardSkeleton className="md:col-span-2" />
                       <AnalysisCardSkeleton />
                       <AnalysisCardSkeleton />
@@ -804,25 +1123,48 @@ export default function AmazonPage() {
                   <div className="rounded-3xl border border-slate-200 bg-white p-5 md:col-span-2">
                     <div className="flex items-center justify-between gap-3">
                       <h4 className="text-sm font-semibold text-slate-800">参考图规划建议</h4>
-                      {isGeneratingPrompts && <span className="text-xs font-medium text-slate-500">Generating prompts...</span>}
+                      {!isStreamCompleted && (
+                        <span className="text-xs font-medium text-slate-500">
+                          正在生成 {promptProgress.completed}/{promptProgress.total}
+                        </span>
+                      )}
                     </div>
 
-                    {promptGenerationResult ? (
+                    {promptGenerationResult?.recommendedImagePlan.length ? (
                       <div className="mt-4 grid gap-4 md:grid-cols-2">
-                        {promptGenerationResult.recommendedImagePlan.map((plan) => (
-                          <div key={`${plan.type}-${plan.index}`} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                            <div className="font-medium text-slate-900">{plan.title}</div>
-                            <p className="mt-2 text-sm text-slate-600">{plan.goal}</p>
-                            <ul className="mt-3 space-y-2 text-sm text-slate-500">
-                              {plan.notes.map((note, idx) => (
-                                <li key={idx} className="flex gap-2">
-                                  <span className="mt-2 h-1.5 w-1.5 rounded-full bg-slate-400" />
-                                  <span>{note}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        ))}
+                        {imageTypeOrder.map((promptKey) => {
+                          const plan = promptGenerationResult.recommendedImagePlan.find(
+                            (item) => getPromptKeyFromPlan(item) === promptKey,
+                          )
+                          const option = imageTypeOptions.find((item) => item.value === promptKey)
+                          const prompt = promptGenerationResult.suggestedPrompts[promptKey]
+
+                          return (
+                            <div key={promptKey} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                              <div className="font-medium text-slate-900">{plan?.title || option?.label || promptKey}</div>
+                              {plan ? (
+                                <>
+                                  <p className="mt-2 text-sm text-slate-600">{plan.goal}</p>
+                                  <ul className="mt-3 space-y-2 text-sm text-slate-500">
+                                    {plan.notes.map((note, idx) => (
+                                      <li key={idx} className="flex gap-2">
+                                        <span className="mt-2 h-1.5 w-1.5 rounded-full bg-slate-400" />
+                                        <span>{note}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                  <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-600">
+                                    {prompt || '正在生成 Prompt...'}
+                                  </div>
+                                </>
+                              ) : (
+                                <div className="mt-3 rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-6 text-sm text-slate-500">
+                                  等待生成
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
                       </div>
                     ) : promptGenerationError ? (
                       <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -834,16 +1176,10 @@ export default function AmazonPage() {
                   </div>
 
                   <div className="rounded-3xl border border-slate-200 bg-white p-5 md:col-span-2">
-                    <h4 className="mb-2 text-sm font-semibold text-slate-800">你的补充要求（选填）</h4>
-                    <textarea
-                      value={userGuidance}
-                      onChange={(e) => {
-                        setUserGuidance(e.target.value)
-                      }}
-                      rows={4}
-                      className="input-field min-h-[116px] resize-none"
-                      placeholder="比如：更偏高端感、强调礼赠属性、尽量避免人物出镜、强调北美家居场景等"
-                    />
+                    <h4 className="mb-2 text-sm font-semibold text-slate-800">补充要求将在生成页编辑</h4>
+                    <p className="text-sm leading-6 text-slate-500">
+                      当前阶段先完成基础分析和整套 Prompt 生成。等完整结果准备好后，再进入下一步统一编辑补充要求与单张 Prompt。
+                    </p>
                   </div>
                 </div>
               </div>
@@ -924,6 +1260,22 @@ export default function AmazonPage() {
                     </div>
                     <p className="mt-3 text-xs text-slate-500">
                       当前图片服务链路稳定使用 `1024x1024 / 1536x1024 / 1024x1536`。A+ 常见模块以横版更合适。
+                    </p>
+                  </div>
+
+                  <div className="mt-6">
+                    <label className="mb-3 block text-sm font-medium text-slate-800">
+                      补充要求（选填）
+                    </label>
+                    <textarea
+                      value={userGuidance}
+                      onChange={(e) => setUserGuidance(e.target.value)}
+                      rows={4}
+                      className="input-field min-h-[116px] resize-none"
+                      placeholder="比如：更偏高端感、强调礼赠属性、尽量避免人物出镜、强调北美家居场景等"
+                    />
+                    <p className="mt-2 text-xs text-slate-500">
+                      这部分会在生成时附加到当前推荐 Prompt 后面，不会改写系统已经生成好的基础策略。
                     </p>
                   </div>
 
