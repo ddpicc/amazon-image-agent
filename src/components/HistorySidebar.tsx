@@ -1,5 +1,7 @@
 'use client'
 
+import Link from 'next/link'
+
 interface HistoryItem {
   id: string
   productName: string
@@ -29,14 +31,19 @@ export default function HistorySidebar({ history, onSelectItem, onClearHistory }
     <div className="bg-white rounded-lg shadow-md p-4 h-full">
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-semibold text-gray-800">历史记录</h3>
-        {history.length > 0 && (
-          <button
-            onClick={onClearHistory}
-            className="text-xs text-red-500 hover:text-red-600"
-          >
-            清空
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          <Link href="/history" className="text-xs text-amazon-blue hover:text-blue-600">
+            查看全部
+          </Link>
+          {history.length > 0 && (
+            <button
+              onClick={onClearHistory}
+              className="text-xs text-red-500 hover:text-red-600"
+            >
+              清空
+            </button>
+          )}
+        </div>
       </div>
 
       {history.length === 0 ? (

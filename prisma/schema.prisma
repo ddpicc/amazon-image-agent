@@ -1,0 +1,173 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  USER
+}
+
+enum AnalysisStatus {
+  STARTED
+  SUCCEEDED
+  FAILED
+}
+
+enum GenerationStatus {
+  STARTED
+  SUCCEEDED
+  FAILED
+}
+
+enum AttemptStatus {
+  STARTED
+  SUCCEEDED
+  FAILED
+}
+
+enum SourcePage {
+  AMAZON
+  PLAYGROUND
+}
+
+enum UpstreamApiKind {
+  UNKNOWN
+  IMAGES_EDIT
+  IMAGES_GENERATE
+}
+
+model User {
+  id                      String                   @id @default(cuid())
+  email                   String                   @unique
+  passwordHash            String
+  role                    UserRole                 @default(USER)
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  sessions                Session[]
+  analysisRecords         AnalysisRecord[]
+  imageGenerationRequests ImageGenerationRequest[]
+}
+
+model Session {
+  id         String   @id @default(cuid())
+  tokenHash  String   @unique
+  userId     String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model AnalysisRecord {
+  id                  String         @id @default(cuid())
+  userId              String
+  productName         String
+  description         String
+  category            String
+  targetAudience      String
+  referenceImageCount Int            @default(0)
+  referenceImagesJson Json?
+  status              AnalysisStatus @default(STARTED)
+  productSummary      String?
+  analysisJson        Json?
+  promptPlanJson      Json?
+  errorMessage        String?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  user                User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+model ImageProvider {
+  id               String                   @id @default(cuid())
+  name             String                   @unique
+  vendor           String
+  baseUrl          String
+  model            String
+  priority         Int                      @default(100)
+  enabled          Boolean                  @default(true)
+  apiKeyCiphertext String
+  failureCount     Int                      @default(0)
+  lastFailureAt    DateTime?
+  lastSuccessAt    DateTime?
+  cooldownUntil    DateTime?
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+  attempts         ImageGenerationAttempt[]
+  requests         ImageGenerationRequest[]
+
+  @@index([enabled, priority])
+}
+
+model ImageGenerationRequest {
+  id                   String                   @id @default(cuid())
+  userId               String
+  sourcePage           SourcePage
+  entryApi             String
+  selectedProviderId   String?
+  selectedProviderName String?
+  selectedProviderBaseUrl String?
+  selectedProviderModel   String?
+  attemptCount         Int                      @default(0)
+  finalUpstreamApiKind UpstreamApiKind          @default(UNKNOWN)
+  status               GenerationStatus         @default(STARTED)
+  durationMs           Int?
+  prompt               String
+  revisedPrompt        String?
+  imageType            String?
+  aspectRatio          String?
+  size                 String?
+  referenceImageCount  Int                      @default(0)
+  errorMessage         String?
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+  user                 User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  selectedProvider     ImageProvider?           @relation(fields: [selectedProviderId], references: [id], onDelete: SetNull)
+  attempts             ImageGenerationAttempt[]
+  assets               GeneratedImageAsset[]
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([selectedProviderId])
+}
+
+model ImageGenerationAttempt {
+  id              String          @id @default(cuid())
+  requestId       String
+  providerId      String?
+  baseUrl         String
+  model           String
+  attemptIndex    Int
+  status          AttemptStatus   @default(STARTED)
+  durationMs      Int?
+  errorMessage    String?
+  upstreamApiKind UpstreamApiKind @default(UNKNOWN)
+  startedAt       DateTime        @default(now())
+  completedAt     DateTime?
+  request         ImageGenerationRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  provider        ImageProvider?  @relation(fields: [providerId], references: [id], onDelete: SetNull)
+
+  @@index([requestId, attemptIndex])
+  @@index([providerId])
+}
+
+model GeneratedImageAsset {
+  id        String   @id @default(cuid())
+  requestId String
+  cosUrl    String
+  cosKey    String
+  mimeType  String
+  bytes     Int
+  createdAt DateTime @default(now())
+  request   ImageGenerationRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId])
+}

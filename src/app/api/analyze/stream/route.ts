@@ -1,10 +1,14 @@
 import { NextRequest } from 'next/server'
+import { AnalysisStatus } from '@prisma/client'
+import { requireApiUser } from '@/lib/auth'
 import {
   analyzeProduct,
   buildAnalysisSummaryForPromptGeneration,
   generatePromptsWithProgress,
-  RecommendedImagePlanItem,
 } from '@/lib/anthropic'
+import { RecommendedImagePlanItem, StoredReferenceImage } from '@/lib/amazon-workflow'
+import { prisma } from '@/lib/prisma'
+import { createReferenceImagePayloadsFromFiles, uploadReferenceImagesForAnalysis } from '@/lib/reference-images'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,6 +26,14 @@ function formatEvent(event: StreamEvent) {
 }
 
 export async function POST(request: NextRequest) {
+  const user = await requireApiUser(request)
+  if (!user) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
   const encoder = new TextEncoder()
 
   const stream = new ReadableStream({
@@ -29,6 +41,8 @@ export async function POST(request: NextRequest) {
       const push = (event: StreamEvent) => {
         controller.enqueue(encoder.encode(formatEvent(event)))
       }
+      let analysisRecordId: string | null = null
+      let storedReferenceImages: StoredReferenceImage[] = []
 
       try {
         push({
@@ -59,15 +73,30 @@ export async function POST(request: NextRequest) {
           return
         }
 
-        const imagePayloads = await Promise.all(
-          referenceImages.slice(0, 3).map(async (image) => {
-            const arrayBuffer = await image.arrayBuffer()
-            return {
-              data: Buffer.from(arrayBuffer).toString('base64'),
-              mediaType: image.type || 'image/jpeg',
-            }
-          }),
-        )
+        const analysisRecord = await prisma.analysisRecord.create({
+          data: {
+            userId: user.id,
+            productName,
+            description,
+            category: category || 'General',
+            targetAudience: targetAudience || 'General consumers',
+            referenceImageCount: referenceImages.length,
+            status: AnalysisStatus.STARTED,
+          },
+        })
+        analysisRecordId = analysisRecord.id
+        storedReferenceImages = await uploadReferenceImagesForAnalysis({
+          recordId: analysisRecord.id,
+          files: referenceImages,
+        })
+        const imagePayloads = await createReferenceImagePayloadsFromFiles(referenceImages)
+
+        await prisma.analysisRecord.update({
+          where: { id: analysisRecord.id },
+          data: {
+            referenceImagesJson: storedReferenceImages as any,
+          },
+        })
 
         push({
           type: 'stage',
@@ -84,6 +113,14 @@ export async function POST(request: NextRequest) {
           referenceImages: imagePayloads,
         })
 
+        await prisma.analysisRecord.update({
+          where: { id: analysisRecord.id },
+          data: {
+            productSummary: basicResult.productSummary,
+            analysisJson: basicResult as any,
+          },
+        })
+
         push({
           type: 'partial-analysis',
           data: basicResult,
@@ -96,6 +133,9 @@ export async function POST(request: NextRequest) {
           progress: 45,
         })
 
+        const recommendedImagePlan: RecommendedImagePlanItem[] = []
+        const suggestedPrompts: Record<string, string> = {}
+
         await generatePromptsWithProgress(
           productName,
           description,
@@ -104,6 +144,9 @@ export async function POST(request: NextRequest) {
           imagePayloads,
           buildAnalysisSummaryForPromptGeneration(basicResult),
           async ({ key, plan, prompt, completed, total, usedFallback }) => {
+            recommendedImagePlan.push(plan)
+            suggestedPrompts[key] = prompt
+
             if (usedFallback) {
               push({
                 type: 'warning',
@@ -134,6 +177,17 @@ export async function POST(request: NextRequest) {
           },
         )
 
+        await prisma.analysisRecord.update({
+          where: { id: analysisRecord.id },
+          data: {
+            status: AnalysisStatus.SUCCEEDED,
+            promptPlanJson: {
+              recommendedImagePlan,
+              suggestedPrompts,
+            } as any,
+          },
+        })
+
         push({
           type: 'stage',
           stage: 'completed',
@@ -143,6 +197,15 @@ export async function POST(request: NextRequest) {
         push({ type: 'done' })
         controller.close()
       } catch (error) {
+        if (analysisRecordId) {
+          await prisma.analysisRecord.update({
+            where: { id: analysisRecordId },
+            data: {
+              status: AnalysisStatus.FAILED,
+              errorMessage: error instanceof Error ? error.message : 'Failed to analyze product',
+            },
+          }).catch(() => undefined)
+        }
         console.error('Analyze stream error:', error)
         push({
           type: 'error',

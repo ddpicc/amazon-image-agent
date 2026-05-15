@@ -1,4 +1,10 @@
-export type RenderSize = '1024x1024' | '1536x1024' | '1024x1536'
+export type RenderSize =
+  | '1024x1024'
+  | '2048x2048'
+  | '1536x1024'
+  | '2048x1365'
+  | '1024x1536'
+  | '1365x2048'
 export type AspectRatio = '1:1' | '3:2' | '2:3'
 
 export interface SizeOption {
@@ -16,15 +22,33 @@ export const SIZE_OPTIONS: SizeOption[] = [
     aspectRatio: '1:1',
   },
   {
+    value: '2048x2048',
+    label: '2048 × 2048',
+    note: 'High-resolution square output for sharper export tests',
+    aspectRatio: '1:1',
+  },
+  {
     value: '1536x1024',
     label: '1536 × 1024',
     note: 'Landscape output, suitable for wider scenes and A+ style layouts',
     aspectRatio: '3:2',
   },
   {
+    value: '2048x1365',
+    label: '2048 × 1365',
+    note: 'Higher-resolution landscape output for wider scene testing',
+    aspectRatio: '3:2',
+  },
+  {
     value: '1024x1536',
     label: '1024 × 1536',
     note: 'Portrait output, useful for tall compositions',
+    aspectRatio: '2:3',
+  },
+  {
+    value: '1365x2048',
+    label: '1365 × 2048',
+    note: 'Higher-resolution portrait output for tall compositions',
     aspectRatio: '2:3',
   },
 ]

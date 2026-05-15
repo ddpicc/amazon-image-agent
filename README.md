@@ -1,22 +1,78 @@
 # Amazon Image Agent
 
-AI 驱动的亚马逊产品图片生成工具。通过分析产品信息，使用 Claude AI 生成优化的图片提示词，再由 GPT-Image 生成专业的产品图片。
+面向 Amazon listing 的多用户图片生产工具。当前版本支持：
 
-## 功能特性
+- 登录注册与多用户隔离
+- 商品分析与 Prompt 套餐生成
+- Amazon 工作流与自由生图页
+- 多上游图片接口顺序 fallback
+- 生图结果统一上传腾讯云 COS
+- 用户历史页与管理员生图调用记录页
 
-- **智能分析**: 使用 Claude AI 分析产品描述，提取卖点和视觉元素
-- **多风格生成**: 支持 4 种图片风格（写实、插画、白底、生活方式）
-- **批量生成**: 一次生成 3 张不同角度的产品图片
-- **历史记录**: 保存生成历史，方便回顾和复用
-- **一键导出**: 支持下载图片和复制提示词
+## 当前架构
 
-## 技术栈
+- 前端：Next.js 14 + React + TailwindCSS
+- 数据库：PostgreSQL + Prisma
+- 认证：邮箱密码 + 数据库 session
+- 文本分析：OpenAI-compatible text model
+- 图片生成：OpenAI-compatible image provider pool
+- 图片存储：Tencent Cloud COS
 
-- **前端**: Next.js 14 + React + TailwindCSS
-- **文本模型**: OpenAI-compatible text model
-- **图片生成**: OpenAI-compatible image model
+## 核心能力
 
-## 快速开始
+- `/amazon`
+  - 上传商品信息和参考图
+  - 先跑分析，再生成 Prompt 套餐，再做单张或整套图
+- `/playground`
+  - 独立测试提示词、尺寸、比例和参考图
+- `/history`
+  - 普通用户查看自己的分析记录和生图记录
+- `/admin/image-records`
+  - 管理员查看全站生图调用日志、命中 provider、耗时、状态和产出图片
+
+## 环境变量
+
+复制 `.env.example` 为 `.env.local`：
+
+```bash
+cp .env.example .env.local
+```
+
+必填变量说明：
+
+```env
+# Database
+DATABASE_URL=postgresql://user:password@host:5432/amazon_image_agent
+
+# App secrets
+APP_SECRET=replace_with_a_long_random_secret
+PROVIDER_KEY_ENCRYPTION_KEY=replace_with_a_second_long_random_secret
+
+# Text generation config
+TEXT_KEY=your_text_api_key_here
+TEXT_URL=https://www.uocode.com/v1
+TEXT_MODEL=gpt-5.4
+
+# Tencent COS
+COS_SECRET_ID=your_cos_secret_id
+COS_SECRET_KEY=your_cos_secret_key
+COS_REGION=ap-guangzhou
+COS_BUCKET=your-bucket-name
+COS_PUBLIC_BASE_URL=https://your-bucket-name.cos.ap-guangzhou.myqcloud.com
+
+# Optional bootstrap admin
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD=change_me_please
+```
+
+说明：
+
+- `APP_SECRET` 用于 session token 哈希
+- `PROVIDER_KEY_ENCRYPTION_KEY` 用于加密数据库里的上游 provider key
+- 图片 provider 不再用单个 `IMAGE_URL` / `IMAGE_KEY` 环境变量配置
+- 图片 provider 通过数据库维护，用脚本写入
+
+## 本地启动
 
 ### 1. 安装依赖
 
@@ -24,120 +80,224 @@ AI 驱动的亚马逊产品图片生成工具。通过分析产品信息，使�
 npm install
 ```
 
-### 2. 配置环境变量
-
-复制 `.env.example` 为 `.env.local`，并填入你的模型配置：
+### 2. 生成 Prisma Client
 
 ```bash
-cp .env.example .env.local
+npm run prisma:generate
 ```
 
-编辑 `.env.local`:
+### 3. 初始化数据库结构
 
-```env
-TEXT_KEY=your_text_api_key_here
-TEXT_URL=https://www.uocode.com/v1
-TEXT_MODEL=gpt-5.4
-
-IMAGE_KEY=your_image_api_key_here
-IMAGE_URL=https://www.uocode.com/v1
-IMAGE_MODEL=gpt-image-2
+```bash
+npm run db:push
 ```
 
-### 3. 启动开发服务器
+### 4. 初始化管理员账号
+
+```bash
+npm run db:seed
+```
+
+如果 `.env.local` 里配置了 `ADMIN_EMAIL` 和 `ADMIN_PASSWORD`，这个步骤会创建或更新管理员账号。
+
+### 5. 写入至少一个图片 provider
+
+示例：
+
+```bash
+PROVIDER_NAME=primary \
+PROVIDER_VENDOR=openai-compatible \
+PROVIDER_BASE_URL=https://www.uocode.com/v1 \
+PROVIDER_MODEL=gpt-image-2 \
+PROVIDER_API_KEY=your_image_api_key \
+PROVIDER_PRIORITY=100 \
+PROVIDER_ENABLED=true \
+npm run provider:upsert
+```
+
+如果你要加 backup provider，再执行一次，换一组名字、URL、model 和 key 即可。`PRIORITY` 越小优先级越高。
+
+### 6. 启动开发服务器
 
 ```bash
 npm run dev
 ```
 
-打开 [http://localhost:3000](http://localhost:3000) 查看应用。
+默认打开 `http://localhost:3000`。
 
-## 使用流程
+## 数据与路由说明
 
-1. **输入产品信息**: 填写产品名称、描述、选择类别和目标受众
-2. **AI 分析**: 点击"分析并生成图片"，Claude 会分析产品并生成提示词
-3. **选择风格**: 根据需要选择图片风格
-4. **生成图片**: 系统使用 GPT-Image 生成 3 张产品图片
-5. **导出使用**: 下载图片或复制提示词用于其他用途
+### 用户与权限
 
-## 项目结构
+- 普通用户：
+  - 可以使用 `/amazon` 和 `/playground`
+  - 可以查看 `/history`
+- 管理员：
+  - 拥有普通用户全部能力
+  - 可以查看 `/admin/image-records`
 
-```
-src/
-├── app/
-│   ├── page.tsx              # 主页面
-│   ├── layout.tsx            # 根布局
-│   └── api/
-│       ├── analyze/route.ts  # Claude 分析接口
-│       └── generate/route.ts # 图片生成接口
-├── components/
-│   ├── ProductInput.tsx      # 产品信息输入表单
-│   ├── ImageGrid.tsx        # 图片展示网格
-│   ├── HistorySidebar.tsx    # 历史记录侧边栏
-│   └── LoadingSpinner.tsx   # 加载动画
-└── lib/
-    ├── anthropic.ts          # Claude API 客户端
-    └── openai.ts            # OpenAI API 客户端
-```
+### 生图链路
 
-## API 接口
+`/api/generate` 现在的行为：
 
-### POST /api/analyze
+1. 校验登录态
+2. 写入生图请求记录
+3. 从数据库读取可用 provider，按优先级顺序尝试
+4. provider 失败时自动 fallback 到下一个
+5. 成功后把结果图上传到腾讯云 COS
+6. 前端只拿到 COS URL
 
-分析产品并生成图片提示词。
+无论上游返回的是：
 
-**请求体**:
-```json
-{
-  "productName": "Wireless Bluetooth Headphones",
-  "description": "High-quality noise-canceling headphones...",
-  "category": "Electronics",
-  "targetAudience": "Young Adults (18-25)"
-}
-```
+- `data:image/...;base64,...`
+- 远程图片 URL
 
-**响应**:
-```json
-{
-  "analysis": "产品分析文本...",
-  "imagePrompts": ["提示词1", "提示词2", "提示词3"],
-  "visualElements": ["元素1", "元素2"]
-}
+都会先归一化，再统一上传 COS。
+
+### 分析链路
+
+- `/api/analyze`
+- `/api/analyze/stream`
+- `/api/analyze/prompts`
+
+都会要求登录，分析结果会落库，供 `/history` 回看。
+
+## 常用脚本
+
+```bash
+npm run dev
+npm run build
+npm run prisma:generate
+npm run db:push
+npm run db:seed
+npm run provider:upsert
 ```
 
-### POST /api/generate
+## Zeabur 部署说明
 
-使用 GPT-Image 生成图片。
+下面是推荐的 Zeabur 部署顺序。
 
-**请求体**:
-```json
-{
-  "prompt": "图片提示词",
-  "style": "realistic"
-}
+### 1. 创建 PostgreSQL 服务
+
+在 Zeabur 项目里先创建 PostgreSQL，并拿到连接串，填到：
+
+```env
+DATABASE_URL=...
 ```
 
-**响应**:
-```json
-{
-  "imageUrl": "https://...",
-  "revisedPrompt": "优化后的提示词"
-}
+### 2. 配置应用环境变量
+
+在应用服务里设置：
+
+- `DATABASE_URL`
+- `APP_SECRET`
+- `PROVIDER_KEY_ENCRYPTION_KEY`
+- `TEXT_KEY`
+- `TEXT_URL`
+- `TEXT_MODEL`
+- `COS_SECRET_ID`
+- `COS_SECRET_KEY`
+- `COS_REGION`
+- `COS_BUCKET`
+- `COS_PUBLIC_BASE_URL`
+- `ADMIN_EMAIL`
+- `ADMIN_PASSWORD`
+
+建议：
+
+- `APP_SECRET` 和 `PROVIDER_KEY_ENCRYPTION_KEY` 都使用高强度随机字符串
+- `COS_PUBLIC_BASE_URL` 使用你 bucket 的公网访问域名
+
+### 3. 首次部署后初始化数据库
+
+在 Zeabur Shell 或一次性 Job 中执行：
+
+```bash
+npm run prisma:generate
+npm run db:push
+npm run db:seed
 ```
 
-## 图片风格
+### 4. 写入图片 provider
 
-| 风格 | 描述 |
-|------|------|
-| `realistic` | 写实风格，专业产品摄影 |
-| `illustrated` | 数字插画风格 |
-| `white-bg` | 纯白背景，电商标准 |
-| `lifestyle` | 生活场景，情感营销 |
+在 Zeabur Shell 中执行一次或多次：
 
-## 获取 API Keys
+```bash
+PROVIDER_NAME=primary \
+PROVIDER_VENDOR=openai-compatible \
+PROVIDER_BASE_URL=https://www.uocode.com/v1 \
+PROVIDER_MODEL=gpt-image-2 \
+PROVIDER_API_KEY=your_primary_key \
+PROVIDER_PRIORITY=100 \
+PROVIDER_ENABLED=true \
+npm run provider:upsert
+```
 
-- **文本服务**: 配置在 `TEXT_URL` / `TEXT_MODEL`
-- **图片服务**: 配置在 `IMAGE_URL` / `IMAGE_MODEL`
+再写 backup provider：
+
+```bash
+PROVIDER_NAME=backup-1 \
+PROVIDER_VENDOR=openai-compatible \
+PROVIDER_BASE_URL=https://backup.example.com/v1 \
+PROVIDER_MODEL=gpt-image-2 \
+PROVIDER_API_KEY=your_backup_key \
+PROVIDER_PRIORITY=200 \
+PROVIDER_ENABLED=true \
+npm run provider:upsert
+```
+
+### 5. 启动命令
+
+Zeabur 应用启动命令可保持：
+
+```bash
+npm run start
+```
+
+如果你的构建流程不是自动执行 install/build，确保部署流程里至少包含：
+
+```bash
+npm install
+npm run build
+```
+
+### 6. 上线后检查
+
+按这个顺序验证：
+
+1. 能访问 `/register` 与 `/login`
+2. 管理员账号能登录
+3. 普通用户能进入 `/amazon` 和 `/playground`
+4. 生图成功后返回的是 COS URL
+5. `/history` 能看到自己的分析与生图记录
+6. `/admin/image-records` 能看到 provider、上游 URL、尝试次数、耗时和结果图
+
+## Provider 管理建议
+
+当前版本没有 provider 管理后台 UI，默认通过脚本维护数据库。
+
+推荐做法：
+
+- `primary` 用主线路
+- `backup-*` 用备用线路
+- 通过 `PROVIDER_PRIORITY` 控制优先级
+- 故障时系统会在单次请求内顺序 fallback
+
+Key 存储策略：
+
+- key 会先在应用层加密
+- 数据库存的是密文，不是明文
+- 解密依赖 `PROVIDER_KEY_ENCRYPTION_KEY`
+
+## 迁移说明
+
+当前版本已经移除旧的图片代理主链路：
+
+- 不再依赖 `image-proxy`
+- 不再返回代理访问链接
+- 生成图片统一走 COS URL
+
+如果你之前的部署环境里还保留旧的 `IMAGE_PROXY_SECRET`，现在可以删除。
 
 ## License
 

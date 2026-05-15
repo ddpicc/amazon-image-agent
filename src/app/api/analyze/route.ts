@@ -1,8 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { AnalysisStatus } from '@prisma/client'
+import { requireApiUser } from '@/lib/auth'
 import { analyzeProduct } from '@/lib/anthropic'
+import { prisma } from '@/lib/prisma'
+import { createReferenceImagePayloadsFromFiles, uploadReferenceImagesForAnalysis } from '@/lib/reference-images'
 
 export async function POST(request: NextRequest) {
+  let analysisRecordId: string | null = null
+
   try {
+    const user = await requireApiUser(request)
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const formData = await request.formData()
 
     const productName = formData.get('productName') as string
@@ -21,15 +32,30 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const imagePayloads = await Promise.all(
-      referenceImages.slice(0, 3).map(async (image) => {
-        const arrayBuffer = await image.arrayBuffer()
-        return {
-          data: Buffer.from(arrayBuffer).toString('base64'),
-          mediaType: image.type || 'image/jpeg',
-        }
-      })
-    )
+    const analysisRecord = await prisma.analysisRecord.create({
+      data: {
+        userId: user.id,
+        productName,
+        description,
+        category: category || 'General',
+        targetAudience: targetAudience || 'General consumers',
+        referenceImageCount: referenceImages.length,
+        status: AnalysisStatus.STARTED,
+      },
+    })
+    analysisRecordId = analysisRecord.id
+
+    const storedReferenceImages = await uploadReferenceImagesForAnalysis({
+      recordId: analysisRecord.id,
+      files: referenceImages,
+    })
+    await prisma.analysisRecord.update({
+      where: { id: analysisRecord.id },
+      data: {
+        referenceImagesJson: storedReferenceImages as any,
+      },
+    })
+    const imagePayloads = await createReferenceImagePayloadsFromFiles(referenceImages)
 
     const result = await analyzeProduct({
       productName,
@@ -39,8 +65,29 @@ export async function POST(request: NextRequest) {
       referenceImages: imagePayloads
     })
 
-    return NextResponse.json(result)
+    await prisma.analysisRecord.update({
+      where: { id: analysisRecord.id },
+      data: {
+        status: AnalysisStatus.SUCCEEDED,
+        productSummary: result.productSummary,
+        analysisJson: result as any,
+      },
+    })
+
+    return NextResponse.json({
+      ...result,
+      analysisRecordId: analysisRecord.id,
+    })
   } catch (error) {
+    if (analysisRecordId) {
+      await prisma.analysisRecord.update({
+        where: { id: analysisRecordId },
+        data: {
+          status: AnalysisStatus.FAILED,
+          errorMessage: error instanceof Error ? error.message : 'Failed to analyze product',
+        },
+      }).catch(() => undefined)
+    }
     console.error('Analyze error:', error)
     return NextResponse.json(
       { error: 'Failed to analyze product' },

@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { getCurrentUser } from '@/lib/auth'
 
 const entries = [
   {
@@ -19,7 +20,9 @@ const entries = [
   },
 ]
 
-export default function Home() {
+export default async function Home() {
+  const user = await getCurrentUser()
+
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(255,153,0,0.12),_transparent_32%),linear-gradient(180deg,#fff_0%,#f8fafc_100%)]">
       <div className="mx-auto flex min-h-screen max-w-7xl flex-col px-4 py-10 sm:px-6 lg:px-8">
@@ -64,8 +67,8 @@ export default function Home() {
                     </li>
                   ))}
                 </ul>
-                <div className="mt-8 inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
-                  进入工作流
+              <div className="mt-8 inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
+                  {user ? '进入工作流' : '登录后进入工作流'}
                   <span className="transition group-hover:translate-x-1">→</span>
                 </div>
               </div>

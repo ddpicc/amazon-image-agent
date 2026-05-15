@@ -6,15 +6,25 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "prisma:generate": "prisma generate",
+    "db:push": "node scripts/db-push.mjs",
+    "db:seed": "node prisma/seed.mjs",
+    "provider:upsert": "node scripts/upsert-image-provider.mjs"
   },
   "dependencies": {
-    "next": "14.2.3",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "axios": "^1.6.8",
     "@anthropic-ai/sdk": "^0.20.4",
-    "openai": "^4.47.1"
+    "@prisma/client": "^5.22.0",
+    "@types/cookie": "^0.6.0",
+    "axios": "^1.6.8",
+    "bcryptjs": "^3.0.3",
+    "cookie": "^1.1.1",
+    "cos-nodejs-sdk-v5": "^2.15.4",
+    "next": "14.2.3",
+    "openai": "^4.47.1",
+    "prisma": "^5.22.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@types/node": "^20.12.12",

@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireApiUser } from '@/lib/auth'
 import { generateAllPrompts } from '@/lib/anthropic'
 
 export async function POST(request: NextRequest) {
   try {
+    const user = await requireApiUser(request)
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const body = await request.json()
 
     const { productName, description, category, targetAudience, referenceImages, analysisSummary } = body
