@@ -1,4 +1,3 @@
-import { UserRole } from '@prisma/client'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireApiUser } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
@@ -8,7 +7,7 @@ export async function GET(request: NextRequest) {
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  if (user.role !== UserRole.ADMIN) {
+  if (user.role !== 'ADMIN') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

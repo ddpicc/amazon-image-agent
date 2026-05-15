@@ -1,4 +1,3 @@
-import { UserRole } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
@@ -12,7 +11,7 @@ const SESSION_TTL_DAYS = 30
 export interface AuthUser {
   id: string
   email: string
-  role: UserRole
+  role: 'ADMIN' | 'USER'
 }
 
 function getSessionExpiryDate(): Date {
@@ -90,7 +89,7 @@ export async function requireUser(): Promise<AuthUser> {
 
 export async function requireAdmin(): Promise<AuthUser> {
   const user = await requireUser()
-  if (user.role !== UserRole.ADMIN) {
+  if (user.role !== 'ADMIN') {
     redirect('/')
   }
   return user

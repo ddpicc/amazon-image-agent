@@ -1,7 +1,6 @@
 import type { Metadata } from 'next'
 import '@/styles/globals.css'
 import Link from 'next/link'
-import { UserRole } from '@prisma/client'
 import LogoutButton from '@/components/LogoutButton'
 import { getCurrentUser } from '@/lib/auth'
 
@@ -31,7 +30,7 @@ export default async function RootLayout({
                   <Link href="/history" className="text-sm text-slate-600 transition hover:text-slate-900">
                     我的历史
                   </Link>
-                  {user.role === UserRole.ADMIN && (
+                  {user.role === 'ADMIN' && (
                     <Link href="/admin/image-records" className="text-sm text-slate-600 transition hover:text-slate-900">
                       管理记录
                     </Link>
