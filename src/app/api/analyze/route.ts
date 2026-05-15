@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { AnalysisStatus } from '@prisma/client'
 import { requireApiUser } from '@/lib/auth'
 import { analyzeProduct } from '@/lib/anthropic'
 import { prisma } from '@/lib/prisma'
@@ -40,7 +39,7 @@ export async function POST(request: NextRequest) {
         category: category || 'General',
         targetAudience: targetAudience || 'General consumers',
         referenceImageCount: referenceImages.length,
-        status: AnalysisStatus.STARTED,
+        status: 'STARTED',
       },
     })
     analysisRecordId = analysisRecord.id
@@ -68,7 +67,7 @@ export async function POST(request: NextRequest) {
     await prisma.analysisRecord.update({
       where: { id: analysisRecord.id },
       data: {
-        status: AnalysisStatus.SUCCEEDED,
+        status: 'SUCCEEDED',
         productSummary: result.productSummary,
         analysisJson: result as any,
       },
@@ -83,7 +82,7 @@ export async function POST(request: NextRequest) {
       await prisma.analysisRecord.update({
         where: { id: analysisRecordId },
         data: {
-          status: AnalysisStatus.FAILED,
+          status: 'FAILED',
           errorMessage: error instanceof Error ? error.message : 'Failed to analyze product',
         },
       }).catch(() => undefined)

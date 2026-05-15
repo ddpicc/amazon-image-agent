@@ -1,4 +1,3 @@
-import { AttemptStatus, GenerationStatus, SourcePage, UpstreamApiKind } from '@prisma/client'
 import OpenAI from 'openai'
 import { uploadBufferToCos } from '@/lib/cos'
 import { decryptSecret } from '@/lib/crypto'
@@ -120,12 +119,12 @@ function buildImageGenerateParams(params: {
   } as any
 }
 
-function sourcePageToEnum(sourcePage: 'amazon' | 'playground'): SourcePage {
-  return sourcePage === 'amazon' ? SourcePage.AMAZON : SourcePage.PLAYGROUND
+function sourcePageToEnum(sourcePage: 'amazon' | 'playground'): 'AMAZON' | 'PLAYGROUND' {
+  return sourcePage === 'amazon' ? 'AMAZON' : 'PLAYGROUND'
 }
 
-function upstreamApiKindFromMode(mode: 'edit' | 'generate'): UpstreamApiKind {
-  return mode === 'edit' ? UpstreamApiKind.IMAGES_EDIT : UpstreamApiKind.IMAGES_GENERATE
+function upstreamApiKindFromMode(mode: 'edit' | 'generate'): 'IMAGES_EDIT' | 'IMAGES_GENERATE' {
+  return mode === 'edit' ? 'IMAGES_EDIT' : 'IMAGES_GENERATE'
 }
 
 function parseDataUrl(dataUrl: string): { buffer: Buffer; mimeType: string } {
@@ -362,7 +361,7 @@ export async function generateImage(input: GenerateImageInput): Promise<Generate
       size,
       referenceImageCount: referenceImages.length,
       finalUpstreamApiKind: upstreamApiKindFromMode(mode),
-      status: GenerationStatus.STARTED,
+      status: 'STARTED',
     },
   })
 
@@ -372,7 +371,7 @@ export async function generateImage(input: GenerateImageInput): Promise<Generate
     await prisma.imageGenerationRequest.update({
       where: { id: requestRecord.id },
       data: {
-        status: GenerationStatus.FAILED,
+        status: 'FAILED',
         errorMessage,
         durationMs: Date.now() - startedAt,
       },
@@ -420,7 +419,7 @@ export async function generateImage(input: GenerateImageInput): Promise<Generate
         model: provider.model,
         attemptIndex: index + 1,
         upstreamApiKind: upstreamApiKindFromMode(mode),
-        status: AttemptStatus.STARTED,
+        status: 'STARTED',
       },
     })
 
@@ -492,7 +491,7 @@ export async function generateImage(input: GenerateImageInput): Promise<Generate
       await prisma.imageGenerationAttempt.update({
         where: { id: attempt.id },
         data: {
-          status: AttemptStatus.SUCCEEDED,
+          status: 'SUCCEEDED',
           durationMs: Date.now() - attemptStartedAt,
           completedAt: new Date(),
         },
@@ -507,7 +506,7 @@ export async function generateImage(input: GenerateImageInput): Promise<Generate
           selectedProviderModel: provider.model,
           attemptCount: index + 1,
           revisedPrompt: 'revisedPrompt' in extracted ? extracted.revisedPrompt : revisedPrompt,
-          status: GenerationStatus.SUCCEEDED,
+          status: 'SUCCEEDED',
           durationMs: Date.now() - startedAt,
         },
       })
@@ -562,7 +561,7 @@ export async function generateImage(input: GenerateImageInput): Promise<Generate
       await prisma.imageGenerationAttempt.update({
         where: { id: attempt.id },
         data: {
-          status: AttemptStatus.FAILED,
+          status: 'FAILED',
           durationMs: Date.now() - attemptStartedAt,
           errorMessage: message,
           completedAt: new Date(),
@@ -594,7 +593,7 @@ export async function generateImage(input: GenerateImageInput): Promise<Generate
     where: { id: requestRecord.id },
     data: {
       attemptCount: providers.length,
-      status: GenerationStatus.FAILED,
+      status: 'FAILED',
       durationMs: Date.now() - startedAt,
       errorMessage,
     },
