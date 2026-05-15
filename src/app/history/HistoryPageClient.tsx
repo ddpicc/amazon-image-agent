@@ -2,8 +2,6 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { BasicAnalysisResult, PromptGenerationResult } from '@/lib/amazon-workflow'
-
 interface HistoryAnalysisRecord {
   id: string
   productName: string
@@ -62,19 +60,6 @@ function formatDate(value: string) {
   return new Date(value).toLocaleString()
 }
 
-function hasPromptPlan(value: unknown): value is PromptGenerationResult {
-  return Boolean(
-    value &&
-    typeof value === 'object' &&
-    'recommendedImagePlan' in value &&
-    'suggestedPrompts' in value,
-  )
-}
-
-function hasAnalysis(value: unknown): value is BasicAnalysisResult {
-  return Boolean(value && typeof value === 'object' && 'productSummary' in value)
-}
-
 export default function HistoryPageClient({ initialData }: { initialData: HistoryPageData }) {
   const [data, setData] = useState<HistoryPageData>(initialData)
 
@@ -127,9 +112,6 @@ export default function HistoryPageClient({ initialData }: { initialData: Histor
             {data.analysisRecords.length === 0 ? (
               <p className="text-sm text-slate-500">还没有分析记录。</p>
             ) : data.analysisRecords.map((record) => {
-              const analysis = hasAnalysis(record.analysisJson) ? record.analysisJson : null
-              const promptPlan = hasPromptPlan(record.promptPlanJson) ? record.promptPlanJson : null
-
               return (
                 <article key={record.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
@@ -154,23 +136,6 @@ export default function HistoryPageClient({ initialData }: { initialData: Histor
                     </div>
                   )}
 
-                  {analysis && (
-                    <div className="mt-4 grid gap-4 md:grid-cols-2">
-                      <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                        <div className="text-sm font-medium text-slate-900">商品总结</div>
-                        <p className="mt-2 text-sm leading-6 text-slate-600">{analysis.productSummary}</p>
-                      </div>
-                      <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                        <div className="text-sm font-medium text-slate-900">核心卖点</div>
-                        <ul className="mt-2 space-y-2 text-sm text-slate-600">
-                          {analysis.sellingPoints.slice(0, 4).map((point, index) => (
-                            <li key={index}>{point}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    </div>
-                  )}
-
                   <div className="mt-4 flex flex-wrap gap-3">
                     <Link
                       href={`/amazon?analysisId=${record.id}`}
@@ -178,14 +143,6 @@ export default function HistoryPageClient({ initialData }: { initialData: Histor
                     >
                       在 Amazon 工作流打开
                     </Link>
-                    {record.status === 'SUCCEEDED' && promptPlan && (
-                      <Link
-                        href={`/amazon?analysisId=${record.id}&step=generate`}
-                        className="rounded-full bg-amazon-orange px-4 py-2 text-sm font-medium text-white transition hover:bg-orange-600"
-                      >
-                        继续走生图流程
-                      </Link>
-                    )}
                   </div>
                 </article>
               )
@@ -195,35 +152,31 @@ export default function HistoryPageClient({ initialData }: { initialData: Histor
 
         <section className="panel p-6">
           <h2 className="text-lg font-semibold text-slate-900">生图记录</h2>
-          <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {data.imageRequests.length === 0 ? (
               <p className="text-sm text-slate-500">还没有生图记录。</p>
             ) : data.imageRequests.map((record) => (
-              <article key={record.id} className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+              <article key={record.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                 {record.assets[0] ? (
-                  <img src={record.assets[0].cosUrl} alt="" className="aspect-square w-full object-cover" />
+                  <a href={record.assets[0].cosUrl} target="_blank" rel="noreferrer" className="block">
+                    <img src={record.assets[0].cosUrl} alt="" className="aspect-square h-44 w-full object-cover transition hover:opacity-95" />
+                  </a>
                 ) : (
-                  <div className="flex aspect-square items-center justify-center bg-slate-100 text-sm text-slate-400">
+                  <div className="flex aspect-square h-44 items-center justify-center bg-slate-100 text-sm text-slate-400">
                     {record.status === 'STARTED' ? '生成中' : '暂无图片'}
                   </div>
                 )}
-                <div className="space-y-3 p-4">
+                <div className="space-y-2 p-3">
                   <div className="flex flex-wrap gap-2 text-xs text-slate-500">
                     <span className="rounded-full bg-slate-100 px-2.5 py-1">{formatDate(record.createdAt)}</span>
                     <span className="rounded-full bg-slate-100 px-2.5 py-1">{formatStatus(record.status)}</span>
                     <span className="rounded-full bg-slate-100 px-2.5 py-1">{record.imageType || 'freeform'}</span>
                   </div>
-                  <p className="line-clamp-4 text-sm leading-6 text-slate-600">{record.revisedPrompt || record.prompt}</p>
                   {record.status === 'STARTED' && (
                     <p className="text-sm text-sky-700">生图任务仍在服务端执行，结果完成后会自动出现在这里。</p>
                   )}
                   {record.status === 'FAILED' && record.errorMessage && (
                     <p className="text-sm text-rose-700">{record.errorMessage}</p>
-                  )}
-                  {record.assets[0] && (
-                    <a href={record.assets[0].cosUrl} target="_blank" className="text-sm font-medium text-amazon-blue hover:text-blue-600">
-                      打开图片
-                    </a>
                   )}
                 </div>
               </article>

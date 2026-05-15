@@ -85,8 +85,8 @@ const imageTypeOptions: ImageTypeOption[] = [
   { value: 'detail', label: '细节图', description: '强调材质与做工' },
   { value: 'infographic-1', label: '卖点图一', description: '第一张卖点图，聚焦最强卖点' },
   { value: 'infographic-2', label: '卖点图二', description: '第二张卖点图，拆分补充信息' },
-  { value: 'lifestyle-1', label: '场景图一', description: '最常见使用场景' },
-  { value: 'lifestyle-2', label: '场景图二', description: '综合场景或第二场景' },
+  { value: 'lifestyle-1', label: '场景图一', description: '深化展示一个核心使用场景' },
+  { value: 'lifestyle-2', label: '场景图二', description: '优先多场景拼图，也可第二场景' },
 ]
 
 const imageTypeOrder: PromptImageType[] = ['main-white', 'size', 'detail', 'infographic-1', 'infographic-2', 'lifestyle-1', 'lifestyle-2']
@@ -102,8 +102,8 @@ const fallbackPrompts: Record<PromptImageType, string> = {
   detail: '为亚马逊商品详情页生成一张细节特写图，突出产品材质、纹理、做工或关键结构，强调真实微距质感、清晰边缘和高级光线，让用户直观感受品质。提示词可以用中文，但如果图片内出现文字，必须为英文。',
   'infographic-1': '为亚马逊商品详情页生成卖点图一，聚焦 1-2 个最核心的功能、材质或差异化优势，信息量不要过密，版式清晰利落，标题和说明文字必须为英文，整体风格适合高质量亚马逊电商展示。',
   'infographic-2': '为亚马逊商品详情页生成卖点图二，补充另一组卖点、功能价值或使用收益，与第一张形成明确分工，不要重复堆砌同一信息，文字说明必须为英文，版式清楚易读。',
-  'lifestyle-1': '为亚马逊商品详情页生成场景图一，聚焦最常见、最容易理解的核心使用场景，帮助用户一眼明白产品怎么用、适合谁用，画面自然可信、偏高端感，产品仍是视觉主角。如需出现任何文字，必须使用英文。',
-  'lifestyle-2': '为亚马逊商品详情页生成场景图二。若产品存在多样化使用方式，就展示另一种或综合使用场景；若不适合多场景，就换一个明显不同但同样真实的应用语境。画面层次丰富但不堆砌，产品始终是视觉焦点。如需文字必须为英文。',
+  'lifestyle-1': '为亚马逊商品详情页生成场景图一，聚焦一个最常见、最典型、最容易理解的核心使用场景，做更深入、更完整的单场景展示，让用户一眼明白产品怎么用、适合谁用，画面自然可信、偏高端感，产品仍是视觉主角。如需出现任何文字，必须使用英文。',
+  'lifestyle-2': '为亚马逊商品详情页生成场景图二，优先采用拼图或分区构图，展示产品的多个使用场景、多个使用方式，或同一场景下的多种功能动作；若产品不适合拼图，也要切换到与场景图一明显不同的第二使用场景。整体信息更丰富但不杂乱，产品始终是视觉焦点。如需出现任何文字，必须使用英文。',
 }
 
 function createImageId() {
@@ -225,11 +225,11 @@ function buildStructuredPromptDirectives(type: string): string[] {
   }
 
   if (type === 'lifestyle-1') {
-    directives.push('分工要求：这是场景图一，优先表现最常见、最典型、最容易理解的核心使用场景。')
+    directives.push('分工要求：这是场景图一，优先表现最常见、最典型、最容易理解的核心使用场景，并做单场景深化展示。')
   }
 
   if (type === 'lifestyle-2') {
-    directives.push('分工要求：这是场景图二；如果产品适合多样化使用，展示第二场景或综合场景，否则也要与场景图一形成明确区分。')
+    directives.push('分工要求：这是场景图二，优先使用拼图或分区方式展示多个使用场景、多个使用动作或多个使用形式；若不适合拼图，也要切换到与场景图一明显不同的第二场景。')
   }
 
   if (baseType === 'infographic') {
@@ -920,16 +920,13 @@ export default function AmazonPage({
 
   const handleDownload = async (image: GeneratedImage) => {
     try {
-      const response = await fetch(image.imageUrl)
-      const blob = await response.blob()
-      const url = window.URL.createObjectURL(blob)
       const link = document.createElement('a')
-      link.href = url
+      link.href = `/api/download?url=${encodeURIComponent(image.imageUrl)}&filename=${encodeURIComponent(`amazon-product-${image.id}.png`)}`
       link.download = `amazon-product-${image.id}.png`
+      link.rel = 'noopener noreferrer'
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
-      window.URL.revokeObjectURL(url)
     } catch (err) {
       console.error('Failed to download:', err)
     }
@@ -1269,18 +1266,6 @@ export default function AmazonPage({
 
             {currentStep === 'generate' && analysisResult && (
               <>
-                {buildReferenceAwarePromptHint(selectedImageType, analysisResult) && (
-                  <div className="panel p-6">
-                    <h3 className="text-lg font-semibold text-slate-900">参考图使用策略</h3>
-                    <p className="mt-3 text-sm leading-6 text-slate-600">
-                      {buildReferenceAwarePromptHint(selectedImageType, analysisResult)}
-                    </p>
-                    <p className="mt-3 text-xs text-slate-500">
-                      这部分会在发送给生图模型时自动附加，不会覆盖你在下方编辑器里调整的 AI 原始提示词。
-                    </p>
-                  </div>
-                )}
-
                 <div className="panel p-6">
                   <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                     <div>
@@ -1356,6 +1341,20 @@ export default function AmazonPage({
 
                   <div className="mt-6">
                     <label className="mb-3 block text-sm font-medium text-slate-800">
+                      参考图使用策略
+                    </label>
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                      <p className="text-sm leading-6 text-slate-600">
+                        {buildReferenceAwarePromptHint(selectedImageType, analysisResult) || '当前没有额外的参考图策略限制，会按基础分析和当前提示词执行。'}
+                      </p>
+                      <p className="mt-2 text-xs text-slate-500">
+                        这部分会在发送给生图模型时自动附加，不会覆盖你在下方编辑器里调整的 AI 原始提示词。
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-6">
+                    <label className="mb-3 block text-sm font-medium text-slate-800">
                       补充要求（选填）
                     </label>
                     <textarea
@@ -1382,7 +1381,7 @@ export default function AmazonPage({
                       placeholder="在这里微调提示词..."
                     />
                     <p className="mt-2 text-xs text-slate-500">
-                      生成时会自动拼接上方的参考图策略，以及分析页里填写的补充要求。
+                      生成时会自动拼接上方的参考图策略和补充要求。
                     </p>
                   </div>
 
