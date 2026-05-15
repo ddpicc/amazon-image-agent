@@ -13,9 +13,10 @@ export async function listCandidateImageProviders() {
     where: { enabled: true },
     orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }],
   })
+  type ImageProviderRecord = (typeof providers)[number]
 
   const now = Date.now()
-  const ready = providers.filter((provider) => !provider.cooldownUntil || provider.cooldownUntil.getTime() <= now)
+  const ready = providers.filter((provider: ImageProviderRecord) => !provider.cooldownUntil || provider.cooldownUntil.getTime() <= now)
   return ready.length > 0 ? ready : providers
 }
 
