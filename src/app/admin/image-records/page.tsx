@@ -1,17 +1,6 @@
 import Link from 'next/link'
-import { Prisma } from '@prisma/client'
 import { requireAdmin } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-
-type AdminImageRecord = Prisma.ImageGenerationRequestGetPayload<{
-  include: {
-    user: true
-    assets: true
-    attempts: {
-      orderBy: { attemptIndex: 'asc' }
-    }
-  }
-}>
 
 export default async function AdminImageRecordsPage() {
   await requireAdmin()
@@ -27,6 +16,7 @@ export default async function AdminImageRecordsPage() {
       },
     },
   })
+  type AdminImageRecord = (typeof records)[number]
 
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,#fff_0%,#f8fafc_100%)] px-4 py-8 sm:px-6 lg:px-8">
