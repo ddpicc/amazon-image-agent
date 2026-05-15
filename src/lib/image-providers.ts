@@ -1,4 +1,3 @@
-import { ImageProvider } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 
 const PROVIDER_COOLDOWN_MINUTES = 5
@@ -9,7 +8,7 @@ function getCooldownUntil() {
   return date
 }
 
-export async function listCandidateImageProviders(): Promise<ImageProvider[]> {
+export async function listCandidateImageProviders() {
   const providers = await prisma.imageProvider.findMany({
     where: { enabled: true },
     orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }],
