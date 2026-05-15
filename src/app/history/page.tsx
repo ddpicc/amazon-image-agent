@@ -19,18 +19,21 @@ export default async function HistoryPage() {
       },
     }),
   ])
+  type AnalysisRecordItem = (typeof analysisRecords)[number]
+  type ImageRequestItem = (typeof imageRequests)[number]
+  type ImageAssetItem = ImageRequestItem['assets'][number]
 
   const initialData: HistoryPageData = {
-    analysisRecords: analysisRecords.map((record) => ({
+    analysisRecords: analysisRecords.map((record: AnalysisRecordItem) => ({
       ...record,
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString(),
     })),
-    imageRequests: imageRequests.map((record) => ({
+    imageRequests: imageRequests.map((record: ImageRequestItem) => ({
       ...record,
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString(),
-      assets: record.assets.map((asset) => ({
+      assets: record.assets.map((asset: ImageAssetItem) => ({
         ...asset,
         createdAt: asset.createdAt.toISOString(),
       })),
