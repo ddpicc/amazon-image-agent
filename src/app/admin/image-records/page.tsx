@@ -1,6 +1,17 @@
 import Link from 'next/link'
+import { Prisma } from '@prisma/client'
 import { requireAdmin } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+
+type AdminImageRecord = Prisma.ImageGenerationRequestGetPayload<{
+  include: {
+    user: true
+    assets: true
+    attempts: {
+      orderBy: { attemptIndex: 'asc' }
+    }
+  }
+}>
 
 export default async function AdminImageRecordsPage() {
   await requireAdmin()
@@ -47,7 +58,7 @@ export default async function AdminImageRecordsPage() {
               </tr>
             </thead>
             <tbody>
-              {records.map((record) => (
+              {records.map((record: AdminImageRecord) => (
                 <tr key={record.id} className="border-t border-slate-200 align-top">
                   <td className="py-4 pr-4 text-slate-700">{record.user.email}</td>
                   <td className="py-4 pr-4 text-slate-700">{record.createdAt.toLocaleString()}</td>
