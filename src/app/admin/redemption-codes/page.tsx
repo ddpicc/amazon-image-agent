@@ -1,0 +1,80 @@
+import Link from 'next/link'
+import AdminCreateRedemptionCodesForm from './AdminCreateRedemptionCodesForm'
+import { requireAdmin } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+
+export default async function AdminRedemptionCodesPage() {
+  await requireAdmin()
+
+  const [codes, packages] = await Promise.all([
+    prisma.redemptionCode.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+      include: {
+        redemptionPackage: true,
+        redeemedBy: true,
+        createdBy: true,
+      },
+    }),
+    prisma.pointsPackage.findMany({
+      orderBy: [
+        { displayOrder: 'asc' },
+        { createdAt: 'asc' },
+      ],
+      select: {
+        id: true,
+        name: true,
+        points: true,
+      },
+    }),
+  ])
+
+  return (
+    <main className="min-h-screen bg-[linear-gradient(180deg,#fff_0%,#f8fafc_100%)] px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">管理员</div>
+            <h1 className="mt-2 text-3xl font-semibold text-slate-950">兑换码记录</h1>
+          </div>
+          <Link href="/" className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900">
+            返回首页
+          </Link>
+        </div>
+
+        <div className="panel p-6">
+          <AdminCreateRedemptionCodesForm packages={packages} />
+        </div>
+
+        <div className="panel overflow-x-auto p-6">
+          <table className="min-w-full text-left text-sm">
+            <thead className="text-slate-500">
+              <tr>
+                <th className="pb-3 pr-4">创建时间</th>
+                <th className="pb-3 pr-4">积分包</th>
+                <th className="pb-3 pr-4">积分</th>
+                <th className="pb-3 pr-4">批次</th>
+                <th className="pb-3 pr-4">状态</th>
+                <th className="pb-3 pr-4">兑换用户</th>
+                <th className="pb-3">创建人</th>
+              </tr>
+            </thead>
+            <tbody>
+              {codes.map((code) => (
+                <tr key={code.id} className="border-t border-slate-200">
+                  <td className="py-4 pr-4 text-slate-700">{code.createdAt.toLocaleString()}</td>
+                  <td className="py-4 pr-4 text-slate-700">{code.redemptionPackage?.name || '-'}</td>
+                  <td className="py-4 pr-4 text-slate-700">{code.points}</td>
+                  <td className="py-4 pr-4 text-slate-700">{code.batchId || '-'}</td>
+                  <td className="py-4 pr-4 text-slate-700">{code.status}</td>
+                  <td className="py-4 pr-4 text-slate-700">{code.redeemedBy?.email || '-'}</td>
+                  <td className="py-4 text-slate-700">{code.createdBy.email}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  )
+}

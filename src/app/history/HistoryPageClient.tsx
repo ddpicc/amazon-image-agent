@@ -42,6 +42,11 @@ interface HistoryImageRequest {
   errorMessage: string | null
   createdAt: string
   updatedAt: string
+  pointsLedgerEntry: {
+    id: string
+    pointsDelta: number
+    createdAt: string
+  } | null
   assets: HistoryImageAsset[]
 }
 
@@ -171,6 +176,11 @@ export default function HistoryPageClient({ initialData }: { initialData: Histor
                     <span className="rounded-full bg-slate-100 px-2.5 py-1">{formatDate(record.createdAt)}</span>
                     <span className="rounded-full bg-slate-100 px-2.5 py-1">{formatStatus(record.status)}</span>
                     <span className="rounded-full bg-slate-100 px-2.5 py-1">{record.imageType || 'freeform'}</span>
+                    {record.pointsLedgerEntry && (
+                      <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-700">
+                        {record.pointsLedgerEntry.pointsDelta} 积分
+                      </span>
+                    )}
                   </div>
                   {record.status === 'STARTED' && (
                     <p className="text-sm text-sky-700">生图任务仍在服务端执行，结果完成后会自动出现在这里。</p>

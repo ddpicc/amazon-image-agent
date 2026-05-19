@@ -41,16 +41,49 @@ enum UpstreamApiKind {
   IMAGES_GENERATE
 }
 
+enum PointsPackageStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum PointsLedgerType {
+  REDEEM_CODE
+  PAYMENT_RECHARGE
+  GENERATION_DEBIT
+  GENERATION_REFUND
+  ADMIN_ADJUSTMENT
+}
+
+enum RedemptionCodeStatus {
+  ACTIVE
+  REDEEMED
+  DISABLED
+  EXPIRED
+}
+
+enum PaymentOrderStatus {
+  PENDING
+  PAID
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
 model User {
   id                      String                   @id @default(cuid())
   email                   String                   @unique
   passwordHash            String
   role                    UserRole                 @default(USER)
+  pointsBalance           Int                      @default(0)
   createdAt               DateTime                 @default(now())
   updatedAt               DateTime                 @updatedAt
   sessions                Session[]
   analysisRecords         AnalysisRecord[]
   imageGenerationRequests ImageGenerationRequest[]
+  pointsLedgerEntries     PointsLedgerEntry[]      @relation("PointsLedgerUser")
+  createdRedemptionCodes  RedemptionCode[]         @relation("RedemptionCodeCreator")
+  redeemedCodes           RedemptionCode[]         @relation("RedemptionCodeRedeemer")
+  paymentOrders           PaymentOrder[]
 }
 
 model Session {
@@ -109,31 +142,33 @@ model ImageProvider {
 }
 
 model ImageGenerationRequest {
-  id                   String                   @id @default(cuid())
-  userId               String
-  sourcePage           SourcePage
-  entryApi             String
-  selectedProviderId   String?
-  selectedProviderName String?
+  id                      String                   @id @default(cuid())
+  userId                  String
+  sourcePage              SourcePage
+  entryApi                String
+  selectedProviderId      String?
+  selectedProviderName    String?
   selectedProviderBaseUrl String?
   selectedProviderModel   String?
-  attemptCount         Int                      @default(0)
-  finalUpstreamApiKind UpstreamApiKind          @default(UNKNOWN)
-  status               GenerationStatus         @default(STARTED)
-  durationMs           Int?
-  prompt               String
-  revisedPrompt        String?
-  imageType            String?
-  aspectRatio          String?
-  size                 String?
-  referenceImageCount  Int                      @default(0)
-  errorMessage         String?
-  createdAt            DateTime                 @default(now())
-  updatedAt            DateTime                 @updatedAt
-  user                 User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  selectedProvider     ImageProvider?           @relation(fields: [selectedProviderId], references: [id], onDelete: SetNull)
-  attempts             ImageGenerationAttempt[]
-  assets               GeneratedImageAsset[]
+  attemptCount            Int                      @default(0)
+  finalUpstreamApiKind    UpstreamApiKind          @default(UNKNOWN)
+  status                  GenerationStatus         @default(STARTED)
+  durationMs              Int?
+  prompt                  String
+  revisedPrompt           String?
+  imageType               String?
+  aspectRatio             String?
+  size                    String?
+  referenceImageCount     Int                      @default(0)
+  errorMessage            String?
+  pointsLedgerEntryId     String?                  @unique
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  user                    User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  selectedProvider        ImageProvider?           @relation(fields: [selectedProviderId], references: [id], onDelete: SetNull)
+  attempts                ImageGenerationAttempt[]
+  assets                  GeneratedImageAsset[]
+  pointsLedgerEntry       PointsLedgerEntry?       @relation(fields: [pointsLedgerEntryId], references: [id], onDelete: SetNull)
 
   @@index([userId, createdAt(sort: Desc)])
   @@index([selectedProviderId])
@@ -170,4 +205,87 @@ model GeneratedImageAsset {
   request   ImageGenerationRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
   @@index([requestId])
+}
+
+model PointsPackage {
+  id              String              @id @default(cuid())
+  name            String              @unique
+  points          Int
+  priceCents      Int
+  currency        String              @default("CNY")
+  displayOrder    Int                 @default(0)
+  status          PointsPackageStatus @default(ACTIVE)
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  redemptionCodes RedemptionCode[]
+  paymentOrders   PaymentOrder[]
+
+  @@index([status, displayOrder])
+}
+
+model PointsLedgerEntry {
+  id                      String                @id @default(cuid())
+  userId                  String
+  type                    PointsLedgerType
+  pointsDelta             Int
+  balanceAfter            Int
+  idempotencyKey          String                @unique
+  referenceType           String?
+  referenceId             String?
+  metadata                Json?
+  createdAt               DateTime              @default(now())
+  user                    User                  @relation("PointsLedgerUser", fields: [userId], references: [id], onDelete: Cascade)
+  imageGenerationRequest  ImageGenerationRequest?
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([referenceType, referenceId])
+}
+
+model RedemptionCode {
+  id               String               @id @default(cuid())
+  codeHash         String               @unique
+  packageId        String?
+  points           Int
+  status           RedemptionCodeStatus @default(ACTIVE)
+  batchId          String?
+  expiresAt        DateTime?
+  redeemedAt       DateTime?
+  redeemedByUserId String?
+  createdByUserId  String
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  redemptionPackage PointsPackage?      @relation(fields: [packageId], references: [id], onDelete: SetNull)
+  redeemedBy       User?                @relation("RedemptionCodeRedeemer", fields: [redeemedByUserId], references: [id], onDelete: SetNull)
+  createdBy        User                 @relation("RedemptionCodeCreator", fields: [createdByUserId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt(sort: Desc)])
+  @@index([batchId])
+}
+
+model PaymentOrder {
+  id              String             @id @default(cuid())
+  userId          String
+  packageId       String
+  outTradeNo      String?            @unique
+  status          PaymentOrderStatus @default(PENDING)
+  amountCents     Int
+  currency        String             @default("CNY")
+  payType         String?
+  provider        String?
+  providerOrderId String?            @unique
+  payUrl          String             @default("")
+  payUrl2         String             @default("")
+  qrcodeUrl       String             @default("")
+  qrcodeImg       String             @default("")
+  metadata        Json?
+  notifyPayload   Json?
+  paidAt          DateTime?
+  cancelledAt     DateTime?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  paymentPackage  PointsPackage      @relation(fields: [packageId], references: [id], onDelete: Restrict)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([status, createdAt(sort: Desc)])
 }

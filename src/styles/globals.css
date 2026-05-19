@@ -33,6 +33,30 @@
   .input-field {
     @apply w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-amazon-orange focus:ring-4 focus:ring-orange-100;
   }
+
+  .scan-frame {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .scan-frame::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, transparent 0%, rgba(20, 110, 180, 0.08) 40%, rgba(20, 110, 180, 0.22) 50%, rgba(20, 110, 180, 0.08) 60%, transparent 100%);
+    animation: scan-sweep 1.8s ease-in-out infinite;
+    pointer-events: none;
+  }
+}
+
+@keyframes scan-sweep {
+  0% {
+    transform: translateY(-100%);
+  }
+
+  100% {
+    transform: translateY(100%);
+  }
 }
 
 ::-webkit-scrollbar {

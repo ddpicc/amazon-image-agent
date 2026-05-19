@@ -3,6 +3,7 @@ import { uploadBufferToCos } from '@/lib/cos'
 import { decryptSecret } from '@/lib/crypto'
 import { AspectRatio, RenderSize } from '@/lib/image-options'
 import { listCandidateImageProviders, markProviderFailure, markProviderSuccess } from '@/lib/image-providers'
+import { debitPointForGeneration, InsufficientPointsError, refundPointForFailedGeneration } from '@/lib/points'
 import { prisma } from '@/lib/prisma'
 
 interface GenerateImageInput {
@@ -365,6 +366,28 @@ export async function generateImage(input: GenerateImageInput): Promise<Generate
     },
   })
 
+  try {
+    await debitPointForGeneration({
+      userId,
+      requestId: requestRecord.id,
+    })
+  } catch (error) {
+    if (error instanceof InsufficientPointsError) {
+      const errorMessage = error.message
+      await prisma.imageGenerationRequest.update({
+        where: { id: requestRecord.id },
+        data: {
+          status: 'FAILED',
+          errorMessage,
+          durationMs: Date.now() - startedAt,
+        },
+      })
+      throw error
+    }
+
+    throw error
+  }
+
   const providers = await listCandidateImageProviders()
   if (providers.length === 0) {
     const errorMessage = 'No enabled image providers are configured'
@@ -375,6 +398,10 @@ export async function generateImage(input: GenerateImageInput): Promise<Generate
         errorMessage,
         durationMs: Date.now() - startedAt,
       },
+    })
+    await refundPointForFailedGeneration({
+      userId,
+      requestId: requestRecord.id,
     })
     throw new Error(errorMessage)
   }
@@ -597,6 +624,11 @@ export async function generateImage(input: GenerateImageInput): Promise<Generate
       durationMs: Date.now() - startedAt,
       errorMessage,
     },
+  })
+
+  await refundPointForFailedGeneration({
+    userId,
+    requestId: requestRecord.id,
   })
 
   console.error('[image.generate] request failed', {

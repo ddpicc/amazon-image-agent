@@ -1,0 +1,135 @@
+import Link from 'next/link'
+import AdminCreatePackageForm from './AdminCreatePackageForm'
+import { requireAdmin } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+
+export default async function AdminPointsPage() {
+  await requireAdmin()
+
+  const [packages, ledgerEntries, paymentOrders] = await Promise.all([
+    prisma.pointsPackage.findMany({
+      orderBy: [
+        { displayOrder: 'asc' },
+        { createdAt: 'asc' },
+      ],
+    }),
+    prisma.pointsLedgerEntry.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+      include: {
+        user: true,
+      },
+    }),
+    prisma.paymentOrder.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      include: {
+        user: true,
+        paymentPackage: true,
+      },
+    }),
+  ])
+
+  return (
+    <main className="min-h-screen bg-[linear-gradient(180deg,#fff_0%,#f8fafc_100%)] px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">管理员</div>
+            <h1 className="mt-2 text-3xl font-semibold text-slate-950">积分与充值</h1>
+          </div>
+          <Link href="/" className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900">
+            返回首页
+          </Link>
+        </div>
+
+        <section className="panel p-6">
+          <h2 className="text-lg font-semibold text-slate-950">积分包</h2>
+          <div className="mt-4 grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-left text-sm">
+                <thead className="text-slate-500">
+                  <tr>
+                    <th className="pb-3 pr-4">名称</th>
+                    <th className="pb-3 pr-4">积分</th>
+                    <th className="pb-3 pr-4">价格</th>
+                    <th className="pb-3 pr-4">排序</th>
+                    <th className="pb-3">状态</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {packages.map((item) => (
+                    <tr key={item.id} className="border-t border-slate-200">
+                      <td className="py-4 pr-4 text-slate-700">{item.name}</td>
+                      <td className="py-4 pr-4 text-slate-700">{item.points}</td>
+                      <td className="py-4 pr-4 text-slate-700">¥{(item.priceCents / 100).toFixed(2)}</td>
+                      <td className="py-4 pr-4 text-slate-700">{item.displayOrder}</td>
+                      <td className="py-4 text-slate-700">{item.status}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <AdminCreatePackageForm />
+          </div>
+        </section>
+
+        <section className="panel p-6">
+          <h2 className="text-lg font-semibold text-slate-950">最近积分流水</h2>
+          <div className="mt-4 overflow-x-auto">
+            <table className="min-w-full text-left text-sm">
+              <thead className="text-slate-500">
+                <tr>
+                  <th className="pb-3 pr-4">用户</th>
+                  <th className="pb-3 pr-4">类型</th>
+                  <th className="pb-3 pr-4">变动</th>
+                  <th className="pb-3 pr-4">余额</th>
+                  <th className="pb-3">时间</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ledgerEntries.map((entry) => (
+                  <tr key={entry.id} className="border-t border-slate-200">
+                    <td className="py-4 pr-4 text-slate-700">{entry.user.email}</td>
+                    <td className="py-4 pr-4 text-slate-700">{entry.type}</td>
+                    <td className="py-4 pr-4 text-slate-700">{entry.pointsDelta}</td>
+                    <td className="py-4 pr-4 text-slate-700">{entry.balanceAfter}</td>
+                    <td className="py-4 text-slate-700">{entry.createdAt.toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className="panel p-6">
+          <h2 className="text-lg font-semibold text-slate-950">最近充值订单</h2>
+          <div className="mt-4 overflow-x-auto">
+            <table className="min-w-full text-left text-sm">
+              <thead className="text-slate-500">
+                <tr>
+                  <th className="pb-3 pr-4">用户</th>
+                  <th className="pb-3 pr-4">套餐</th>
+                  <th className="pb-3 pr-4">金额</th>
+                  <th className="pb-3 pr-4">状态</th>
+                  <th className="pb-3">时间</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paymentOrders.map((order) => (
+                  <tr key={order.id} className="border-t border-slate-200">
+                    <td className="py-4 pr-4 text-slate-700">{order.user.email}</td>
+                    <td className="py-4 pr-4 text-slate-700">{order.paymentPackage.name}</td>
+                    <td className="py-4 pr-4 text-slate-700">¥{(order.amountCents / 100).toFixed(2)}</td>
+                    <td className="py-4 pr-4 text-slate-700">{order.status}</td>
+                    <td className="py-4 text-slate-700">{order.createdAt.toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </main>
+  )
+}

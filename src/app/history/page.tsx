@@ -16,6 +16,7 @@ export default async function HistoryPage() {
       take: 50,
       include: {
         assets: true,
+        pointsLedgerEntry: true,
       },
     }),
   ])
@@ -33,6 +34,10 @@ export default async function HistoryPage() {
       ...record,
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString(),
+      pointsLedgerEntry: record.pointsLedgerEntry ? {
+        ...record.pointsLedgerEntry,
+        createdAt: record.pointsLedgerEntry.createdAt.toISOString(),
+      } : null,
       assets: record.assets.map((asset: ImageAssetItem) => ({
         ...asset,
         createdAt: asset.createdAt.toISOString(),

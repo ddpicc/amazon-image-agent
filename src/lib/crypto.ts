@@ -45,6 +45,11 @@ export function hashOpaqueToken(token: string): string {
   return crypto.createHash('sha256').update(`${appSecret}:${token}`).digest('hex')
 }
 
+export function hashRedemptionCode(code: string): string {
+  const appSecret = requireEnv('APP_SECRET')
+  return crypto.createHash('sha256').update(`redeem:${appSecret}:${code.trim().toUpperCase()}`).digest('hex')
+}
+
 export function generateOpaqueToken(): string {
   return crypto.randomBytes(32).toString('hex')
 }

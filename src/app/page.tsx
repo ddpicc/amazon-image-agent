@@ -18,6 +18,14 @@ const entries = [
     bullets: ['不依赖商品分析', '自由选择比例与尺寸', '适合测试构图、风格与参考图效果'],
     accent: 'from-amazon-blue/20 via-sky-100 to-white',
   },
+  {
+    href: '/reverse-prompt',
+    eyebrow: '灵感拆解',
+    title: '以图生提示词',
+    description: '上传一张目标图，让 AI 拆解出可直接继续编辑和生图的提示词，再配合参考图做二次生成。',
+    bullets: ['先看图再反推提示词', '支持复制、编辑后继续生图', '适合复刻风格、构图与质感方向'],
+    accent: 'from-violet-200/70 via-fuchsia-50 to-white',
+  },
 ]
 
 export default async function Home() {
@@ -41,7 +49,7 @@ export default async function Home() {
           </div>
         </div>
 
-        <div className="mt-8 grid gap-6 lg:grid-cols-2">
+        <div className="mt-8 grid gap-6 lg:grid-cols-3">
           {entries.map((entry) => (
             <Link
               key={entry.href}

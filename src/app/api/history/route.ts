@@ -20,6 +20,7 @@ export async function GET(request: NextRequest) {
       take: 50,
       include: {
         assets: true,
+        pointsLedgerEntry: true,
       },
     }),
   ])

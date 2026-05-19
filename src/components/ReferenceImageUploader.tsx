@@ -6,6 +6,8 @@ interface ReferenceImageUploaderProps {
   label: string
   helperText?: string
   maxImages?: number
+  emptySummaryText?: string
+  filledSummaryText?: string
   value: File[]
   onChange: (files: File[]) => void
 }
@@ -14,6 +16,8 @@ export default function ReferenceImageUploader({
   label,
   helperText,
   maxImages = 3,
+  emptySummaryText,
+  filledSummaryText,
   value,
   onChange,
 }: ReferenceImageUploaderProps) {
@@ -33,11 +37,11 @@ export default function ReferenceImageUploader({
 
   const summaryText = useMemo(() => {
     if (!value.length) {
-      return `最多上传 ${maxImages} 张参考图，支持 PNG、JPG、WEBP。`
+      return emptySummaryText || `最多上传 ${maxImages} 张参考图，支持 PNG、JPG、WEBP。`
     }
 
-    return `已上传 ${value.length} / ${maxImages} 张，建议补充不同角度或细节图，方便后续更稳定地控图。`
-  }, [maxImages, value.length])
+    return filledSummaryText || `已上传 ${value.length} / ${maxImages} 张，建议补充不同角度或细节图，方便后续更稳定地控图。`
+  }, [emptySummaryText, filledSummaryText, maxImages, value.length])
 
   const updateFiles = (files: File[]) => {
     const validFiles = files.filter((file) => file.type.startsWith('image/')).slice(0, maxImages)

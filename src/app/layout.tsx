@@ -3,6 +3,7 @@ import '@/styles/globals.css'
 import Link from 'next/link'
 import LogoutButton from '@/components/LogoutButton'
 import { getCurrentUser } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
 
 export const metadata: Metadata = {
   title: 'Amazon Image Agent - AI Product Image Generator',
@@ -15,6 +16,10 @@ export default async function RootLayout({
   children: React.ReactNode
 }) {
   const user = await getCurrentUser()
+  const account = user ? await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { pointsBalance: true },
+  }) : null
 
   return (
     <html lang="en">
@@ -30,11 +35,23 @@ export default async function RootLayout({
                   <Link href="/history" className="text-sm text-slate-600 transition hover:text-slate-900">
                     我的历史
                   </Link>
+                  <Link href="/points" className="text-sm text-slate-600 transition hover:text-slate-900">
+                    积分中心
+                  </Link>
                   {user.role === 'ADMIN' && (
-                    <Link href="/admin/image-records" className="text-sm text-slate-600 transition hover:text-slate-900">
-                      管理记录
-                    </Link>
+                    <>
+                      <Link href="/admin/image-records" className="text-sm text-slate-600 transition hover:text-slate-900">
+                        管理记录
+                      </Link>
+                      <Link href="/admin/points" className="text-sm text-slate-600 transition hover:text-slate-900">
+                        积分管理
+                      </Link>
+                      <Link href="/admin/redemption-codes" className="text-sm text-slate-600 transition hover:text-slate-900">
+                        兑换码
+                      </Link>
+                    </>
                   )}
+                  <span className="hidden text-sm text-slate-500 md:inline">{account?.pointsBalance ?? 0} 积分</span>
                   <span className="hidden text-sm text-slate-500 sm:inline">{user.email}</span>
                   <LogoutButton />
                 </>

@@ -10,6 +10,7 @@
 
 # local env files
 .env*.local
+.key.json
 
 # logs
 npm-debug.log*
