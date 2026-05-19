@@ -23,7 +23,7 @@ interface PointsPackageItem {
 
 interface PointsLedgerEntryItem {
   id: string
-  type: 'REDEEM_CODE' | 'PAYMENT_RECHARGE' | 'GENERATION_DEBIT' | 'GENERATION_REFUND' | 'ADMIN_ADJUSTMENT'
+  type: 'REDEEM_CODE' | 'PAYMENT_RECHARGE' | 'GENERATION_DEBIT' | 'GENERATION_REFUND' | 'SIGNUP_BONUS' | 'ADMIN_ADJUSTMENT'
   pointsDelta: number
   balanceAfter: number
   referenceType: string | null
@@ -73,6 +73,7 @@ function formatLedgerType(type: PointsLedgerEntryItem['type']) {
   if (type === 'PAYMENT_RECHARGE') return '支付充值'
   if (type === 'GENERATION_DEBIT') return '生图扣减'
   if (type === 'GENERATION_REFUND') return '失败退款'
+  if (type === 'SIGNUP_BONUS') return '注册赠送'
   return '后台调整'
 }
 

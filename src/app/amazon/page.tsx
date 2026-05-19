@@ -1,6 +1,7 @@
 import AmazonPageClient from './AmazonPageClient'
 import { AmazonResumeState, BasicAnalysisResult, PromptGenerationResult, StoredReferenceImage } from '@/lib/amazon-workflow'
 import { requireUser } from '@/lib/auth'
+import { getUserPointsBalance } from '@/lib/points'
 import { prisma } from '@/lib/prisma'
 
 interface AmazonPageProps {
@@ -12,6 +13,7 @@ interface AmazonPageProps {
 
 export default async function AmazonPage({ searchParams }: AmazonPageProps) {
   const user = await requireUser()
+  const pointsBalance = await getUserPointsBalance(user.id)
   const analysisId = searchParams?.analysisId
   const requestedStep = searchParams?.step === 'generate' ? 'generate' : 'analysis'
   let initialResumeState: AmazonResumeState | null = null
@@ -41,5 +43,5 @@ export default async function AmazonPage({ searchParams }: AmazonPageProps) {
     }
   }
 
-  return <AmazonPageClient initialResumeState={initialResumeState} initialStep={requestedStep} />
+  return <AmazonPageClient initialResumeState={initialResumeState} initialStep={requestedStep} initialPointsBalance={pointsBalance} />
 }

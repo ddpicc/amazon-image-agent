@@ -36,16 +36,18 @@ function createImageId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 }
 
-export default function PlaygroundPage() {
+export default function PlaygroundPage({ initialPointsBalance }: { initialPointsBalance: number }) {
   const [prompt, setPrompt] = useState('')
   const [referenceImages, setReferenceImages] = useState<File[]>([])
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>('1:1')
   const [size, setSize] = useState<RenderSize>(getDefaultSizeForAspectRatio('1:1'))
   const [isGenerating, setIsGenerating] = useState(false)
+  const [pointsBalance] = useState(initialPointsBalance)
   const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([])
   const [routeNotice, setRouteNotice] = useState('')
 
   const availableSizes = useMemo(() => getSizesForAspectRatio(aspectRatio), [aspectRatio])
+  const hasEnoughPointsToGenerate = pointsBalance > 0
 
   useEffect(() => {
     if (!availableSizes.some((option) => option.value === size)) {
@@ -116,6 +118,10 @@ export default function PlaygroundPage() {
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return
+    if (!hasEnoughPointsToGenerate) {
+      alert('积分不足，请先充值后再进入图片生成。')
+      return
+    }
 
     setIsGenerating(true)
     setRouteNotice('正在尝试第一线路')
@@ -268,6 +274,12 @@ export default function PlaygroundPage() {
             >
               {isGenerating ? '生成中...' : '开始生成图片'}
             </button>
+
+            {!hasEnoughPointsToGenerate && (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                当前积分不足，请先前往 <Link href="/points/recharge" className="font-semibold underline">积分中心</Link> 充值或兑换积分包后再进入生图。
+              </div>
+            )}
 
             {routeNotice && (
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">

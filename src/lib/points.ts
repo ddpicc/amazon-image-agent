@@ -10,6 +10,8 @@ export class InsufficientPointsError extends Error {
   }
 }
 
+export const SIGNUP_BONUS_POINTS = 5
+
 function toNullableJsonValue(value: unknown): Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput | undefined {
   if (value === undefined) {
     return undefined
@@ -20,6 +22,52 @@ function toNullableJsonValue(value: unknown): Prisma.InputJsonValue | Prisma.Nul
   }
 
   return value as Prisma.InputJsonValue
+}
+
+export async function getUserPointsBalance(userId: string) {
+  const user = await prisma.user.findUniqueOrThrow({
+    where: { id: userId },
+    select: { pointsBalance: true },
+  })
+
+  return user.pointsBalance
+}
+
+export async function grantSignupBonus(userId: string) {
+  return prisma.$transaction(async (tx) => {
+    const idempotencyKey = `signup:${userId}:bonus`
+    const existingEntry = await tx.pointsLedgerEntry.findUnique({
+      where: { idempotencyKey },
+    })
+
+    if (existingEntry) {
+      return existingEntry
+    }
+
+    const user = await tx.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { pointsBalance: true },
+    })
+
+    const nextBalance = user.pointsBalance + SIGNUP_BONUS_POINTS
+
+    await tx.user.update({
+      where: { id: userId },
+      data: { pointsBalance: nextBalance },
+    })
+
+    return tx.pointsLedgerEntry.create({
+      data: {
+        userId,
+        type: PointsLedgerType.SIGNUP_BONUS,
+        pointsDelta: SIGNUP_BONUS_POINTS,
+        balanceAfter: nextBalance,
+        idempotencyKey,
+        referenceType: 'user',
+        referenceId: userId,
+      },
+    })
+  })
 }
 
 export async function listActivePointsPackages() {

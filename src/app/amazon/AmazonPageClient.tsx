@@ -370,9 +370,11 @@ function AnalysisStatusPanel({
 export default function AmazonPage({
   initialResumeState,
   initialStep,
+  initialPointsBalance,
 }: {
   initialResumeState: AmazonResumeState | null
   initialStep: 'analysis' | 'generate'
+  initialPointsBalance: number
 }) {
   const [referenceImages, setReferenceImages] = useState<File[]>([])
   const [storedReferenceImages, setStoredReferenceImages] = useState<StoredReferenceImage[]>(initialResumeState?.referenceImages || [])
@@ -397,6 +399,7 @@ export default function AmazonPage({
   const [selectedSize, setSelectedSize] = useState<RenderSize>('1024x1024')
   const [editedPrompt, setEditedPrompt] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
+  const [pointsBalance, setPointsBalance] = useState(initialPointsBalance)
   const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([])
   const [editingImage, setEditingImage] = useState<GeneratedImage | null>(null)
   const [routeNotice, setRouteNotice] = useState('')
@@ -419,6 +422,7 @@ export default function AmazonPage({
   const canProceedToGeneration = useMemo(() => {
     return Boolean(analysisResult && isStreamCompleted && Object.keys(analysisResult.suggestedPrompts).length === imageTypeOrder.length)
   }, [analysisResult, isStreamCompleted])
+  const hasEnoughPointsToGenerate = pointsBalance > 0
   const activeReferenceImageCount = referenceImages.length || storedReferenceImages.length
 
   useEffect(() => {
@@ -759,10 +763,14 @@ export default function AmazonPage({
 
   const handleProceedToGeneration = useCallback(() => {
     if (!analysisResult || !canProceedToGeneration) return
+    if (!hasEnoughPointsToGenerate) {
+      alert('积分不足，请先充值后再进入图片生成。')
+      return
+    }
     setSelectedSize(getDefaultSizeForType(selectedImageType))
     setEditedPrompt(getSuggestedPrompt(analysisResult, selectedImageType))
     setCurrentStep('generate')
-  }, [analysisResult, canProceedToGeneration, selectedImageType])
+  }, [analysisResult, canProceedToGeneration, hasEnoughPointsToGenerate, selectedImageType])
 
   const handleRetryPromptGeneration = useCallback(async () => {
     if (!lastAnalyzeInputRef.current || !basicAnalysisResult) return
@@ -1025,6 +1033,14 @@ export default function AmazonPage({
                         重新生成 Prompt 套餐
                       </button>
                     )}
+                    {canProceedToGeneration && !hasEnoughPointsToGenerate && (
+                      <Link
+                        href="/points/recharge"
+                        className="inline-flex rounded-2xl border border-amber-300 bg-amber-50 px-5 py-3 text-sm font-semibold text-amber-800 transition hover:border-amber-400 hover:bg-amber-100"
+                      >
+                        积分不足，去充值
+                      </Link>
+                    )}
                     <button
                       onClick={handleProceedToGeneration}
                       disabled={!canProceedToGeneration}
@@ -1049,6 +1065,12 @@ export default function AmazonPage({
                   {streamError && (
                     <div className="rounded-3xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700 md:col-span-2">
                       {streamError}
+                    </div>
+                  )}
+
+                  {canProceedToGeneration && !hasEnoughPointsToGenerate && (
+                    <div className="rounded-3xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800 md:col-span-2">
+                      当前积分不足，暂时不能进入图片生成。请先前往积分中心充值或兑换积分包。
                     </div>
                   )}
 

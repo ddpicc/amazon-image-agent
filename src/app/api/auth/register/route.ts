@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { applySessionCookie, createSession, hashPassword } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { grantSignupBonus } from '@/lib/points'
 
 export async function POST(request: NextRequest) {
   try {
@@ -29,6 +30,7 @@ export async function POST(request: NextRequest) {
     })
 
     const token = await createSession(user.id)
+    await grantSignupBonus(user.id)
     const response = NextResponse.json({
       user: {
         id: user.id,

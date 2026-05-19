@@ -1,0 +1,1 @@
+ALTER TYPE "PointsLedgerType" ADD VALUE 'SIGNUP_BONUS';
