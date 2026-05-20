@@ -1,5 +1,6 @@
 import HistoryPageClient, { HistoryPageData } from './HistoryPageClient'
 import { requireUser } from '@/lib/auth'
+import { toDisplayPoints } from '@/lib/points-config'
 import { prisma } from '@/lib/prisma'
 
 export default async function HistoryPage() {
@@ -36,6 +37,7 @@ export default async function HistoryPage() {
       updatedAt: record.updatedAt.toISOString(),
       pointsLedgerEntry: record.pointsLedgerEntry ? {
         ...record.pointsLedgerEntry,
+        pointsDelta: toDisplayPoints(record.pointsLedgerEntry.pointsDelta),
         createdAt: record.pointsLedgerEntry.createdAt.toISOString(),
       } : null,
       assets: record.assets.map((asset: ImageAssetItem) => ({

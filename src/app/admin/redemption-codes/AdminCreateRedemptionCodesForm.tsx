@@ -12,7 +12,6 @@ interface RedemptionPackageOption {
 export default function AdminCreateRedemptionCodesForm({ packages }: { packages: RedemptionPackageOption[] }) {
   const router = useRouter()
   const [packageId, setPackageId] = useState(packages[0]?.id || '')
-  const [points, setPoints] = useState(packages[0] ? String(packages[0].points) : '')
   const [quantity, setQuantity] = useState('10')
   const [batchId, setBatchId] = useState('')
   const [message, setMessage] = useState('')
@@ -20,12 +19,10 @@ export default function AdminCreateRedemptionCodesForm({ packages }: { packages:
   const [codes, setCodes] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+  const selectedPackage = packages.find((item) => item.id === packageId) || null
+
   const handlePackageChange = (value: string) => {
     setPackageId(value)
-    const selected = packages.find((item) => item.id === value)
-    if (selected) {
-      setPoints(String(selected.points))
-    }
   }
 
   const handleSubmit = async () => {
@@ -40,7 +37,6 @@ export default function AdminCreateRedemptionCodesForm({ packages }: { packages:
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           packageId: packageId || undefined,
-          points: Number(points),
           quantity: Number(quantity),
           batchId: batchId || undefined,
         }),
@@ -70,10 +66,11 @@ export default function AdminCreateRedemptionCodesForm({ packages }: { packages:
             <option key={item.id} value={item.id}>{item.name}</option>
           ))}
         </select>
-        <input value={points} onChange={(e) => setPoints(e.target.value)} className="input-field" placeholder="积分数量" />
+        <input value={selectedPackage ? `${selectedPackage.points} 积分` : ''} readOnly className="input-field bg-slate-100 text-slate-500" placeholder="积分数量" />
         <input value={quantity} onChange={(e) => setQuantity(e.target.value)} className="input-field" placeholder="数量，例如 10" />
         <input value={batchId} onChange={(e) => setBatchId(e.target.value)} className="input-field" placeholder="批次号，例如 douyin-20260518" />
       </div>
+      <p className="mt-3 text-xs text-slate-500">兑换码积分跟随所选积分包，不能单独修改。</p>
       <button type="button" onClick={handleSubmit} disabled={isSubmitting} className="mt-4 inline-flex rounded-full bg-amazon-blue px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-slate-400">
         {isSubmitting ? '生成中...' : '生成兑换码'}
       </button>

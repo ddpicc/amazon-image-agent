@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireApiUser } from '@/lib/auth'
 import { applyPaymentOrderSuccess, getPaymentOrderForUser } from '@/lib/points'
+import { toDisplayPoints } from '@/lib/points-config'
 import { getZPayConfig } from '@/lib/payments/zpay'
 
 type VerifyOrderBody = {
@@ -37,7 +38,7 @@ function serializeOrder(order: NonNullable<Awaited<ReturnType<typeof getPaymentO
     paymentPackage: {
       id: order.paymentPackage.id,
       name: order.paymentPackage.name,
-      points: order.paymentPackage.points,
+      points: toDisplayPoints(order.paymentPackage.points),
     },
   }
 }
@@ -156,4 +157,3 @@ export async function POST(request: NextRequest) {
     )
   }
 }
-

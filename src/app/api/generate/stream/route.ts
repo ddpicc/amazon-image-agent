@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { requireApiUser } from '@/lib/auth'
 import { generateImage } from '@/lib/openai'
 import { AspectRatio, RenderSize, SIZE_OPTIONS, getDefaultSizeForAspectRatio, getSizesForAspectRatio } from '@/lib/image-options'
+import { GenerationBillingScene } from '@/lib/points-config'
 import { createReferenceImagePayloadsFromFiles, createReferenceImagePayloadsFromUrls } from '@/lib/reference-images'
 
 type StreamEvent =
@@ -35,6 +36,14 @@ function formatEvent(event: StreamEvent) {
   return `${JSON.stringify(event)}\n`
 }
 
+function resolveBillingScene(sourcePage: string, rawBillingScene: string | null): GenerationBillingScene {
+  if (rawBillingScene === 'amazon' || rawBillingScene === 'reverse-prompt' || rawBillingScene === 'playground') {
+    return rawBillingScene
+  }
+
+  return sourcePage === 'amazon' ? 'amazon' : 'playground'
+}
+
 export async function POST(request: NextRequest) {
   const user = await requireApiUser(request)
   if (!user) {
@@ -57,6 +66,7 @@ export async function POST(request: NextRequest) {
         const prompt = formData.get('prompt') as string
         const imageType = formData.get('imageType') as string
         const sourcePage = (formData.get('sourcePage') as string) || 'playground'
+        const billingScene = resolveBillingScene(sourcePage, formData.get('billingScene') as string | null)
         const aspectRatio = (formData.get('aspectRatio') as AspectRatio | null) || '1:1'
         const size = formData.get('size') as string | null
         const referenceImageUrlsRaw = formData.get('referenceImageUrls') as string | null
@@ -87,6 +97,7 @@ export async function POST(request: NextRequest) {
           aspectRatio,
           imageType: imageType || undefined,
           sourcePage: sourcePage === 'amazon' ? 'amazon' : 'playground',
+          billingScene,
           entryApi: '/api/generate/stream',
           onStatus: async (message) => {
             push({ type: 'status', message })

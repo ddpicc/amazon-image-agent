@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireApiUser } from '@/lib/auth'
+import { toDisplayPoints } from '@/lib/points-config'
 import { redeemCode } from '@/lib/points'
 
 export async function POST(request: NextRequest) {
@@ -21,7 +22,14 @@ export async function POST(request: NextRequest) {
       code,
     })
 
-    return NextResponse.json(result)
+    return NextResponse.json({
+      pointsBalance: toDisplayPoints(result.pointsBalance),
+      ledgerEntry: {
+        ...result.ledgerEntry,
+        pointsDelta: toDisplayPoints(result.ledgerEntry.pointsDelta),
+        balanceAfter: toDisplayPoints(result.ledgerEntry.balanceAfter),
+      },
+    })
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : '兑换失败' },

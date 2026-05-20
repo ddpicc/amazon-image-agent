@@ -1,16 +1,20 @@
 import { PaymentOrderStatus, PointsLedgerType, PointsPackageStatus, RedemptionCodeStatus, Prisma } from '@prisma/client'
 import { hashRedemptionCode } from '@/lib/crypto'
+import { formatInternalPoints, GenerationBillingScene, getGenerationCostInternal, toDisplayPoints, toInternalPoints } from '@/lib/points-config'
 import { prisma } from '@/lib/prisma'
 import type { ZPayPayType } from '@/lib/payments/zpay'
 
 export class InsufficientPointsError extends Error {
-  constructor() {
-    super('积分不足，请先充值或兑换积分包。')
+  constructor(requiredInternalPoints?: number) {
+    const message = requiredInternalPoints
+      ? `积分不足，当前操作需要 ${formatInternalPoints(requiredInternalPoints)} 积分，请先充值或兑换积分包。`
+      : '积分不足，请先充值或兑换积分包。'
+    super(message)
     this.name = 'InsufficientPointsError'
   }
 }
 
-export const SIGNUP_BONUS_POINTS = 5
+export const SIGNUP_BONUS_POINTS = toInternalPoints(5)
 
 function toNullableJsonValue(value: unknown): Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput | undefined {
   if (value === undefined) {
@@ -30,7 +34,7 @@ export async function getUserPointsBalance(userId: string) {
     select: { pointsBalance: true },
   })
 
-  return user.pointsBalance
+  return toDisplayPoints(user.pointsBalance)
 }
 
 export async function grantSignupBonus(userId: string) {
@@ -71,13 +75,18 @@ export async function grantSignupBonus(userId: string) {
 }
 
 export async function listActivePointsPackages() {
-  return prisma.pointsPackage.findMany({
+  const packages = await prisma.pointsPackage.findMany({
     where: { status: PointsPackageStatus.ACTIVE },
     orderBy: [
       { displayOrder: 'asc' },
       { createdAt: 'asc' },
     ],
   })
+
+  return packages.map((item) => ({
+    ...item,
+    points: toDisplayPoints(item.points),
+  }))
 }
 
 export async function getPointsSummary(userId: string) {
@@ -113,10 +122,23 @@ export async function getPointsSummary(userId: string) {
   ])
 
   return {
-    user,
+    user: {
+      ...user,
+      pointsBalance: toDisplayPoints(user.pointsBalance),
+    },
     packages,
-    ledgerEntries,
-    paymentOrders,
+    ledgerEntries: ledgerEntries.map((entry) => ({
+      ...entry,
+      pointsDelta: toDisplayPoints(entry.pointsDelta),
+      balanceAfter: toDisplayPoints(entry.balanceAfter),
+    })),
+    paymentOrders: paymentOrders.map((order) => ({
+      ...order,
+      paymentPackage: {
+        ...order.paymentPackage,
+        points: toDisplayPoints(order.paymentPackage.points),
+      },
+    })),
   }
 }
 
@@ -141,7 +163,7 @@ export async function createPaymentOrder(params: { userId: string; packageId: st
       status: PaymentOrderStatus.PENDING,
       metadata: {
         packageName: pkg.name,
-        points: pkg.points,
+        points: toDisplayPoints(pkg.points),
       },
     },
     include: {
@@ -180,7 +202,7 @@ export async function createPendingPaymentOrder(params: {
       status: PaymentOrderStatus.PENDING,
       metadata: {
         packageName: pkg.name,
-        points: pkg.points,
+        points: toDisplayPoints(pkg.points),
       },
     },
     include: {
@@ -306,6 +328,7 @@ export async function applyPaymentOrderSuccess(params: {
           packageId: order.packageId,
           packageName: order.paymentPackage.name,
           amountCents: order.amountCents,
+          points: toDisplayPoints(order.paymentPackage.points),
         },
       },
     })
@@ -413,7 +436,25 @@ export async function redeemCode(params: { userId: string; code: string }) {
   })
 }
 
-export async function debitPointForGeneration(params: { userId: string; requestId: string }) {
+export async function ensureSufficientPointsForGeneration(userId: string) {
+  return ensureSufficientPointsForGenerationByScene(userId, 'amazon')
+}
+
+export async function ensureSufficientPointsForGenerationByScene(userId: string, scene: GenerationBillingScene) {
+  const user = await prisma.user.findUniqueOrThrow({
+    where: { id: userId },
+    select: { pointsBalance: true },
+  })
+
+  const requiredPoints = getGenerationCostInternal(scene)
+  if (user.pointsBalance < requiredPoints) {
+    throw new InsufficientPointsError(requiredPoints)
+  }
+
+  return user.pointsBalance
+}
+
+export async function debitPointForGeneration(params: { userId: string; requestId: string; scene: GenerationBillingScene }) {
   return prisma.$transaction(async (tx) => {
     const idempotencyKey = `generation:${params.requestId}:debit`
     const existingEntry = await tx.pointsLedgerEntry.findUnique({
@@ -429,11 +470,12 @@ export async function debitPointForGeneration(params: { userId: string; requestI
       select: { pointsBalance: true },
     })
 
-    if (user.pointsBalance < 1) {
-      throw new InsufficientPointsError()
+    const debitAmount = getGenerationCostInternal(params.scene)
+    if (user.pointsBalance < debitAmount) {
+      throw new InsufficientPointsError(debitAmount)
     }
 
-    const nextBalance = user.pointsBalance - 1
+    const nextBalance = user.pointsBalance - debitAmount
 
     await tx.user.update({
       where: { id: params.userId },
@@ -444,11 +486,15 @@ export async function debitPointForGeneration(params: { userId: string; requestI
       data: {
         userId: params.userId,
         type: PointsLedgerType.GENERATION_DEBIT,
-        pointsDelta: -1,
+        pointsDelta: -debitAmount,
         balanceAfter: nextBalance,
         idempotencyKey,
         referenceType: 'image_generation_request',
         referenceId: params.requestId,
+        metadata: {
+          scene: params.scene,
+          chargedPoints: toDisplayPoints(debitAmount),
+        },
       },
     })
 
@@ -480,12 +526,14 @@ export async function refundPointForFailedGeneration(params: { userId: string; r
       throw new Error('未找到可退款的扣点记录')
     }
 
+    const refundAmount = Math.abs(debitEntry.pointsDelta)
+
     const user = await tx.user.findUniqueOrThrow({
       where: { id: params.userId },
       select: { pointsBalance: true },
     })
 
-    const nextBalance = user.pointsBalance + 1
+    const nextBalance = user.pointsBalance + refundAmount
 
     await tx.user.update({
       where: { id: params.userId },
@@ -496,7 +544,7 @@ export async function refundPointForFailedGeneration(params: { userId: string; r
       data: {
         userId: params.userId,
         type: PointsLedgerType.GENERATION_REFUND,
-        pointsDelta: 1,
+        pointsDelta: refundAmount,
         balanceAfter: nextBalance,
         idempotencyKey: refundKey,
         referenceType: 'image_generation_request',
@@ -516,7 +564,7 @@ export async function createPointsPackage(params: {
   return prisma.pointsPackage.create({
     data: {
       name: params.name,
-      points: params.points,
+      points: toInternalPoints(params.points),
       priceCents: params.priceCents,
       currency: params.currency || 'CNY',
       displayOrder: params.displayOrder || 0,
@@ -548,7 +596,7 @@ export async function createRedemptionCodes(params: {
     data: codes.map((item) => ({
       codeHash: item.codeHash,
       packageId: params.packageId,
-      points: params.points,
+      points: toInternalPoints(params.points),
       batchId: params.batchId,
       expiresAt: params.expiresAt || null,
       createdByUserId: params.createdByUserId,

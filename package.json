@@ -7,8 +7,10 @@
     "build": "prisma generate --schema prisma/schema.prisma && next build",
     "start": "next start",
     "lint": "next lint",
+    "prisma:run": "node scripts/prisma-run.mjs",
     "prisma:generate": "prisma generate --schema prisma/schema.prisma",
     "db:push": "node scripts/db-push.mjs",
+    "db:migrate:deploy": "node scripts/prisma-run.mjs migrate deploy",
     "db:seed": "node prisma/seed.mjs",
     "provider:upsert": "node scripts/upsert-image-provider.mjs"
   },

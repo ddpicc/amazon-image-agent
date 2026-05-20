@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { formatPoints } from '@/lib/points-config'
 interface HistoryAnalysisRecord {
   id: string
   productName: string
@@ -178,7 +179,7 @@ export default function HistoryPageClient({ initialData }: { initialData: Histor
                     <span className="rounded-full bg-slate-100 px-2.5 py-1">{record.imageType || 'freeform'}</span>
                     {record.pointsLedgerEntry && (
                       <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-700">
-                        {record.pointsLedgerEntry.pointsDelta} 积分
+                        {formatPoints(record.pointsLedgerEntry.pointsDelta)} 积分
                       </span>
                     )}
                   </div>

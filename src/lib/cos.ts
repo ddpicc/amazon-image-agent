@@ -1,5 +1,7 @@
 import COS from 'cos-nodejs-sdk-v5'
 
+const COS_UPLOAD_TIMEOUT_MS = 180_000
+
 function requireEnv(name: string): string {
   const value = process.env[name]
   if (!value) {
@@ -40,28 +42,37 @@ export async function uploadBufferToCos(params: {
   buffer: Buffer
   key: string
   contentType: string
+  timeoutMs?: number
 }): Promise<{ url: string; key: string; bytes: number; mimeType: string }> {
   const bucket = requireEnv('COS_BUCKET')
   const region = requireEnv('COS_REGION')
+  const timeoutMs = params.timeoutMs ?? COS_UPLOAD_TIMEOUT_MS
 
-  await new Promise<void>((resolve, reject) => {
-    getCosClient().putObject(
-      {
-        Bucket: bucket,
-        Region: region,
-        Key: params.key,
-        Body: params.buffer,
-        ContentType: params.contentType,
-      },
-      (error) => {
-        if (error) {
-          reject(error)
-          return
-        }
-        resolve()
-      },
-    )
-  })
+  await Promise.race([
+    new Promise<void>((resolve, reject) => {
+      getCosClient().putObject(
+        {
+          Bucket: bucket,
+          Region: region,
+          Key: params.key,
+          Body: params.buffer,
+          ContentType: params.contentType,
+        },
+        (error) => {
+          if (error) {
+            reject(error)
+            return
+          }
+          resolve()
+        },
+      )
+    }),
+    new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error(`COS upload timed out after ${timeoutMs}ms`))
+      }, timeoutMs)
+    }),
+  ])
 
   return {
     url: buildCosPublicUrl(params.key),

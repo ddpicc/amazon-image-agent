@@ -7,6 +7,7 @@ import ProductInput from '@/components/ProductInput'
 import LoadingSpinner, { SkeletonBlock } from '@/components/LoadingSpinner'
 import { AmazonResumeState, BasicAnalysisResult, PromptGenerationResult, RecommendedImagePlanItem, StoredReferenceImage, isPromptGenerationComplete } from '@/lib/amazon-workflow'
 import { RenderSize } from '@/lib/image-options'
+import { formatPoints, getGenerationCostDisplay } from '@/lib/points-config'
 
 type AmazonImageType = 'main-white' | 'lifestyle' | 'infographic' | 'detail' | 'size'
 type PromptImageType = 'main-white' | 'size' | 'detail' | 'infographic-1' | 'infographic-2' | 'lifestyle-1' | 'lifestyle-2'
@@ -422,7 +423,8 @@ export default function AmazonPage({
   const canProceedToGeneration = useMemo(() => {
     return Boolean(analysisResult && isStreamCompleted && Object.keys(analysisResult.suggestedPrompts).length === imageTypeOrder.length)
   }, [analysisResult, isStreamCompleted])
-  const hasEnoughPointsToGenerate = pointsBalance > 0
+  const generationCost = getGenerationCostDisplay('amazon')
+  const hasEnoughPointsToGenerate = pointsBalance >= generationCost
   const activeReferenceImageCount = referenceImages.length || storedReferenceImages.length
 
   useEffect(() => {
@@ -510,6 +512,7 @@ export default function AmazonPage({
     formData.append('imageType', type)
     formData.append('size', size)
     formData.append('sourcePage', 'amazon')
+    formData.append('billingScene', 'amazon')
     if (referenceImages.length > 0) {
       referenceImages.slice(0, 3).forEach((image) => {
         formData.append('referenceImages', image)
@@ -852,6 +855,7 @@ export default function AmazonPage({
         imageType: selectedImageType,
       }
       setGeneratedImages((prev) => [newImage, ...prev])
+      setPointsBalance((prev) => Math.max(0, Number((prev - generationCost).toFixed(1))))
     } catch (error) {
       console.error('Error generating image:', error)
       const message = error instanceof Error ? error.message : 'Failed to generate image. Please check your API keys.'
@@ -860,7 +864,7 @@ export default function AmazonPage({
     } finally {
       setIsGenerating(false)
     }
-  }, [activeReferenceImageCount, analysisResult, editedPrompt, isGenerating, requestGenerate, selectedImageType, selectedSize])
+  }, [activeReferenceImageCount, analysisResult, editedPrompt, generationCost, isGenerating, requestGenerate, selectedImageType, selectedSize])
 
   const handleGenerateFullSet = useCallback(async () => {
     if (!analysisResult || isGenerating) return
@@ -883,6 +887,7 @@ export default function AmazonPage({
           prompt: result.prompt,
           imageType,
         })
+        setPointsBalance((prev) => Math.max(0, Number((prev - generationCost).toFixed(1))))
       }
 
       setGeneratedImages((prev) => [...nextImages.reverse(), ...prev])
@@ -895,7 +900,7 @@ export default function AmazonPage({
     } finally {
       setIsGenerating(false)
     }
-  }, [activeReferenceImageCount, analysisResult, isGenerating, requestGenerate])
+  }, [activeReferenceImageCount, analysisResult, generationCost, isGenerating, requestGenerate])
 
   const handleRegenerate = useCallback(async () => {
     if (!editingImage || !activeReferenceImageCount || isGenerating) return
@@ -916,6 +921,7 @@ export default function AmazonPage({
         prev.map((image) => (image.id === editingImage.id ? updatedImage : image)),
       )
       setEditingImage(updatedImage)
+      setPointsBalance((prev) => Math.max(0, Number((prev - generationCost).toFixed(1))))
     } catch (error) {
       console.error('Error regenerating image:', error)
       const message = error instanceof Error ? error.message : 'Failed to regenerate image. Please check your API keys.'
@@ -924,7 +930,7 @@ export default function AmazonPage({
     } finally {
       setIsGenerating(false)
     }
-  }, [activeReferenceImageCount, editingImage, isGenerating, requestGenerate])
+  }, [activeReferenceImageCount, editingImage, generationCost, isGenerating, requestGenerate])
 
   const handleDownload = async (image: GeneratedImage) => {
     try {
@@ -1020,7 +1026,7 @@ export default function AmazonPage({
                     </span>
                     <h3 className="mt-3 text-2xl font-semibold text-slate-950">AI 商品图片规划</h3>
                     <p className="mt-2 text-sm text-slate-500">
-                      先展示基础分析，再继续生成推荐图片规划和默认提示词。
+                      先展示基础分析，再继续生成推荐图片规划和默认提示词。Amazon 生图每张扣 {formatPoints(generationCost)} 积分。
                     </p>
                   </div>
                   <div className="flex flex-col gap-3 sm:flex-row">
@@ -1070,7 +1076,7 @@ export default function AmazonPage({
 
                   {canProceedToGeneration && !hasEnoughPointsToGenerate && (
                     <div className="rounded-3xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800 md:col-span-2">
-                      当前积分不足，暂时不能进入图片生成。请先前往积分中心充值或兑换积分包。
+                      当前积分不足，Amazon 生图每张需要 {formatPoints(generationCost)} 积分。请先前往积分中心充值或兑换积分包。
                     </div>
                   )}
 

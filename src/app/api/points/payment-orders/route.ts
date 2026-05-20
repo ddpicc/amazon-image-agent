@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireApiUser } from '@/lib/auth'
 import { PaymentOrderStatus } from '@prisma/client'
+import { toDisplayPoints } from '@/lib/points-config'
 import { createPendingPaymentOrder, updatePaymentOrderAfterCreate } from '@/lib/points'
 import { buildZPaySign, getZPayConfig, normalizeMoneyFromCents, parseZPayCode, type ZPayPayType } from '@/lib/payments/zpay'
 
@@ -163,7 +164,7 @@ export async function POST(request: NextRequest) {
       paymentPackage: {
         id: localOrder.paymentPackage.id,
         name: localOrder.paymentPackage.name,
-        points: localOrder.paymentPackage.points,
+        points: toDisplayPoints(localOrder.paymentPackage.points),
       },
     })
   } catch (error) {

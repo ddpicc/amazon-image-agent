@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { formatPoints } from '@/lib/points-config'
 
 interface RechargePackageItem {
   id: string
@@ -53,7 +54,7 @@ export default function RechargePageClient({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
-  const [payType, setPayType] = useState<'wxpay' | 'alipay'>('wxpay')
+  const payType: 'wxpay' = 'wxpay'
   const [createdOrder, setCreatedOrder] = useState<PaymentOrderResult | null>(null)
 
   const selectedPackage = useMemo(
@@ -124,7 +125,7 @@ export default function RechargePageClient({
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-sm font-medium text-slate-900">{item.name}</div>
-                  <div className="mt-1 text-xs text-slate-500">{item.points} 积分</div>
+                  <div className="mt-1 text-xs text-slate-500">{formatPoints(item.points)} 积分</div>
                 </div>
                 <div className="text-sm font-semibold text-slate-900">{formatMoney(item.priceCents, item.currency)}</div>
               </div>
@@ -132,21 +133,8 @@ export default function RechargePageClient({
           ))}
         </div>
 
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <button
-            type="button"
-            onClick={() => setPayType('wxpay')}
-            className={`rounded-2xl border px-4 py-3 text-sm font-medium transition ${payType === 'wxpay' ? 'border-amazon-orange bg-orange-50 text-slate-900' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'}`}
-          >
-            微信支付
-          </button>
-          <button
-            type="button"
-            onClick={() => setPayType('alipay')}
-            className={`rounded-2xl border px-4 py-3 text-sm font-medium transition ${payType === 'alipay' ? 'border-amazon-orange bg-orange-50 text-slate-900' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'}`}
-          >
-            支付宝
-          </button>
+        <div className="mt-4 rounded-2xl border border-amazon-orange bg-orange-50 px-4 py-3 text-sm text-slate-700">
+          当前仅支持微信支付。
         </div>
 
         <button
@@ -167,9 +155,9 @@ export default function RechargePageClient({
           {selectedPackage ? (
             <div className="mt-4 space-y-2 text-sm text-slate-600">
               <div>套餐：{selectedPackage.name}</div>
-              <div>积分：{selectedPackage.points}</div>
+              <div>积分：{formatPoints(selectedPackage.points)}</div>
               <div>金额：{formatMoney(selectedPackage.priceCents, selectedPackage.currency)}</div>
-              <div>支付方式：{payType === 'wxpay' ? '微信支付' : '支付宝'}</div>
+              <div>支付方式：微信支付</div>
               <div>说明：创建订单后会打开独立支付页，自动轮询支付状态。</div>
             </div>
           ) : (
@@ -185,7 +173,7 @@ export default function RechargePageClient({
               <div>商户单号：{createdOrder.outTradeNo}</div>
               <div>状态：{createdOrder.status}</div>
               <div>套餐：{createdOrder.paymentPackage.name}</div>
-              <div>积分：{createdOrder.paymentPackage.points}</div>
+              <div>积分：{formatPoints(createdOrder.paymentPackage.points)}</div>
               <div>金额：{formatMoney(createdOrder.amountCents, createdOrder.currency)}</div>
               <div>创建时间：{new Date(createdOrder.createdAt).toLocaleString()}</div>
             </div>

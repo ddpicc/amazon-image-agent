@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import AdminCreateRedemptionCodesForm from './AdminCreateRedemptionCodesForm'
 import { requireAdmin } from '@/lib/auth'
+import { formatPoints, toDisplayPoints } from '@/lib/points-config'
 import { prisma } from '@/lib/prisma'
 
 export default async function AdminRedemptionCodesPage() {
@@ -43,7 +44,7 @@ export default async function AdminRedemptionCodesPage() {
         </div>
 
         <div className="panel p-6">
-          <AdminCreateRedemptionCodesForm packages={packages} />
+          <AdminCreateRedemptionCodesForm packages={packages.map((item) => ({ ...item, points: toDisplayPoints(item.points) }))} />
         </div>
 
         <div className="panel overflow-x-auto p-6">
@@ -64,7 +65,7 @@ export default async function AdminRedemptionCodesPage() {
                 <tr key={code.id} className="border-t border-slate-200">
                   <td className="py-4 pr-4 text-slate-700">{code.createdAt.toLocaleString()}</td>
                   <td className="py-4 pr-4 text-slate-700">{code.redemptionPackage?.name || '-'}</td>
-                  <td className="py-4 pr-4 text-slate-700">{code.points}</td>
+                  <td className="py-4 pr-4 text-slate-700">{formatPoints(toDisplayPoints(code.points))}</td>
                   <td className="py-4 pr-4 text-slate-700">{code.batchId || '-'}</td>
                   <td className="py-4 pr-4 text-slate-700">{code.status}</td>
                   <td className="py-4 pr-4 text-slate-700">{code.redeemedBy?.email || '-'}</td>

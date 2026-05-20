@@ -3,6 +3,7 @@ import { PointsPackageStatus, PrismaClient, UserRole } from '@prisma/client'
 import { loadEnvFile } from '../scripts/load-env.mjs'
 
 const prisma = new PrismaClient()
+const POINTS_SCALE = 10
 loadEnvFile('.env.local')
 
 async function seedPointsPackages() {
@@ -18,14 +19,14 @@ async function seedPointsPackages() {
         name: item.name,
       },
       update: {
-        points: item.points,
+        points: item.points * POINTS_SCALE,
         priceCents: item.priceCents,
         displayOrder: item.displayOrder,
         status: PointsPackageStatus.ACTIVE,
       },
       create: {
         name: item.name,
-        points: item.points,
+        points: item.points * POINTS_SCALE,
         priceCents: item.priceCents,
         displayOrder: item.displayOrder,
         status: PointsPackageStatus.ACTIVE,

@@ -3,7 +3,8 @@ import { uploadBufferToCos } from '@/lib/cos'
 import { decryptSecret } from '@/lib/crypto'
 import { AspectRatio, RenderSize } from '@/lib/image-options'
 import { listCandidateImageProviders, markProviderFailure, markProviderSuccess } from '@/lib/image-providers'
-import { debitPointForGeneration, InsufficientPointsError, refundPointForFailedGeneration } from '@/lib/points'
+import { GenerationBillingScene } from '@/lib/points-config'
+import { debitPointForGeneration, ensureSufficientPointsForGenerationByScene, InsufficientPointsError } from '@/lib/points'
 import { prisma } from '@/lib/prisma'
 
 interface GenerateImageInput {
@@ -17,9 +18,12 @@ interface GenerateImageInput {
   aspectRatio?: AspectRatio
   imageType?: string
   sourcePage: 'amazon' | 'playground'
+  billingScene: GenerationBillingScene
   entryApi: string
   onStatus?: (message: string) => Promise<void> | void
 }
+
+const PROVIDER_TIMEOUT_MS = 180_000
 
 interface GenerateImageOutput {
   imageUrl: string
@@ -74,6 +78,7 @@ function createOpenAIClient(apiKey: string, baseURL: string): OpenAI {
   return new OpenAI({
     apiKey,
     baseURL,
+    timeout: PROVIDER_TIMEOUT_MS,
   })
 }
 
@@ -147,8 +152,28 @@ function parseBase64Payload(base64: string, mimeType = 'image/png'): { buffer: B
   }
 }
 
-async function downloadRemoteImage(url: string): Promise<{ buffer: Buffer; mimeType: string }> {
-  const response = await fetch(url)
+function createTimeoutSignal(timeoutMs: number): AbortSignal | undefined {
+  if (typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal) {
+    return AbortSignal.timeout(timeoutMs)
+  }
+  return undefined
+}
+
+async function withTimeout<T>(run: () => Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return Promise.race([
+    run(),
+    new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error(message))
+      }, timeoutMs)
+    }),
+  ])
+}
+
+async function downloadRemoteImage(url: string, timeoutMs = PROVIDER_TIMEOUT_MS): Promise<{ buffer: Buffer; mimeType: string }> {
+  const response = await fetch(url, {
+    signal: createTimeoutSignal(timeoutMs),
+  })
   if (!response.ok) {
     throw new Error(`Failed to download upstream image: ${response.status}`)
   }
@@ -236,7 +261,7 @@ async function pollEvolinkTask(params: {
   timeoutMs?: number
   intervalMs?: number
 }): Promise<{ status: string; results?: string[]; error?: { message?: string } }> {
-  const timeoutMs = params.timeoutMs ?? 180_000
+  const timeoutMs = params.timeoutMs ?? PROVIDER_TIMEOUT_MS
   const intervalMs = params.intervalMs ?? 3_000
   const deadline = Date.now() + timeoutMs
 
@@ -247,6 +272,7 @@ async function pollEvolinkTask(params: {
         Authorization: `Bearer ${params.apiKey}`,
       },
       cache: 'no-store',
+      signal: createTimeoutSignal(timeoutMs),
     })
 
     const payload = await response.json().catch(() => null) as any
@@ -298,6 +324,7 @@ async function requestEvolinkImage(params: {
       ...(imageUrls.length > 0 ? { image_urls: imageUrls } : {}),
     }),
     cache: 'no-store',
+    signal: createTimeoutSignal(PROVIDER_TIMEOUT_MS),
   })
 
   const createPayload = await createResponse.json().catch(() => null) as any
@@ -347,7 +374,7 @@ function serializeError(error: unknown): string {
 }
 
 export async function generateImage(input: GenerateImageInput): Promise<GenerateImageOutput> {
-  const { userId, prompt, referenceImages, size = '1024x1024', aspectRatio, imageType, sourcePage, entryApi, onStatus } = input
+  const { userId, prompt, referenceImages, size = '1024x1024', aspectRatio, imageType, sourcePage, billingScene, entryApi, onStatus } = input
   const mode = referenceImages.length > 0 ? 'edit' : 'generate'
   const startedAt = Date.now()
 
@@ -367,10 +394,7 @@ export async function generateImage(input: GenerateImageInput): Promise<Generate
   })
 
   try {
-    await debitPointForGeneration({
-      userId,
-      requestId: requestRecord.id,
-    })
+    await ensureSufficientPointsForGenerationByScene(userId, billingScene)
   } catch (error) {
     if (error instanceof InsufficientPointsError) {
       const errorMessage = error.message
@@ -398,10 +422,6 @@ export async function generateImage(input: GenerateImageInput): Promise<Generate
         errorMessage,
         durationMs: Date.now() - startedAt,
       },
-    })
-    await refundPointForFailedGeneration({
-      userId,
-      requestId: requestRecord.id,
     })
     throw new Error(errorMessage)
   }
@@ -461,59 +481,74 @@ export async function generateImage(input: GenerateImageInput): Promise<Generate
     })
 
     try {
-      const apiKey = decryptSecret(provider.apiKeyCiphertext)
-      const revisedPrompt = prompt
-      const extracted = isEvolinkProvider(provider.vendor, provider.baseUrl)
-        ? await requestEvolinkImage({
+      const attemptResult = await withTimeout(async () => {
+        const apiKey = decryptSecret(provider.apiKeyCiphertext)
+        const revisedPrompt = prompt
+        const extracted = isEvolinkProvider(provider.vendor, provider.baseUrl)
+          ? await requestEvolinkImage({
+              requestId: requestRecord.id,
+              apiKey,
+              baseUrl: provider.baseUrl,
+              model: provider.model,
+              prompt,
+              size,
+              referenceImages,
+            })
+          : await (async () => {
+              const client = createOpenAIClient(apiKey, provider.baseUrl)
+              const response = mode === 'edit'
+                ? await client.images.edit(buildImageEditParams({
+                    model: provider.model,
+                    image: imageFiles,
+                    prompt,
+                    size,
+                  }))
+                : await client.images.generate(buildImageGenerateParams({
+                    model: provider.model,
+                    prompt,
+                    size,
+                  }))
+
+              if (!response.data || response.data.length === 0) {
+                throw new Error('No image data returned from upstream provider')
+              }
+
+              const imageData = response.data[0] as any
+              return {
+                ...(await extractUpstreamImage(imageData)),
+                revisedPrompt: imageData.revised_prompt || prompt,
+              }
+            })()
+        const cosKey = buildCosKey(requestRecord.id, extracted.mimeType)
+        const uploaded = await uploadBufferToCos({
+          buffer: extracted.buffer,
+          key: cosKey,
+          contentType: extracted.mimeType,
+          timeoutMs: PROVIDER_TIMEOUT_MS,
+        })
+
+        await prisma.generatedImageAsset.create({
+          data: {
             requestId: requestRecord.id,
-            apiKey,
-            baseUrl: provider.baseUrl,
-            model: provider.model,
-            prompt,
-            size,
-            referenceImages,
-          })
-        : await (async () => {
-            const client = createOpenAIClient(apiKey, provider.baseUrl)
-            const response = mode === 'edit'
-              ? await client.images.edit(buildImageEditParams({
-                  model: provider.model,
-                  image: imageFiles,
-                  prompt,
-                  size,
-                }))
-              : await client.images.generate(buildImageGenerateParams({
-                  model: provider.model,
-                  prompt,
-                  size,
-                }))
+            cosUrl: uploaded.url,
+            cosKey: uploaded.key,
+            mimeType: uploaded.mimeType,
+            bytes: uploaded.bytes,
+          },
+        })
 
-            if (!response.data || response.data.length === 0) {
-              throw new Error('No image data returned from upstream provider')
-            }
-
-            const imageData = response.data[0] as any
-            return {
-              ...(await extractUpstreamImage(imageData)),
-              revisedPrompt: imageData.revised_prompt || prompt,
-            }
-          })()
-      const cosKey = buildCosKey(requestRecord.id, extracted.mimeType)
-      const uploaded = await uploadBufferToCos({
-        buffer: extracted.buffer,
-        key: cosKey,
-        contentType: extracted.mimeType,
-      })
-
-      await prisma.generatedImageAsset.create({
-        data: {
+        await debitPointForGeneration({
+          userId,
           requestId: requestRecord.id,
-          cosUrl: uploaded.url,
-          cosKey: uploaded.key,
-          mimeType: uploaded.mimeType,
-          bytes: uploaded.bytes,
-        },
-      })
+          scene: billingScene,
+        })
+
+        return {
+          uploaded,
+          revisedPrompt: 'revisedPrompt' in extracted ? extracted.revisedPrompt : revisedPrompt,
+          returnedImageUrlKind: extracted.returnedKind,
+        }
+      }, PROVIDER_TIMEOUT_MS, `Provider timed out after ${PROVIDER_TIMEOUT_MS}ms`)
 
       await prisma.imageGenerationAttempt.update({
         where: { id: attempt.id },
@@ -532,7 +567,7 @@ export async function generateImage(input: GenerateImageInput): Promise<Generate
           selectedProviderBaseUrl: provider.baseUrl,
           selectedProviderModel: provider.model,
           attemptCount: index + 1,
-          revisedPrompt: 'revisedPrompt' in extracted ? extracted.revisedPrompt : revisedPrompt,
+          revisedPrompt: attemptResult.revisedPrompt,
           status: 'SUCCEEDED',
           durationMs: Date.now() - startedAt,
         },
@@ -563,14 +598,14 @@ export async function generateImage(input: GenerateImageInput): Promise<Generate
         providerId: provider.id,
         providerName: provider.name,
         attemptCount: index + 1,
-        returnedImageUrlKind: extracted.returnedKind,
-        cosUrl: uploaded.url,
+        returnedImageUrlKind: attemptResult.returnedImageUrlKind,
+        cosUrl: attemptResult.uploaded.url,
       })
 
       return {
         requestId: requestRecord.id,
-        imageUrl: uploaded.url,
-        revisedPrompt: 'revisedPrompt' in extracted ? extracted.revisedPrompt : revisedPrompt,
+        imageUrl: attemptResult.uploaded.url,
+        revisedPrompt: attemptResult.revisedPrompt,
         size,
         aspectRatio,
         routeSummary,
@@ -624,11 +659,6 @@ export async function generateImage(input: GenerateImageInput): Promise<Generate
       durationMs: Date.now() - startedAt,
       errorMessage,
     },
-  })
-
-  await refundPointForFailedGeneration({
-    userId,
-    requestId: requestRecord.id,
   })
 
   console.error('[image.generate] request failed', {

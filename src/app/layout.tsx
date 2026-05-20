@@ -3,6 +3,7 @@ import '@/styles/globals.css'
 import Link from 'next/link'
 import LogoutButton from '@/components/LogoutButton'
 import { getCurrentUser } from '@/lib/auth'
+import { formatPoints, toDisplayPoints } from '@/lib/points-config'
 import { prisma } from '@/lib/prisma'
 
 export const metadata: Metadata = {
@@ -54,7 +55,7 @@ export default async function RootLayout({
                       </Link>
                     </>
                   )}
-                  <span className="hidden text-sm text-slate-500 md:inline">{account?.pointsBalance ?? 0} 积分</span>
+                  <span className="hidden text-sm text-slate-500 md:inline">{formatPoints(toDisplayPoints(account?.pointsBalance ?? 0))} 积分</span>
                   <span className="hidden text-sm text-slate-500 sm:inline">{user.email}</span>
                   <LogoutButton />
                 </>

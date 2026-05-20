@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireApiUser } from '@/lib/auth'
+import { toDisplayPoints } from '@/lib/points-config'
 import { prisma } from '@/lib/prisma'
 
 export async function GET(request: NextRequest) {
@@ -27,6 +28,12 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     analysisRecords,
-    imageRequests,
+    imageRequests: imageRequests.map((record) => ({
+      ...record,
+      pointsLedgerEntry: record.pointsLedgerEntry ? {
+        ...record.pointsLedgerEntry,
+        pointsDelta: toDisplayPoints(record.pointsLedgerEntry.pointsDelta),
+      } : null,
+    })),
   })
 }

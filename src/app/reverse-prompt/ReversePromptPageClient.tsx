@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import ReferenceImageUploader from '@/components/ReferenceImageUploader'
 import { ASPECT_RATIO_OPTIONS, AspectRatio, getDefaultSizeForAspectRatio, getSizesForAspectRatio, RenderSize } from '@/lib/image-options'
+import { formatPoints, getGenerationCostDisplay } from '@/lib/points-config'
 
 interface GeneratedImage {
   id: string
@@ -45,7 +46,7 @@ export default function ReversePromptPageClient({ initialPointsBalance }: { init
   const [size, setSize] = useState<RenderSize>(getDefaultSizeForAspectRatio('1:1'))
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
-  const [pointsBalance] = useState(initialPointsBalance)
+  const [pointsBalance, setPointsBalance] = useState(initialPointsBalance)
   const [isRefiningPrompt, setIsRefiningPrompt] = useState(false)
   const [analyzeError, setAnalyzeError] = useState('')
   const [promptRefineError, setPromptRefineError] = useState('')
@@ -58,7 +59,8 @@ export default function ReversePromptPageClient({ initialPointsBalance }: { init
   const promptTextareaRef = useRef<HTMLTextAreaElement>(null)
 
   const availableSizes = useMemo(() => getSizesForAspectRatio(aspectRatio), [aspectRatio])
-  const hasEnoughPointsToGenerate = pointsBalance > 0
+  const generationCost = getGenerationCostDisplay('reverse-prompt')
+  const hasEnoughPointsToGenerate = pointsBalance >= generationCost
   const sourcePreviewUrl = useMemo(() => {
     const sourceImage = sourceImages[0]
     return sourceImage ? URL.createObjectURL(sourceImage) : null
@@ -265,6 +267,7 @@ export default function ReversePromptPageClient({ initialPointsBalance }: { init
       formData.append('aspectRatio', aspectRatio)
       formData.append('size', size)
       formData.append('sourcePage', 'playground')
+      formData.append('billingScene', 'reverse-prompt')
       generationReferenceImages.slice(0, 3).forEach((image) => {
         formData.append('referenceImages', image)
       })
@@ -281,6 +284,7 @@ export default function ReversePromptPageClient({ initialPointsBalance }: { init
       }
 
       setGeneratedImages((prev) => [nextImage, ...prev])
+      setPointsBalance((prev) => Math.max(0, Number((prev - generationCost).toFixed(1))))
     } catch (error) {
       console.error('Failed to generate reverse prompt image:', error)
       const message = error instanceof Error ? error.message : 'Failed to generate image. Please check your API keys.'
@@ -337,7 +341,7 @@ export default function ReversePromptPageClient({ initialPointsBalance }: { init
             <span className="inline-flex rounded-full bg-amazon-blue/10 px-3 py-1 text-xs font-semibold text-amazon-blue">新工作流</span>
             <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950">先拆提示词，再做同款图片</h2>
             <p className="mt-3 text-sm leading-6 text-slate-600 sm:text-base">
-              先上传一张目标图，让 AI 拆解出一段可直接生图的提示词；确认后，再展开同款生成选项继续做图。
+              先上传一张目标图，让 AI 拆解出一段可直接生图的提示词；确认后，再展开同款生成选项继续做图。再生图每次扣 {formatPoints(generationCost)} 积分。
             </p>
           </div>
         </section>
@@ -398,7 +402,7 @@ export default function ReversePromptPageClient({ initialPointsBalance }: { init
 
             {prompt && !showGenerationStage && !hasEnoughPointsToGenerate && (
               <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                当前积分不足，请先前往 <Link href="/points/recharge" className="font-semibold underline">积分中心</Link> 充值或兑换积分包后再进入生图。
+                当前积分不足，以图生提示词再生图需要 {formatPoints(generationCost)} 积分。请先前往 <Link href="/points/recharge" className="font-semibold underline">积分中心</Link> 充值或兑换积分包后再进入生图。
               </div>
             )}
 
@@ -499,7 +503,7 @@ export default function ReversePromptPageClient({ initialPointsBalance }: { init
 
               {!hasEnoughPointsToGenerate && (
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                  当前积分不足，请先前往 <Link href="/points/recharge" className="font-semibold underline">积分中心</Link> 充值或兑换积分包后再进入生图。
+                  当前积分不足，以图生提示词再生图需要 {formatPoints(generationCost)} 积分。请先前往 <Link href="/points/recharge" className="font-semibold underline">积分中心</Link> 充值或兑换积分包后再进入生图。
                 </div>
               )}
 

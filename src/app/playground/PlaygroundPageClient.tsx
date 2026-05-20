@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import ReferenceImageUploader from '@/components/ReferenceImageUploader'
 import { ASPECT_RATIO_OPTIONS, AspectRatio, getDefaultSizeForAspectRatio, getSizesForAspectRatio, RenderSize, SIZE_OPTIONS } from '@/lib/image-options'
+import { formatPoints, getGenerationCostDisplay } from '@/lib/points-config'
 
 interface GeneratedImage {
   id: string
@@ -42,12 +43,13 @@ export default function PlaygroundPage({ initialPointsBalance }: { initialPoints
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>('1:1')
   const [size, setSize] = useState<RenderSize>(getDefaultSizeForAspectRatio('1:1'))
   const [isGenerating, setIsGenerating] = useState(false)
-  const [pointsBalance] = useState(initialPointsBalance)
+  const [pointsBalance, setPointsBalance] = useState(initialPointsBalance)
   const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([])
   const [routeNotice, setRouteNotice] = useState('')
 
   const availableSizes = useMemo(() => getSizesForAspectRatio(aspectRatio), [aspectRatio])
-  const hasEnoughPointsToGenerate = pointsBalance > 0
+  const generationCost = getGenerationCostDisplay('playground')
+  const hasEnoughPointsToGenerate = pointsBalance >= generationCost
 
   useEffect(() => {
     if (!availableSizes.some((option) => option.value === size)) {
@@ -132,6 +134,7 @@ export default function PlaygroundPage({ initialPointsBalance }: { initialPoints
       formData.append('aspectRatio', aspectRatio)
       formData.append('size', size)
       formData.append('sourcePage', 'playground')
+      formData.append('billingScene', 'playground')
       referenceImages.slice(0, 3).forEach((image) => {
         formData.append('referenceImages', image)
       })
@@ -148,6 +151,7 @@ export default function PlaygroundPage({ initialPointsBalance }: { initialPoints
       }
 
       setGeneratedImages((prev) => [nextImage, ...prev])
+      setPointsBalance((prev) => Math.max(0, Number((prev - generationCost).toFixed(1))))
     } catch (error) {
       console.error('Failed to generate playground image:', error)
       const message = error instanceof Error ? error.message : 'Failed to generate image. Please check your API keys.'
@@ -195,7 +199,7 @@ export default function PlaygroundPage({ initialPointsBalance }: { initialPoints
             <span className="inline-flex rounded-full bg-amazon-blue/10 px-3 py-1 text-xs font-semibold text-amazon-blue">独立测试流程</span>
             <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950">提示词 + 参考图 + 比例 + 尺寸</h2>
             <p className="mt-3 text-sm leading-6 text-slate-600 sm:text-base">
-              不经过商品分析，直接组合提示词、参考图、宽高比与尺寸来测试单张图片效果。
+              不经过商品分析，直接组合提示词、参考图、宽高比与尺寸来测试单张图片效果。当前单张自由生成每次扣 {formatPoints(generationCost)} 积分。
             </p>
           </div>
         </section>
@@ -269,7 +273,7 @@ export default function PlaygroundPage({ initialPointsBalance }: { initialPoints
 
             {!hasEnoughPointsToGenerate && (
               <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                当前积分不足，请先前往 <Link href="/points/recharge" className="font-semibold underline">积分中心</Link> 充值或兑换积分包后再进入生图。
+                当前积分不足，单张自由生成需要 {formatPoints(generationCost)} 积分。请先前往 <Link href="/points/recharge" className="font-semibold underline">积分中心</Link> 充值或兑换积分包后再进入生图。
               </div>
             )}
 

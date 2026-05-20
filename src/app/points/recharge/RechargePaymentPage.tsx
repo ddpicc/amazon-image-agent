@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { formatPoints } from '@/lib/points-config'
 
 type OrderDto = {
   id: string
@@ -171,7 +172,13 @@ export default function RechargePaymentPage({ outTradeNo }: { outTradeNo: string
   }
 
   return (
-    <main className="min-h-screen bg-[#f8fafc] p-4">
+    <>
+      <style jsx global>{`
+        body > header {
+          display: none;
+        }
+      `}</style>
+      <main className="min-h-screen bg-[#f8fafc] p-4">
       <div className="mx-auto w-full max-w-md rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_12px_40px_rgba(15,23,42,0.08)]">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amazon-orange">Pay</p>
         <h1 className="mt-2 text-xl font-semibold text-slate-950">
@@ -183,6 +190,7 @@ export default function RechargePaymentPage({ outTradeNo }: { outTradeNo: string
           <p className="text-xs text-slate-500">支付金额</p>
           <p className="mt-1 text-2xl font-semibold text-slate-950">{formatMoney(order?.amountCents ?? 0)}</p>
           <p className="mt-1 text-xs text-slate-500">状态：{getStatusText(order?.status ?? '')}</p>
+          {order?.paymentPackage ? <p className="mt-1 text-xs text-slate-500">到账积分：{formatPoints(order.paymentPackage.points)}</p> : null}
         </div>
 
         <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
@@ -222,7 +230,7 @@ export default function RechargePaymentPage({ outTradeNo }: { outTradeNo: string
         {message ? <p className="mt-2 text-xs text-slate-500">{message}</p> : null}
         {error ? <p className="mt-2 text-xs text-rose-600">{error}</p> : null}
       </div>
-    </main>
+      </main>
+    </>
   )
 }
-

@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
+import { formatPoints } from '@/lib/points-config'
 
 interface PointsUser {
   id: string
@@ -28,6 +29,7 @@ interface PointsLedgerEntryItem {
   balanceAfter: number
   referenceType: string | null
   referenceId: string | null
+  metadata?: unknown
   createdAt: string
 }
 
@@ -68,10 +70,20 @@ function formatMoney(amountCents: number, currency: string) {
   return `${currency} ${(amountCents / 100).toFixed(2)}`
 }
 
-function formatLedgerType(type: PointsLedgerEntryItem['type']) {
+function formatLedgerType(entry: PointsLedgerEntryItem) {
+  const { type } = entry
+  const metadata = (entry.metadata && typeof entry.metadata === 'object' && !Array.isArray(entry.metadata))
+    ? entry.metadata as Record<string, unknown>
+    : null
+  const scene = metadata?.scene
   if (type === 'REDEEM_CODE') return '兑换码到账'
   if (type === 'PAYMENT_RECHARGE') return '支付充值'
-  if (type === 'GENERATION_DEBIT') return '生图扣减'
+  if (type === 'GENERATION_DEBIT') {
+    if (scene === 'amazon') return 'Amazon 生图扣减'
+    if (scene === 'reverse-prompt') return '同款生成扣减'
+    if (scene === 'playground') return '自由生成扣减'
+    return '生图扣减'
+  }
   if (type === 'GENERATION_REFUND') return '失败退款'
   if (type === 'SIGNUP_BONUS') return '注册赠送'
   return '后台调整'
@@ -140,7 +152,7 @@ export default function PointsPageClient({ initialData }: { initialData: PointsP
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <div className="text-sm text-slate-500">当前账户</div>
-              <div className="mt-2 text-3xl font-semibold text-slate-950">{data.user.pointsBalance} 积分</div>
+              <div className="mt-2 text-3xl font-semibold text-slate-950">{formatPoints(data.user.pointsBalance)} 积分</div>
               <p className="mt-2 text-sm text-slate-500">账号：{data.user.email}</p>
             </div>
             <Link href="/points/recharge" className="rounded-full bg-amazon-orange px-5 py-3 text-sm font-semibold text-white transition hover:bg-orange-600">
@@ -162,7 +174,7 @@ export default function PointsPageClient({ initialData }: { initialData: PointsP
             ) : sortedPackages.map((item) => (
               <article key={item.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                 <div className="text-sm text-slate-500">{item.name}</div>
-                <div className="mt-2 text-2xl font-semibold text-slate-950">{item.points} 积分</div>
+                <div className="mt-2 text-2xl font-semibold text-slate-950">{formatPoints(item.points)} 积分</div>
                 <div className="mt-1 text-sm text-slate-500">{formatMoney(item.priceCents, item.currency)}</div>
                 <Link href={`/points/recharge?packageId=${item.id}`} className="mt-4 inline-flex rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-900">
                   去充值
@@ -180,14 +192,14 @@ export default function PointsPageClient({ initialData }: { initialData: PointsP
             ) : data.ledgerEntries.map((entry) => (
               <div key={entry.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                 <div>
-                  <div className="text-sm font-medium text-slate-900">{formatLedgerType(entry.type)}</div>
+                  <div className="text-sm font-medium text-slate-900">{formatLedgerType(entry)}</div>
                   <div className="mt-1 text-xs text-slate-500">{new Date(entry.createdAt).toLocaleString()}</div>
                 </div>
                 <div className="text-right">
                   <div className={`text-sm font-semibold ${entry.pointsDelta >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                    {entry.pointsDelta >= 0 ? '+' : ''}{entry.pointsDelta} 积分
+                    {entry.pointsDelta >= 0 ? '+' : ''}{formatPoints(entry.pointsDelta)} 积分
                   </div>
-                  <div className="mt-1 text-xs text-slate-500">余额 {entry.balanceAfter}</div>
+                  <div className="mt-1 text-xs text-slate-500">余额 {formatPoints(entry.balanceAfter)}</div>
                 </div>
               </div>
             ))}
