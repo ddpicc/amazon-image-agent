@@ -271,10 +271,14 @@ npm run build
 4. 生图成功后返回的是 COS URL
 5. `/history` 能看到自己的分析与生图记录
 6. `/admin/image-records` 能看到 provider、上游 URL、尝试次数、耗时和结果图
+7. `/admin/image-providers` 能管理 provider、优先级、启用状态和 API key 轮换
 
 ## Provider 管理建议
 
-当前版本没有 provider 管理后台 UI，默认通过脚本维护数据库。
+当前版本支持两种维护方式：
+
+- 管理员后台：`/admin/image-providers`
+- 脚本维护：适合初始化或批量导入
 
 推荐做法：
 
@@ -287,6 +291,7 @@ Key 存储策略：
 
 - key 会先在应用层加密
 - 数据库存的是密文，不是明文
+- 管理后台只支持写入或轮换新 key，不会显示旧 key
 - 解密依赖 `PROVIDER_KEY_ENCRYPTION_KEY`
 
 ## 迁移说明

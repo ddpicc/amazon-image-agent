@@ -175,14 +175,6 @@ export default function PlaygroundPage({ initialPointsBalance }: { initialPoints
     }
   }
 
-  const handleCopyPrompt = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text)
-    } catch (error) {
-      console.error('Failed to copy prompt:', error)
-    }
-  }
-
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,#fff_0%,#f8fafc_100%)] text-slate-900">
       <header className="border-b border-slate-200/80 bg-white/85 backdrop-blur">
@@ -327,15 +319,7 @@ export default function PlaygroundPage({ initialPointsBalance }: { initialPoints
                         <span className="rounded-full bg-slate-100 px-2.5 py-1">{image.aspectRatio}</span>
                         <span className="rounded-full bg-slate-100 px-2.5 py-1">{image.size}</span>
                       </div>
-                      <p className="line-clamp-3 text-sm leading-6 text-slate-600">{image.revisedPrompt}</p>
                       <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleCopyPrompt(image.revisedPrompt)}
-                          className="flex-1 rounded-xl bg-slate-100 px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-200"
-                        >
-                          复制提示词
-                        </button>
                         <button
                           type="button"
                           onClick={() => handleDownload(image)}
