@@ -14,7 +14,9 @@ export class InsufficientPointsError extends Error {
   }
 }
 
-export const SIGNUP_BONUS_POINTS = toInternalPoints(5)
+export const SIGNUP_BONUS_POINTS = toInternalPoints(3)
+export const REFERRAL_INVITEE_BONUS_POINTS = toInternalPoints(6)
+export const REFERRAL_INVITER_REWARD_POINTS = toInternalPoints(20)
 
 function toNullableJsonValue(value: unknown): Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput | undefined {
   if (value === undefined) {
@@ -74,6 +76,109 @@ export async function grantSignupBonus(userId: string) {
   })
 }
 
+export async function grantRegistrationRewards(params: { userId: string; inviterUserId?: string | null }) {
+  return prisma.$transaction(async (tx) => {
+    const user = await tx.user.findUniqueOrThrow({
+      where: { id: params.userId },
+      select: { pointsBalance: true },
+    })
+
+    if (!params.inviterUserId) {
+      const idempotencyKey = `signup:${params.userId}:bonus`
+      const existingEntry = await tx.pointsLedgerEntry.findUnique({
+        where: { idempotencyKey },
+      })
+
+      if (existingEntry) {
+        return { inviteeEntry: existingEntry, inviterEntry: null }
+      }
+
+      const nextBalance = user.pointsBalance + SIGNUP_BONUS_POINTS
+
+      await tx.user.update({
+        where: { id: params.userId },
+        data: { pointsBalance: nextBalance },
+      })
+
+      const inviteeEntry = await tx.pointsLedgerEntry.create({
+        data: {
+          userId: params.userId,
+          type: PointsLedgerType.SIGNUP_BONUS,
+          pointsDelta: SIGNUP_BONUS_POINTS,
+          balanceAfter: nextBalance,
+          idempotencyKey,
+          referenceType: 'user',
+          referenceId: params.userId,
+        },
+      })
+
+      return { inviteeEntry, inviterEntry: null }
+    }
+
+    const inviteeIdempotencyKey = `signup:${params.userId}:referral-invitee`
+    const inviterIdempotencyKey = `signup:${params.userId}:referral-inviter:${params.inviterUserId}`
+    const [existingInviteeEntry, existingInviterEntry, inviter] = await Promise.all([
+      tx.pointsLedgerEntry.findUnique({ where: { idempotencyKey: inviteeIdempotencyKey } }),
+      tx.pointsLedgerEntry.findUnique({ where: { idempotencyKey: inviterIdempotencyKey } }),
+      tx.user.findUniqueOrThrow({
+        where: { id: params.inviterUserId },
+        select: { pointsBalance: true },
+      }),
+    ])
+
+    if (existingInviteeEntry && existingInviterEntry) {
+      return { inviteeEntry: existingInviteeEntry, inviterEntry: existingInviterEntry }
+    }
+
+    const inviteeNextBalance = user.pointsBalance + REFERRAL_INVITEE_BONUS_POINTS
+    const inviterNextBalance = inviter.pointsBalance + REFERRAL_INVITER_REWARD_POINTS
+
+    await Promise.all([
+      tx.user.update({
+        where: { id: params.userId },
+        data: { pointsBalance: inviteeNextBalance },
+      }),
+      tx.user.update({
+        where: { id: params.inviterUserId },
+        data: { pointsBalance: inviterNextBalance },
+      }),
+    ])
+
+    const [inviteeEntry, inviterEntry] = await Promise.all([
+      existingInviteeEntry ?? tx.pointsLedgerEntry.create({
+        data: {
+          userId: params.userId,
+          type: PointsLedgerType.REFERRAL_INVITEE_BONUS,
+          pointsDelta: REFERRAL_INVITEE_BONUS_POINTS,
+          balanceAfter: inviteeNextBalance,
+          idempotencyKey: inviteeIdempotencyKey,
+          referenceType: 'user',
+          referenceId: params.inviterUserId,
+          metadata: {
+            inviterUserId: params.inviterUserId,
+          },
+        },
+      }),
+      existingInviterEntry ?? tx.pointsLedgerEntry.create({
+        data: {
+          userId: params.inviterUserId,
+          type: PointsLedgerType.REFERRAL_INVITER_REWARD,
+          pointsDelta: REFERRAL_INVITER_REWARD_POINTS,
+          balanceAfter: inviterNextBalance,
+          idempotencyKey: inviterIdempotencyKey,
+          referenceType: 'user',
+          referenceId: params.userId,
+          metadata: {
+            invitedUserId: params.userId,
+          },
+        },
+      }),
+    ])
+
+    return { inviteeEntry, inviterEntry }
+  })
+}
+
 export async function listActivePointsPackages() {
   const packages = await prisma.pointsPackage.findMany({
     where: { status: PointsPackageStatus.ACTIVE },
@@ -96,6 +201,7 @@ export async function getPointsSummary(userId: string) {
       select: {
         id: true,
         email: true,
+        referralCode: true,
         pointsBalance: true,
       },
     }),
@@ -372,6 +478,10 @@ export async function redeemCode(params: { userId: string; code: string }) {
     }
 
     if (redemptionCode.expiresAt && redemptionCode.expiresAt.getTime() <= now.getTime()) {
+      await tx.redemptionCode.update({
+        where: { id: redemptionCode.id },
+        data: { status: RedemptionCodeStatus.EXPIRED },
+      })
       throw new Error('兑换码已过期')
     }
 
@@ -576,6 +686,12 @@ function generateRedemptionCodeValue() {
   return `PKG-${Math.random().toString(36).slice(2, 6).toUpperCase()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
 }
 
+function getDefaultRedemptionCodeExpiryDate() {
+  const expiresAt = new Date()
+  expiresAt.setDate(expiresAt.getDate() + 7)
+  return expiresAt
+}
+
 export async function createRedemptionCodes(params: {
   points: number
   quantity: number
@@ -584,6 +700,7 @@ export async function createRedemptionCodes(params: {
   batchId?: string
   expiresAt?: Date | null
 }) {
+  const expiresAt = params.expiresAt ?? getDefaultRedemptionCodeExpiryDate()
   const codes = Array.from({ length: params.quantity }, () => {
     const plainCode = generateRedemptionCodeValue()
     return {
@@ -594,11 +711,12 @@ export async function createRedemptionCodes(params: {
 
   await prisma.redemptionCode.createMany({
     data: codes.map((item) => ({
+      plainCode: item.plainCode,
       codeHash: item.codeHash,
       packageId: params.packageId,
       points: toInternalPoints(params.points),
       batchId: params.batchId,
-      expiresAt: params.expiresAt || null,
+      expiresAt,
       createdByUserId: params.createdByUserId,
     })),
   })

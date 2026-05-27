@@ -6,12 +6,14 @@ import { useRouter } from 'next/navigation'
 
 interface AuthFormProps {
   mode: 'login' | 'register'
+  initialReferralCode?: string
 }
 
-export default function AuthForm({ mode }: AuthFormProps) {
+export default function AuthForm({ mode, initialReferralCode = '' }: AuthFormProps) {
   const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [referralCode, setReferralCode] = useState(initialReferralCode)
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -26,7 +28,7 @@ export default function AuthForm({ mode }: AuthFormProps) {
       const response = await fetch(`/api/auth/${mode}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, referralCode }),
       })
 
       const data = await response.json()
@@ -83,6 +85,19 @@ export default function AuthForm({ mode }: AuthFormProps) {
                 required
               />
             </div>
+
+            {!isLogin && (
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-800">邀请码</label>
+                <input
+                  type="text"
+                  value={referralCode}
+                  onChange={(event) => setReferralCode(event.target.value.trim().toLowerCase())}
+                  className="input-field"
+                  placeholder="选填，填写后注册可获 6 积分"
+                />
+              </div>
+            )}
 
             {error && (
               <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">

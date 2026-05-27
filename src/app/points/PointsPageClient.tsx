@@ -7,6 +7,7 @@ import { formatPoints } from '@/lib/points-config'
 interface PointsUser {
   id: string
   email: string
+  referralCode: string
   pointsBalance: number
 }
 
@@ -24,7 +25,7 @@ interface PointsPackageItem {
 
 interface PointsLedgerEntryItem {
   id: string
-  type: 'REDEEM_CODE' | 'PAYMENT_RECHARGE' | 'GENERATION_DEBIT' | 'GENERATION_REFUND' | 'SIGNUP_BONUS' | 'ADMIN_ADJUSTMENT'
+  type: 'REDEEM_CODE' | 'PAYMENT_RECHARGE' | 'GENERATION_DEBIT' | 'GENERATION_REFUND' | 'SIGNUP_BONUS' | 'REFERRAL_INVITEE_BONUS' | 'REFERRAL_INVITER_REWARD' | 'ADMIN_ADJUSTMENT'
   pointsDelta: number
   balanceAfter: number
   referenceType: string | null
@@ -86,6 +87,8 @@ function formatLedgerType(entry: PointsLedgerEntryItem) {
   }
   if (type === 'GENERATION_REFUND') return '失败退款'
   if (type === 'SIGNUP_BONUS') return '注册赠送'
+  if (type === 'REFERRAL_INVITEE_BONUS') return '受邀注册赠送'
+  if (type === 'REFERRAL_INVITER_REWARD') return '邀请好友奖励'
   return '后台调整'
 }
 
@@ -95,11 +98,23 @@ export default function PointsPageClient({ initialData }: { initialData: PointsP
   const [isRedeeming, setIsRedeeming] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  const [copiedInviteLink, setCopiedInviteLink] = useState(false)
 
   const sortedPackages = useMemo(
     () => [...data.packages].sort((a, b) => a.displayOrder - b.displayOrder),
     [data.packages],
   )
+  const inviteLink = `https://amazon-image.zeabur.app/register?aff=${data.user.referralCode}`
+
+  const handleCopyInviteLink = async () => {
+    try {
+      await navigator.clipboard.writeText(inviteLink)
+      setCopiedInviteLink(true)
+      window.setTimeout(() => setCopiedInviteLink(false), 1500)
+    } catch {
+      setError('复制邀请链接失败，请手动复制。')
+    }
+  }
 
   const handleRedeem = async () => {
     if (!code.trim()) return
@@ -154,6 +169,7 @@ export default function PointsPageClient({ initialData }: { initialData: PointsP
               <div className="text-sm text-slate-500">当前账户</div>
               <div className="mt-2 text-3xl font-semibold text-slate-950">{formatPoints(data.user.pointsBalance)} 积分</div>
               <p className="mt-2 text-sm text-slate-500">账号：{data.user.email}</p>
+              <p className="mt-1 text-sm text-slate-500">邀请码：{data.user.referralCode}</p>
             </div>
             <Link href="/points/recharge" className="rounded-full bg-amazon-orange px-5 py-3 text-sm font-semibold text-white transition hover:bg-orange-600">
               直接充值
@@ -208,6 +224,22 @@ export default function PointsPageClient({ initialData }: { initialData: PointsP
       </section>
 
       <section className="space-y-6">
+        <div className="panel p-6">
+          <h2 className="text-lg font-semibold text-slate-950">邀请奖励</h2>
+          <p className="mt-1 text-sm text-slate-500">被邀请用户注册可得 6 积分，邀请人可得 20 积分；未填写邀请码的新用户注册赠送 3 积分。</p>
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="text-xs font-medium uppercase tracking-[0.2em] text-slate-400">邀请链接</div>
+            <div className="mt-2 break-all text-sm text-slate-700">{inviteLink}</div>
+            <button
+              type="button"
+              onClick={handleCopyInviteLink}
+              className="mt-4 inline-flex rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-900"
+            >
+              {copiedInviteLink ? '已复制' : '复制链接'}
+            </button>
+          </div>
+        </div>
+
         <div className="panel p-6">
           <h2 className="text-lg font-semibold text-slate-950">兑换码兑换</h2>
           <div className="mt-4 space-y-3">

@@ -53,3 +53,7 @@ export function hashRedemptionCode(code: string): string {
 export function generateOpaqueToken(): string {
   return crypto.randomBytes(32).toString('hex')
 }
+
+export function generateReferralCode(): string {
+  return crypto.randomBytes(4).toString('hex')
+}

@@ -70,7 +70,7 @@ export default function AdminCreateRedemptionCodesForm({ packages }: { packages:
         <input value={quantity} onChange={(e) => setQuantity(e.target.value)} className="input-field" placeholder="数量，例如 10" />
         <input value={batchId} onChange={(e) => setBatchId(e.target.value)} className="input-field" placeholder="批次号，例如 douyin-20260518" />
       </div>
-      <p className="mt-3 text-xs text-slate-500">兑换码积分跟随所选积分包，不能单独修改。</p>
+      <p className="mt-3 text-xs text-slate-500">兑换码积分跟随所选积分包，不能单独修改。未使用的兑换码默认 7 天后过期。</p>
       <button type="button" onClick={handleSubmit} disabled={isSubmitting} className="mt-4 inline-flex rounded-full bg-amazon-blue px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-slate-400">
         {isSubmitting ? '生成中...' : '生成兑换码'}
       </button>

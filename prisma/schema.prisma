@@ -52,6 +52,8 @@ enum PointsLedgerType {
   GENERATION_DEBIT
   GENERATION_REFUND
   SIGNUP_BONUS
+  REFERRAL_INVITEE_BONUS
+  REFERRAL_INVITER_REWARD
   ADMIN_ADJUSTMENT
 }
 
@@ -75,6 +77,8 @@ model User {
   email                   String                   @unique
   passwordHash            String
   role                    UserRole                 @default(USER)
+  referralCode            String                   @unique
+  invitedByUserId         String?
   pointsBalance           Int                      @default(0)
   createdAt               DateTime                 @default(now())
   updatedAt               DateTime                 @updatedAt
@@ -85,6 +89,10 @@ model User {
   createdRedemptionCodes  RedemptionCode[]         @relation("RedemptionCodeCreator")
   redeemedCodes           RedemptionCode[]         @relation("RedemptionCodeRedeemer")
   paymentOrders           PaymentOrder[]
+  invitedBy               User?                    @relation("UserReferrals", fields: [invitedByUserId], references: [id], onDelete: SetNull)
+  invitedUsers            User[]                   @relation("UserReferrals")
+
+  @@index([invitedByUserId])
 }
 
 model Session {
@@ -244,6 +252,7 @@ model PointsLedgerEntry {
 
 model RedemptionCode {
   id               String               @id @default(cuid())
+  plainCode        String?              @unique
   codeHash         String               @unique
   packageId        String?
   points           Int

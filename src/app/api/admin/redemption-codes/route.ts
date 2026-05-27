@@ -15,8 +15,6 @@ export async function POST(request: NextRequest) {
     const quantity = Number(body.quantity)
     const packageId = typeof body.packageId === 'string' && body.packageId ? body.packageId : undefined
     const batchId = typeof body.batchId === 'string' && body.batchId ? body.batchId : undefined
-    const expiresAt = typeof body.expiresAt === 'string' && body.expiresAt ? new Date(body.expiresAt) : null
-
     if (!packageId || !Number.isFinite(quantity) || quantity <= 0 || quantity > 500) {
       return NextResponse.json({ error: '参数不合法' }, { status: 400 })
     }
@@ -35,7 +33,6 @@ export async function POST(request: NextRequest) {
       quantity,
       packageId,
       batchId,
-      expiresAt,
       createdByUserId: user.id,
     })
 
