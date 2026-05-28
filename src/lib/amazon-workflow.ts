@@ -110,6 +110,87 @@ interface LegacyPromptGenerationResult {
   suggestedPrompts: Record<string, string>
 }
 
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string')
+}
+
+function isReferenceImageAdvice(value: unknown): value is ReferenceImageAdvice {
+  return Boolean(
+    value
+      && typeof value === 'object'
+      && 'needMoreReferences' in value
+      && typeof (value as ReferenceImageAdvice).needMoreReferences === 'boolean'
+      && 'reason' in value
+      && typeof (value as ReferenceImageAdvice).reason === 'string'
+      && 'recommendedShots' in value
+      && isStringArray((value as ReferenceImageAdvice).recommendedShots),
+  )
+}
+
+function isReferenceImageObservation(value: unknown): value is ReferenceImageObservation {
+  return Boolean(
+    value
+      && typeof value === 'object'
+      && 'imageIndex' in value
+      && typeof (value as ReferenceImageObservation).imageIndex === 'number'
+      && 'observations' in value
+      && isStringArray((value as ReferenceImageObservation).observations),
+  )
+}
+
+export function isBasicAnalysisResult(value: unknown): value is BasicAnalysisResult {
+  return Boolean(
+    value
+      && typeof value === 'object'
+      && 'productSummary' in value
+      && typeof (value as BasicAnalysisResult).productSummary === 'string'
+      && 'sellingPoints' in value
+      && isStringArray((value as BasicAnalysisResult).sellingPoints)
+      && 'referenceImageObservations' in value
+      && Array.isArray((value as BasicAnalysisResult).referenceImageObservations)
+      && (value as BasicAnalysisResult).referenceImageObservations.every(isReferenceImageObservation)
+      && 'referenceImageSummary' in value
+      && typeof (value as BasicAnalysisResult).referenceImageSummary === 'string'
+      && 'amazonImageGuidelines' in value
+      && isStringArray((value as BasicAnalysisResult).amazonImageGuidelines)
+      && 'complianceChecklist' in value
+      && isStringArray((value as BasicAnalysisResult).complianceChecklist)
+      && 'imageContentSuggestions' in value
+      && isStringArray((value as BasicAnalysisResult).imageContentSuggestions)
+      && 'visualStyleRecommendations' in value
+      && isStringArray((value as BasicAnalysisResult).visualStyleRecommendations)
+      && 'visualSystemGuidance' in value
+      && isStringArray((value as BasicAnalysisResult).visualSystemGuidance)
+      && 'promptingPrinciples' in value
+      && isStringArray((value as BasicAnalysisResult).promptingPrinciples)
+      && 'referenceImageAdvice' in value
+      && isReferenceImageAdvice((value as BasicAnalysisResult).referenceImageAdvice)
+      && 'canGeneratePrompts' in value
+      && typeof (value as BasicAnalysisResult).canGeneratePrompts === 'boolean',
+  )
+}
+
+function isStoredReferenceImage(value: unknown): value is StoredReferenceImage {
+  return Boolean(
+    value
+      && typeof value === 'object'
+      && 'url' in value
+      && typeof (value as StoredReferenceImage).url === 'string'
+      && 'key' in value
+      && typeof (value as StoredReferenceImage).key === 'string'
+      && 'mimeType' in value
+      && typeof (value as StoredReferenceImage).mimeType === 'string'
+      && 'bytes' in value
+      && typeof (value as StoredReferenceImage).bytes === 'number'
+      && 'name' in value
+      && typeof (value as StoredReferenceImage).name === 'string',
+  )
+}
+
+export function parseStoredReferenceImages(value: unknown): StoredReferenceImage[] {
+  return Array.isArray(value) ? value.filter(isStoredReferenceImage) : []
+}
+
 function isLegacyPromptGenerationResult(value: unknown): value is LegacyPromptGenerationResult {
   return Boolean(
     value

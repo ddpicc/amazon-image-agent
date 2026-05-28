@@ -6,7 +6,13 @@ import {
   generateAllPrompts,
   generateAPlusPrompt,
 } from '@/lib/anthropic'
-import { AmazonBranch, BasicAnalysisResult, PromptResults, StoredReferenceImage, normalizePromptResults } from '@/lib/amazon-workflow'
+import {
+  AmazonBranch,
+  PromptResults,
+  normalizePromptResults,
+  isBasicAnalysisResult,
+  parseStoredReferenceImages,
+} from '@/lib/amazon-workflow'
 import { prisma } from '@/lib/prisma'
 import { createReferenceImagePayloadsFromUrls } from '@/lib/reference-images'
 
@@ -78,9 +84,13 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    const basicAnalysisResult = record.analysisJson as BasicAnalysisResult
-    const storedReferenceImages = ((record.referenceImagesJson as StoredReferenceImage[] | null) || [])
-      .filter((item) => typeof item?.url === 'string' && item.url.length > 0)
+    if (!isBasicAnalysisResult(record.analysisJson)) {
+      return NextResponse.json({ error: '分析结果格式无效，请重新分析' }, { status: 400 })
+    }
+
+    const basicAnalysisResult = record.analysisJson
+    const storedReferenceImages = parseStoredReferenceImages(record.referenceImagesJson)
+      .filter((item) => item.url.length > 0)
     const imagePayloads = await createReferenceImagePayloadsFromUrls(
       storedReferenceImages.slice(0, 3).map((item) => item.url),
     )

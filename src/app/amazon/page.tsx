@@ -1,5 +1,5 @@
 import AmazonPageClient from './AmazonPageClient'
-import { AmazonResumeState, BasicAnalysisResult, StoredReferenceImage, normalizePromptResults } from '@/lib/amazon-workflow'
+import { AmazonResumeState, normalizePromptResults, isBasicAnalysisResult, parseStoredReferenceImages } from '@/lib/amazon-workflow'
 import { requireUser } from '@/lib/auth'
 import { getUserPointsBalance } from '@/lib/points'
 import { prisma } from '@/lib/prisma'
@@ -35,8 +35,8 @@ export default async function AmazonPage({ searchParams }: AmazonPageProps) {
         status: record.status,
         createdAt: record.createdAt.toISOString(),
         errorMessage: record.errorMessage,
-        referenceImages: (record.referenceImagesJson as StoredReferenceImage[] | null) || [],
-        basicAnalysisResult: (record.analysisJson as BasicAnalysisResult | null) || null,
+        referenceImages: parseStoredReferenceImages(record.referenceImagesJson),
+        basicAnalysisResult: isBasicAnalysisResult(record.analysisJson) ? record.analysisJson : null,
         promptResults: normalizePromptResults(record.promptPlanJson),
         currentBranch: null,
       }
