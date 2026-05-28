@@ -199,6 +199,10 @@ function getOpenAIClient(provider: TextProviderConfig): OpenAI {
   })
 }
 
+function getDefaultTextProvider(): TextProviderConfig {
+  return getTextProviderConfigs()[0]
+}
+
 function isAbortLikeError(error: unknown) {
   return Boolean(
     error
@@ -518,12 +522,8 @@ async function generateSinglePrompt(
   analysisSummary = '',
   priorPromptContext?: string,
 ): Promise<{ plan: RecommendedImagePlanItem; prompt: string }> {
-  const model = process.env.TEXT_MODEL
-  if (!model) {
-    throw new Error('TEXT_MODEL environment variable is not set')
-  }
-
-  const openai = getOpenAIClient()
+  const provider = getDefaultTextProvider()
+  const openai = getOpenAIClient(provider)
   const config = IMAGE_TYPE_CONFIG[promptKey]
 
   const contextText = `商品名称：${productName}
@@ -595,7 +595,7 @@ ${priorPromptContext}
   }
 
   const message = await openai.chat.completions.create({
-    model,
+    model: provider.model,
     messages: [
       {
         role: 'user',
@@ -696,12 +696,8 @@ export async function generateAPlusPrompt(
   referenceImages: Array<{ data: string; mediaType: string }> = [],
   analysisSummary = '',
 ): Promise<GenerateAPlusPromptOutput> {
-  const model = process.env.TEXT_MODEL
-  if (!model) {
-    throw new Error('TEXT_MODEL environment variable is not set')
-  }
-
-  const openai = getOpenAIClient()
+  const provider = getDefaultTextProvider()
+  const openai = getOpenAIClient(provider)
   const content: any[] = [
     {
       type: 'text',
@@ -762,7 +758,7 @@ ${aplusSummary}
 
   try {
     const message = await openai.chat.completions.create({
-      model,
+      model: provider.model,
       messages: [
         {
           role: 'user',
@@ -819,12 +815,8 @@ ${aplusSummary}
 }
 
 export async function refineReversePrompt(extractedPrompt: string, userIntent = ''): Promise<{ finalPrompt: string }> {
-  const model = process.env.TEXT_MODEL
-  if (!model) {
-    throw new Error('TEXT_MODEL environment variable is not set')
-  }
-
-  const openai = getOpenAIClient()
+  const provider = getDefaultTextProvider()
+  const openai = getOpenAIClient(provider)
   const trimmedPrompt = extractedPrompt.trim()
   const trimmedIntent = userIntent.trim()
 
@@ -859,7 +851,7 @@ export async function refineReversePrompt(extractedPrompt: string, userIntent = 
   ]
 
   const message = await openai.chat.completions.create({
-    model,
+    model: provider.model,
     messages: [
       {
         role: 'user',
