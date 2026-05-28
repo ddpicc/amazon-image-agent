@@ -1,4 +1,4 @@
-# Amazon Image Agent
+# PageMint
 
 面向 Amazon listing 的多用户图片生产工具。当前版本支持：
 
@@ -52,6 +52,9 @@ PROVIDER_KEY_ENCRYPTION_KEY=replace_with_a_second_long_random_secret
 TEXT_KEY=your_text_api_key_here
 TEXT_URL=https://www.uocode.com/v1
 TEXT_MODEL=gpt-5.4
+TEXT_KEY_2=your_backup_text_api_key_here
+TEXT_URL_2=https://your-backup-text-provider.example/v1
+TEXT_MODEL_2=gpt-5.4
 
 # Tencent COS
 COS_SECRET_ID=your_cos_secret_id

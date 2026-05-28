@@ -25,6 +25,10 @@ function isRenderSize(value: string | null): value is RenderSize {
 }
 
 function getValidSize(size: string | null, aspectRatio: AspectRatio): RenderSize {
+  if (size === '1024x640') {
+    return '1024x640'
+  }
+
   if (isRenderSize(size) && getSizesForAspectRatio(aspectRatio).some((option) => option.value === size)) {
     return size
   }

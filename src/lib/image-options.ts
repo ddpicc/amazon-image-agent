@@ -5,7 +5,8 @@ export type RenderSize =
   | '2048x1365'
   | '1024x1536'
   | '1365x2048'
-export type AspectRatio = '1:1' | '3:2' | '2:3'
+  | '1024x640'
+export type AspectRatio = '1:1' | '3:2' | '2:3' | '8:5'
 
 export interface SizeOption {
   value: RenderSize
@@ -50,6 +51,12 @@ export const SIZE_OPTIONS: SizeOption[] = [
     label: '1365 × 2048',
     note: 'Higher-resolution portrait output for tall compositions',
     aspectRatio: '2:3',
+  },
+  {
+    value: '1024x640',
+    label: '1024 × 640',
+    note: 'Landscape output for Amazon A+ modular layouts',
+    aspectRatio: '8:5',
   },
 ]
 

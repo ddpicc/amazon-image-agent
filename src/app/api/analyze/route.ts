@@ -79,17 +79,26 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     if (analysisRecordId) {
+      const errorMessage = error instanceof Error && error.message === '网站暂不可用，请稍后再试。'
+        ? '网站暂不可用，请稍后再试。'
+        : error instanceof Error
+          ? error.message
+          : 'Failed to analyze product'
       await prisma.analysisRecord.update({
         where: { id: analysisRecordId },
         data: {
           status: 'FAILED',
-          errorMessage: error instanceof Error ? error.message : 'Failed to analyze product',
+          errorMessage,
         },
       }).catch(() => undefined)
     }
     console.error('Analyze error:', error)
     return NextResponse.json(
-      { error: 'Failed to analyze product' },
+      {
+        error: error instanceof Error && error.message === '网站暂不可用，请稍后再试。'
+          ? '网站暂不可用，请稍后再试。'
+          : 'Failed to analyze product',
+      },
       { status: 500 }
     )
   }

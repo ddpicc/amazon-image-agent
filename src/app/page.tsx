@@ -38,7 +38,7 @@ export default async function Home() {
           <div className="absolute inset-y-0 right-0 hidden w-1/3 bg-gradient-to-l from-amazon-orange/10 to-transparent lg:block" />
           <div className="relative max-w-3xl">
             <span className="inline-flex rounded-full bg-amazon-dark px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-white/90">
-              Amazon 图片生成助手
+              PageMint
             </span>
             <h1 className="mt-5 text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">
               选择更适合你的商品图片工作流。

@@ -1,6 +1,15 @@
 import OpenAI from 'openai'
 
 export type AmazonImageType = 'main-white' | 'lifestyle' | 'infographic' | 'detail' | 'size'
+export type RecommendedPlanType =
+  | AmazonImageType
+  | 'aplus-main'
+  | 'aplus-hero'
+  | 'aplus-transform'
+  | 'aplus-grid'
+  | 'aplus-lifestyle'
+  | 'aplus-feature'
+  | 'aplus-detail'
 
 export interface AnalyzeProductInput {
   productName: string
@@ -14,7 +23,7 @@ export interface AnalyzeProductInput {
 }
 
 export interface RecommendedImagePlanItem {
-  type: AmazonImageType
+  type: RecommendedPlanType
   index: number
   title: string
   goal: string
@@ -52,6 +61,13 @@ export interface GeneratePromptsOutput {
   suggestedPrompts: Record<string, string>
 }
 
+export interface GenerateAPlusPromptOutput extends GeneratePromptsOutput {
+  imageSpec: {
+    size: '1024x640'
+    aspectRatio: '8:5'
+  }
+}
+
 export interface PromptGenerationProgress {
   key: string
   plan: RecommendedImagePlanItem
@@ -59,6 +75,24 @@ export interface PromptGenerationProgress {
   completed: number
   total: number
   usedFallback: boolean
+}
+
+const TEXT_PROVIDER_TOTAL_TIMEOUT_MS = 5 * 60 * 1000
+const TEXT_PROVIDER_MIN_ATTEMPT_TIMEOUT_MS = 15 * 1000
+const TEXT_SERVICE_UNAVAILABLE_MESSAGE = '网站暂不可用，请稍后再试。'
+
+interface TextProviderConfig {
+  apiKey: string
+  baseURL: string
+  model: string
+  name: string
+}
+
+class TextServiceUnavailableError extends Error {
+  constructor(message = TEXT_SERVICE_UNAVAILABLE_MESSAGE) {
+    super(message)
+    this.name = 'TextServiceUnavailableError'
+  }
 }
 
 function getSuggestedPromptKey(type: AmazonImageType, index: number): string {
@@ -88,33 +122,170 @@ const DEFAULT_PROMPTS: Record<string, string> = {
   'size': '为亚马逊商品详情页生成一张尺寸认知图，重点让用户快速理解产品大小、比例和摆放关系，可借助自然参照物表达尺寸，视觉清楚可信，比例准确不做过度夸张。图中所有尺寸标注或说明文字必须为英文。',
 }
 
-function getOpenAIClient(): OpenAI {
-  const apiKey = process.env.TEXT_KEY
-  const baseURL = process.env.TEXT_URL
+const APLUS_HERO_PLAN: RecommendedImagePlanItem = {
+  type: 'aplus-hero',
+  index: 1,
+  title: 'A+ 模块一 / Hero',
+  goal: '页面头部主视觉区，建立产品认知、品牌感和核心使用场景，像完整 A+ 页面的第一屏切片。',
+  notes: ['适合 1024x640 横版模块', '产品必须是视觉主角', '图中文字必须为英文', '负责建立统一视觉基调'],
+}
 
-  if (!apiKey) {
-    throw new Error('TEXT_KEY environment variable is not set')
+const APLUS_TRANSFORM_PLAN: RecommendedImagePlanItem = {
+  type: 'aplus-transform',
+  index: 2,
+  title: 'A+ 模块二 / Transform',
+  goal: '页面中部承接区，优先表现产品如何展开、如何使用或为什么方便，像整页里的机制讲解切片。',
+  notes: ['延续第一张色调与场景语境', '适合形态变化或关键使用方式', '图中文字必须为英文', '信息层次清晰但不过度拥挤'],
+}
+
+const APLUS_GRID_PLAN: RecommendedImagePlanItem = {
+  type: 'aplus-grid',
+  index: 3,
+  title: 'A+ 模块三 / Feature Grid',
+  goal: '页面卖点信息区，优先承载功能优势、结构亮点、材质细节或卡片式卖点信息。',
+  notes: ['适合卖点卡片、局部特写或功能分区', '延续前两张的视觉语言', '图中文字必须为英文', '不要像独立广告海报'],
+}
+
+const APLUS_LIFESTYLE_PLAN: RecommendedImagePlanItem = {
+  type: 'aplus-lifestyle',
+  index: 4,
+  title: 'A+ 模块四 / Lifestyle + Specs',
+  goal: '页面收束区，优先承载适用场景、参数、材质或安心感信息，像整页底部的场景与规格切片。',
+  notes: ['可放场景延展、规格信息或材质收束', '延续全页语境', '图中文字必须为英文', '不应像新的主视觉图'],
+}
+
+const APLUS_DEFAULT_PROMPTS: Record<
+  'aplus-hero' | 'aplus-transform' | 'aplus-grid' | 'aplus-lifestyle' | 'aplus-feature' | 'aplus-detail' | 'aplus-main',
+  string
+> = {
+  'aplus-hero': '为亚马逊普通 A+ 页面生成第一张 1024x640 横版模块图，作为整页顶部 hero 切片。画面要像成熟 A+ 页面的第一屏，有清晰主标题区、自然留白、温和品牌感和可信的生活方式场景。产品与参考图保持一致，产品是视觉主角，整体干净、简洁、有高级感，不要做成白底主图或夸张海报。',
+  'aplus-transform': '为亚马逊普通 A+ 页面生成第二张 1024x640 横版模块图，作为整页中段的机制讲解切片。延续第一页的色调和空间语境，更自然地表现产品如何展开、如何使用或为什么方便，可以带简洁英文说明、步骤感或形态变化，但不要做成说明书式拼贴。',
+  'aplus-grid': '为亚马逊普通 A+ 页面生成第三张 1024x640 横版模块图，作为整页卖点信息区切片。延续前两张的视觉气质，用更有层级的方式承载功能优势、结构亮点、材质细节或局部特写，可以有卡片、分区或局部放大，但整体仍然像成熟 A+ 页面，而不是独立卖货海报。',
+  'aplus-lifestyle': '为亚马逊普通 A+ 页面生成第四张 1024x640 横版模块图，作为整页底部的场景与信息收束切片。延续前面的色调与品牌感，自然呈现适用场景、安心感、参数或材质信息，让整套 A+ 页面完整收束。画面可包含简洁英文信息区，但不应重新变成新的主视觉图。',
+  'aplus-feature': '为亚马逊普通 A+ 页面生成一张横版卖点模块图，延续整页语境，自然表现核心卖点、结构亮点或使用收益。',
+  'aplus-detail': '为亚马逊普通 A+ 页面生成一张横版细节模块图，延续整页语境，重点表现材质、做工、局部结构或补充场景。',
+  'aplus-main': '为亚马逊普通 A+ 页面生成一张横版模块图，产品与参考图保持一致，产品是视觉主角，整体感觉自然、干净、有品牌感，可带少量英文信息区，但不要做成 listing 白底主图。',
+}
+
+function getTextProviderConfigs(): TextProviderConfig[] {
+  const providers = [
+    {
+      name: 'primary',
+      apiKey: process.env.TEXT_KEY,
+      baseURL: process.env.TEXT_URL,
+      model: process.env.TEXT_MODEL,
+    },
+    {
+      name: 'backup',
+      apiKey: process.env.TEXT_KEY_2,
+      baseURL: process.env.TEXT_URL_2,
+      model: process.env.TEXT_MODEL_2,
+    },
+  ]
+
+  const validProviders = providers.filter((provider) => provider.apiKey && provider.baseURL && provider.model)
+
+  if (validProviders.length === 0) {
+    throw new Error('No valid text provider is configured')
   }
 
-  if (!baseURL) {
-    throw new Error('TEXT_URL environment variable is not set')
-  }
+  return validProviders as TextProviderConfig[]
+}
 
+function getOpenAIClient(provider: TextProviderConfig): OpenAI {
   return new OpenAI({
-    apiKey,
-    baseURL,
+    apiKey: provider.apiKey,
+    baseURL: provider.baseURL,
+  })
+}
+
+function isAbortLikeError(error: unknown) {
+  return Boolean(
+    error
+      && typeof error === 'object'
+      && ('name' in error || 'message' in error)
+      && (
+        (error as { name?: string }).name === 'AbortError'
+        || (error as { message?: string }).message?.includes('aborted')
+      ),
+  )
+}
+
+async function createChatCompletionWithFallback<T>(
+  buildRequest: (provider: TextProviderConfig, remainingMs: number) => Promise<T>,
+): Promise<T> {
+  const providers = getTextProviderConfigs()
+  const startedAt = Date.now()
+  const failures: string[] = []
+
+  for (let index = 0; index < providers.length; index += 1) {
+    const provider = providers[index]
+    const elapsed = Date.now() - startedAt
+    const remaining = TEXT_PROVIDER_TOTAL_TIMEOUT_MS - elapsed
+
+    if (remaining <= 0) {
+      throw new TextServiceUnavailableError()
+    }
+
+    try {
+      return await buildRequest(provider, remaining)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      failures.push(`${provider.name}: ${message}`)
+
+      const isLastProvider = index === providers.length - 1
+      const totalTimedOut = Date.now() - startedAt >= TEXT_PROVIDER_TOTAL_TIMEOUT_MS
+      if (isLastProvider || totalTimedOut) {
+        console.error('Text providers failed:', failures.join(' | '))
+        throw new TextServiceUnavailableError()
+      }
+    }
+  }
+
+  throw new TextServiceUnavailableError()
+}
+
+async function requestJsonChatCompletion(
+  content: any[],
+  maxTokens: number,
+): Promise<string> {
+  return createChatCompletionWithFallback(async (provider, remainingMs) => {
+    const openai = getOpenAIClient(provider)
+    const controller = new AbortController()
+    const timeoutMs = remainingMs <= TEXT_PROVIDER_MIN_ATTEMPT_TIMEOUT_MS
+      ? remainingMs
+      : Math.min(remainingMs, TEXT_PROVIDER_TOTAL_TIMEOUT_MS)
+    const timeout = setTimeout(() => controller.abort(), timeoutMs)
+
+    try {
+      const message = await openai.chat.completions.create({
+        model: provider.model,
+        messages: [
+          {
+            role: 'user',
+            content,
+          },
+        ],
+        max_tokens: maxTokens,
+        response_format: { type: 'json_object' },
+      }, {
+        signal: controller.signal,
+      })
+
+      return message.choices[0]?.message?.content || ''
+    } catch (error) {
+      if (isAbortLikeError(error)) {
+        throw new TextServiceUnavailableError()
+      }
+      throw error
+    } finally {
+      clearTimeout(timeout)
+    }
   })
 }
 
 export async function analyzeProduct(input: AnalyzeProductInput): Promise<AnalyzeProductOutput> {
   const { productName, description, category, targetAudience, referenceImages = [] } = input
-
-  const model = process.env.TEXT_MODEL
-  if (!model) {
-    throw new Error('TEXT_MODEL environment variable is not set')
-  }
-
-  const openai = getOpenAIClient()
 
   const content: any[] = [
     {
@@ -164,19 +335,7 @@ export async function analyzeProduct(input: AnalyzeProductInput): Promise<Analyz
     })
   }
 
-  const message = await openai.chat.completions.create({
-    model,
-    messages: [
-      {
-        role: 'user',
-        content,
-      },
-    ],
-    max_tokens: 2048,
-    response_format: { type: 'json_object' },
-  })
-
-  const responseText = message.choices[0]?.message?.content || ''
+  const responseText = await requestJsonChatCompletion(content, 2048)
 
   try {
     const parsed = JSON.parse(responseText)
@@ -315,7 +474,19 @@ function buildAnalysisSummaryForPromptGeneration(result: AnalyzeProductOutput): 
     .join('\n')
 }
 
-export { buildAnalysisSummaryForPromptGeneration }
+export { buildAnalysisSummaryForPromptGeneration, buildAPlusAnalysisSummary }
+
+function buildAPlusAnalysisSummary(result: AnalyzeProductOutput): string {
+  return [
+    `产品总结：${result.productSummary}`,
+    result.sellingPoints.length ? `核心卖点：${result.sellingPoints.join('；')}` : '',
+    `参考图总结：${result.referenceImageSummary}`,
+    result.visualStyleRecommendations.length ? `视觉风格建议：${result.visualStyleRecommendations.join('；')}` : '',
+    result.visualSystemGuidance.length ? `视觉系统建议：${result.visualSystemGuidance.join('；')}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n')
+}
 
 const IMAGE_TYPE_CONFIG: Record<string, { name: string; goal: string; notes: string[] }> = {
   'main-white': { name: '白底主图', goal: '用于搜索结果和详情页首图，优先确保合规与点击率。', notes: ['纯白背景', '只展示售卖主体', '主体占画面约 85% 或以上', '图片内如需文字必须为英文'] },
@@ -513,6 +684,136 @@ async function generateSinglePromptWithFallback(
       plan: buildPlanForPromptKey(promptKey),
       prompt: DEFAULT_PROMPTS[promptKey],
       usedFallback: true,
+    }
+  }
+}
+
+export async function generateAPlusPrompt(
+  productName: string,
+  description: string,
+  category: string,
+  targetAudience: string,
+  referenceImages: Array<{ data: string; mediaType: string }> = [],
+  analysisSummary = '',
+): Promise<GenerateAPlusPromptOutput> {
+  const model = process.env.TEXT_MODEL
+  if (!model) {
+    throw new Error('TEXT_MODEL environment variable is not set')
+  }
+
+  const openai = getOpenAIClient()
+  const content: any[] = [
+    {
+      type: 'text',
+      text: `你是资深的亚马逊 A+ 页面视觉策划顾问，擅长把商品信息整理成自然、好用、不过度僵硬的 AI 生图 brief。
+
+请为以下商品生成 4 条适用于普通 A+ 页面的图片提示词，对应 4 张连续的横版模块图，每张尺寸为 1024x640。
+
+商品名称：${productName}
+商品描述：${description}
+商品类目：${category}
+目标人群：${targetAudience}
+参考图数量：${referenceImages.length}
+
+要求：
+- 输出 4 条中文提示词，每条约 70-170 字
+- 你不是在做 4 张独立海报，而是在设计一页完整的 Amazon A+ 页面；这 4 张图是这页从上到下的 4 个区段切片
+- 提示词要更像自然的视觉 brief，而不是规则清单或流程说明
+- 4 张图要像同一套 Amazon A+ 页面资产，保持统一的产品外观、色温、场景语境、品牌气质和版式语言
+- 明确这是 Amazon A+ module image，不要写成 listing 主图，不要写成复杂页面编辑稿，也不要写成过度设计的广告海报
+- 第一张更偏主视觉、品牌感、核心使用场景和标题区
+- 第二张更偏产品如何展开、如何工作、如何使用或为什么方便
+- 第三张更偏卖点卡片、结构亮点、材质细节、局部特写或功能分区
+- 第四张更偏使用场景延展、参数、材质、安心感或适用信息收束
+- 这里的“更偏”是方向，不要把镜头、版式、模块数量、图标样式写死
+- 产品必须始终是视觉主角，允许自然地带出场景、简洁的信息区、局部特写或卖点分区
+- 如果图片中出现任何标题、说明或标签，全部使用简短自然的英文
+- 语言尽量直接描述画面应该呈现的感觉，不要写太多“不要怎样”“必须怎样”
+
+请严格输出 JSON，字段如下：
+- heroPrompt: 第一张模块图提示词
+- transformPrompt: 第二张模块图提示词
+- gridPrompt: 第三张模块图提示词
+- lifestylePrompt: 第四张模块图提示词
+
+只输出 JSON，不要有其他内容。`,
+    },
+  ]
+
+  const aplusSummary = analysisSummary
+  if (aplusSummary) {
+    content.push({
+      type: 'text',
+      text: `基础分析摘要：
+${aplusSummary}
+
+生成 A+ 提示词时，优先吸收这里已经明确的产品定位、核心卖点、参考图外观信息和视觉气质，但不要把这些摘要机械地逐条改写进提示词。`,
+    })
+  }
+
+  for (const image of referenceImages.slice(0, 3).reverse()) {
+    content.unshift({
+      type: 'image_url',
+      image_url: {
+        url: `data:${image.mediaType};base64,${image.data}`,
+      },
+    })
+  }
+
+  try {
+    const message = await openai.chat.completions.create({
+      model,
+      messages: [
+        {
+          role: 'user',
+          content,
+        },
+      ],
+      max_tokens: 1200,
+      response_format: { type: 'json_object' },
+    })
+
+    const responseText = message.choices[0]?.message?.content || ''
+    const parsed = JSON.parse(responseText)
+    const heroPrompt = typeof parsed.heroPrompt === 'string' && parsed.heroPrompt.trim()
+      ? parsed.heroPrompt.trim()
+      : APLUS_DEFAULT_PROMPTS['aplus-hero']
+    const transformPrompt = typeof parsed.transformPrompt === 'string' && parsed.transformPrompt.trim()
+      ? parsed.transformPrompt.trim()
+      : APLUS_DEFAULT_PROMPTS['aplus-transform']
+    const gridPrompt = typeof parsed.gridPrompt === 'string' && parsed.gridPrompt.trim()
+      ? parsed.gridPrompt.trim()
+      : APLUS_DEFAULT_PROMPTS['aplus-grid']
+    const lifestylePrompt = typeof parsed.lifestylePrompt === 'string' && parsed.lifestylePrompt.trim()
+      ? parsed.lifestylePrompt.trim()
+      : APLUS_DEFAULT_PROMPTS['aplus-lifestyle']
+
+    return {
+      recommendedImagePlan: [APLUS_HERO_PLAN, APLUS_TRANSFORM_PLAN, APLUS_GRID_PLAN, APLUS_LIFESTYLE_PLAN],
+      suggestedPrompts: {
+        'aplus-hero': heroPrompt,
+        'aplus-transform': transformPrompt,
+        'aplus-grid': gridPrompt,
+        'aplus-lifestyle': lifestylePrompt,
+      },
+      imageSpec: {
+        size: '1024x640',
+        aspectRatio: '8:5',
+      },
+    }
+  } catch {
+    return {
+      recommendedImagePlan: [APLUS_HERO_PLAN, APLUS_TRANSFORM_PLAN, APLUS_GRID_PLAN, APLUS_LIFESTYLE_PLAN],
+      suggestedPrompts: {
+        'aplus-hero': APLUS_DEFAULT_PROMPTS['aplus-hero'],
+        'aplus-transform': APLUS_DEFAULT_PROMPTS['aplus-transform'],
+        'aplus-grid': APLUS_DEFAULT_PROMPTS['aplus-grid'],
+        'aplus-lifestyle': APLUS_DEFAULT_PROMPTS['aplus-lifestyle'],
+      },
+      imageSpec: {
+        size: '1024x640',
+        aspectRatio: '8:5',
+      },
     }
   }
 }

@@ -7,8 +7,8 @@ import { formatPoints, toDisplayPoints } from '@/lib/points-config'
 import { prisma } from '@/lib/prisma'
 
 export const metadata: Metadata = {
-  title: 'Amazon Image Agent - AI Product Image Generator',
-  description: 'Generate professional Amazon product images using AI',
+  title: 'PageMint | Amazon Listing & A+ Image Workflow',
+  description: 'Generate professional Amazon listing and A+ images using AI',
 }
 
 export default async function RootLayout({
@@ -28,7 +28,7 @@ export default async function RootLayout({
         <header className="border-b border-slate-200 bg-white/90 backdrop-blur">
           <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
             <Link href="/" className="text-sm font-semibold tracking-[0.24em] text-slate-800 uppercase">
-              Amazon Image Agent
+              PageMint
             </Link>
             <div className="flex items-center gap-3">
               {user ? (

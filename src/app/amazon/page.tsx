@@ -1,5 +1,5 @@
 import AmazonPageClient from './AmazonPageClient'
-import { AmazonResumeState, BasicAnalysisResult, PromptGenerationResult, StoredReferenceImage } from '@/lib/amazon-workflow'
+import { AmazonResumeState, BasicAnalysisResult, StoredReferenceImage, normalizePromptResults } from '@/lib/amazon-workflow'
 import { requireUser } from '@/lib/auth'
 import { getUserPointsBalance } from '@/lib/points'
 import { prisma } from '@/lib/prisma'
@@ -15,7 +15,6 @@ export default async function AmazonPage({ searchParams }: AmazonPageProps) {
   const user = await requireUser()
   const pointsBalance = await getUserPointsBalance(user.id)
   const analysisId = searchParams?.analysisId
-  const requestedStep = searchParams?.step === 'generate' ? 'generate' : 'analysis'
   let initialResumeState: AmazonResumeState | null = null
 
   if (analysisId) {
@@ -38,10 +37,11 @@ export default async function AmazonPage({ searchParams }: AmazonPageProps) {
         errorMessage: record.errorMessage,
         referenceImages: (record.referenceImagesJson as StoredReferenceImage[] | null) || [],
         basicAnalysisResult: (record.analysisJson as BasicAnalysisResult | null) || null,
-        promptGenerationResult: (record.promptPlanJson as PromptGenerationResult | null) || null,
+        promptResults: normalizePromptResults(record.promptPlanJson),
+        currentBranch: null,
       }
     }
   }
 
-  return <AmazonPageClient initialResumeState={initialResumeState} initialStep={requestedStep} initialPointsBalance={pointsBalance} />
+  return <AmazonPageClient initialResumeState={initialResumeState} initialPointsBalance={pointsBalance} />
 }
