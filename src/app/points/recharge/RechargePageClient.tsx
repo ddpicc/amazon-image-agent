@@ -43,6 +43,18 @@ function formatMoney(amountCents: number, currency: string) {
   return `${currency} ${(amountCents / 100).toFixed(2)}`
 }
 
+function getPackageTag(item: RechargePackageItem, maxPoints: number) {
+  if (item.points === maxPoints) return '推荐'
+  if (item.points <= 20) return '入门'
+  return '常用'
+}
+
+function getPackageHint(item: RechargePackageItem, maxPoints: number) {
+  if (item.points === maxPoints) return '适合连续出图，减少反复充值'
+  if (item.points <= 20) return '先少量补充，适合轻度使用'
+  return '覆盖一段时间的日常出图需求'
+}
+
 export default function RechargePageClient({
   initialPackages,
   initialPackageId,
@@ -61,6 +73,18 @@ export default function RechargePageClient({
     () => initialPackages.find((item) => item.id === selectedPackageId) || null,
     [initialPackages, selectedPackageId],
   )
+  const maxPoints = useMemo(
+    () => initialPackages.reduce((max, item) => Math.max(max, item.points), 0),
+    [initialPackages],
+  )
+  const selectedPackageEquivalentAmazon = useMemo(() => {
+    if (!selectedPackage) return 0
+    return Math.floor(selectedPackage.points / 1)
+  }, [selectedPackage])
+  const selectedPackageEquivalentAPlus = useMemo(() => {
+    if (!selectedPackage) return 0
+    return Math.floor(selectedPackage.points / 1.6)
+  }, [selectedPackage])
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -122,19 +146,30 @@ export default function RechargePageClient({
               onClick={() => setSelectedPackageId(item.id)}
               className={`w-full rounded-2xl border p-4 text-left transition ${selectedPackageId === item.id ? 'border-amazon-orange bg-orange-50' : 'border-slate-200 bg-white hover:border-slate-300'}`}
             >
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex items-start justify-between gap-3">
                 <div>
-                  <div className="text-sm font-medium text-slate-900">{item.name}</div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="text-sm font-medium text-slate-900">{item.name}</div>
+                    <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                      item.points === maxPoints
+                        ? 'bg-amazon-orange text-white'
+                        : item.points <= 20
+                          ? 'bg-slate-100 text-slate-600'
+                          : 'bg-sky-100 text-sky-700'
+                    }`}
+                    >
+                      {getPackageTag(item, maxPoints)}
+                    </span>
+                  </div>
                   <div className="mt-1 text-xs text-slate-500">{formatPoints(item.points)} 积分</div>
+                  <div className="mt-2 text-xs text-slate-500">{getPackageHint(item, maxPoints)}</div>
                 </div>
-                <div className="text-sm font-semibold text-slate-900">{formatMoney(item.priceCents, item.currency)}</div>
+                <div className="text-right">
+                  <div className="text-sm font-semibold text-slate-900">{formatMoney(item.priceCents, item.currency)}</div>
+                </div>
               </div>
             </button>
           ))}
-        </div>
-
-        <div className="mt-4 rounded-2xl border border-amazon-orange bg-orange-50 px-4 py-3 text-sm text-slate-700">
-          当前仅支持微信支付。
         </div>
 
         <button
@@ -157,6 +192,7 @@ export default function RechargePageClient({
               <div>套餐：{selectedPackage.name}</div>
               <div>积分：{formatPoints(selectedPackage.points)}</div>
               <div>金额：{formatMoney(selectedPackage.priceCents, selectedPackage.currency)}</div>
+              <div>大致可生成：Amazon 图组约 {selectedPackageEquivalentAmazon} 张，A+ 约 {selectedPackageEquivalentAPlus} 张</div>
               <div>支付方式：微信支付</div>
               <div>说明：创建订单后会打开独立支付页，自动轮询支付状态。</div>
             </div>

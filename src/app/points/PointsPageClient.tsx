@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
-import { formatPoints } from '@/lib/points-config'
+import { formatPoints, getGenerationCostDisplay } from '@/lib/points-config'
 
 interface PointsUser {
   id: string
@@ -81,6 +81,7 @@ function formatLedgerType(entry: PointsLedgerEntryItem) {
   if (type === 'PAYMENT_RECHARGE') return '支付充值'
   if (type === 'GENERATION_DEBIT') {
     if (scene === 'amazon') return 'Amazon 生图扣减'
+    if (scene === 'aplus') return 'A+ 生图扣减'
     if (scene === 'reverse-prompt') return '同款生成扣减'
     if (scene === 'playground') return '自由生成扣减'
     return '生图扣减'
@@ -104,6 +105,12 @@ export default function PointsPageClient({ initialData }: { initialData: PointsP
     () => [...data.packages].sort((a, b) => a.displayOrder - b.displayOrder),
     [data.packages],
   )
+  const generationPricing = useMemo(() => ([
+    { label: 'Amazon 图组', cost: getGenerationCostDisplay('amazon') },
+    { label: 'A+ 图片', cost: getGenerationCostDisplay('aplus') },
+    { label: '同款生成 / 以图生图', cost: getGenerationCostDisplay('reverse-prompt') },
+    { label: '自由生成', cost: getGenerationCostDisplay('playground') },
+  ]), [])
   const inviteLink = `https://amazon-image.zeabur.app/register?aff=${data.user.referralCode}`
 
   const handleCopyInviteLink = async () => {
@@ -224,6 +231,19 @@ export default function PointsPageClient({ initialData }: { initialData: PointsP
       </section>
 
       <section className="space-y-6">
+        <div className="panel p-6">
+          <h2 className="text-lg font-semibold text-slate-950">生图扣费说明</h2>
+          <p className="mt-1 text-sm text-slate-500">这里显示当前线上生效的单张扣费标准，页面文案和实际扣费共用同一套配置。</p>
+          <div className="mt-4 space-y-3">
+            {generationPricing.map((item) => (
+              <div key={item.label} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div className="text-sm font-medium text-slate-900">{item.label}</div>
+                <div className="mt-1 text-sm text-slate-500">每张扣 {formatPoints(item.cost)} 积分</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
         <div className="panel p-6">
           <h2 className="text-lg font-semibold text-slate-950">邀请奖励</h2>
           <p className="mt-1 text-sm text-slate-500">被邀请用户注册可得 6 积分，邀请人可得 20 积分；未填写邀请码的新用户注册赠送 3 积分。</p>

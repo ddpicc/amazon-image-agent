@@ -9,8 +9,8 @@ loadEnvFile('.env.local')
 async function seedPointsPackages() {
   const packages = [
     { name: '新手包', points: 20, priceCents: 500, displayOrder: 10 },
-    { name: '进阶包', points: 100, priceCents: 2500, displayOrder: 20 },
-    { name: '商家包', points: 500, priceCents: 12500, displayOrder: 30 },
+    { name: '进阶包', points: 11, priceCents: 2500, displayOrder: 20 },
+    { name: '商家包', points: 500, priceCents: 10000, displayOrder: 30 },
   ]
 
   for (const item of packages) {

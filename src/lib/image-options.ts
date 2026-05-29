@@ -5,8 +5,12 @@ export type RenderSize =
   | '2048x1365'
   | '1024x1536'
   | '1365x2048'
+  | '1600x1000'
   | '1024x640'
 export type AspectRatio = '1:1' | '3:2' | '2:3' | '8:5'
+
+export const HIDDEN_APLUS_RENDER_SIZE = '1600x1000' as const
+const HIDDEN_APLUS_PROMPT_REQUIREMENT = '补充执行要求：输出为 1600x1000 的横版画面，保持 8:5 构图。'
 
 export interface SizeOption {
   value: RenderSize
@@ -91,5 +95,17 @@ export function getDefaultSizeForAspectRatio(aspectRatio: AspectRatio): RenderSi
 }
 
 export function getAspectRatioForSize(size: RenderSize): AspectRatio {
+  if (size === HIDDEN_APLUS_RENDER_SIZE) return '8:5'
   return SIZE_OPTIONS.find((option) => option.value === size)?.aspectRatio || '1:1'
+}
+
+export function appendHiddenAPlusSizeRequirement(prompt: string): string {
+  const trimmedPrompt = prompt.trim()
+  if (!trimmedPrompt) return HIDDEN_APLUS_PROMPT_REQUIREMENT
+  if (trimmedPrompt.includes(HIDDEN_APLUS_PROMPT_REQUIREMENT)) return trimmedPrompt
+  return `${trimmedPrompt}\n\n${HIDDEN_APLUS_PROMPT_REQUIREMENT}`
+}
+
+export function stripHiddenAPlusSizeRequirement(prompt: string): string {
+  return prompt.replace(`\n\n${HIDDEN_APLUS_PROMPT_REQUIREMENT}`, '').replace(HIDDEN_APLUS_PROMPT_REQUIREMENT, '').trim()
 }

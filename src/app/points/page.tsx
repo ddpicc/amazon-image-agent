@@ -37,7 +37,6 @@ export default async function PointsPage() {
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">积分中心</div>
             <h1 className="mt-2 text-3xl font-semibold text-slate-950">充值与兑换</h1>
-            <p className="mt-2 text-sm text-slate-500">Amazon 生图 1 积分/张，以图生提示词再生图 1 积分/张，单张自由生成 0.8 积分/张。</p>
           </div>
           <Link href="/" className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900">
             返回首页

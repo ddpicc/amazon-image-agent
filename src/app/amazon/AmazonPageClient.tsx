@@ -17,8 +17,8 @@ import {
   getPromptResultForBranch,
   isPromptGenerationComplete,
 } from '@/lib/amazon-workflow'
-import { RenderSize } from '@/lib/image-options'
-import { formatPoints, getGenerationCostDisplay } from '@/lib/points-config'
+import { HIDDEN_APLUS_RENDER_SIZE, RenderSize } from '@/lib/image-options'
+import { formatPoints, GenerationBillingScene, getGenerationCostDisplay } from '@/lib/points-config'
 
 type AmazonImageType = 'main-white' | 'lifestyle' | 'infographic' | 'detail' | 'size'
 type PromptImageType = AmazonPromptKey
@@ -101,8 +101,6 @@ const aplusImageTypeOptions: ImageTypeOption[] = [
   { value: 'aplus-lifestyle', label: 'A+ 模块四', description: '底部收束区，延展场景并补充参数信息' },
 ]
 
-const imageTypeOrder: PromptImageType[] = ['main-white', 'size', 'detail', 'infographic-1', 'infographic-2', 'lifestyle-1', 'lifestyle-2']
-
 const amazonSizeOptions: Array<{ value: RenderSize; label: string; note: string }> = [
   { value: '1024x1024', label: '1:1', note: 'Listing 常用' },
   { value: '2048x2048', label: '2K 方图', note: '更高分辨率，适合精修导出' },
@@ -120,10 +118,10 @@ const fallbackPrompts: Record<PromptImageType, string> = {
 
 const aplusFallbackPrompts: Record<APlusPromptImageType, string> = {
   'aplus-main': '为亚马逊普通 A+ 页面生成一张横版模块图，强调产品、品牌感和卖点整合，不要做成 listing 白底主图。提示词可以使用中文，但如果图片内出现任何标题、说明或标签，必须全部使用英文。',
-  'aplus-hero': '为亚马逊普通 A+ 页面生成第一张 1024x640 横版模块图，作为整页顶部 hero 切片。画面要像成熟 A+ 页面的第一屏，有清晰主标题区、自然留白、温和品牌感和可信的生活方式场景。产品与参考图保持一致，产品是视觉主角，整体干净、简洁、有高级感，不要做成白底主图或夸张海报。',
-  'aplus-transform': '为亚马逊普通 A+ 页面生成第二张 1024x640 横版模块图，作为整页中段的机制讲解切片。延续第一页的色调和空间语境，更自然地表现产品如何展开、如何使用或为什么方便，可以带简洁英文说明、步骤感或形态变化，但不要做成说明书式拼贴。',
-  'aplus-grid': '为亚马逊普通 A+ 页面生成第三张 1024x640 横版模块图，作为整页卖点信息区切片。延续前两张的视觉气质，用更有层级的方式承载功能优势、结构亮点、材质细节或局部特写，可以有卡片、分区或局部放大，但整体仍然像成熟 A+ 页面，而不是独立卖货海报。',
-  'aplus-lifestyle': '为亚马逊普通 A+ 页面生成第四张 1024x640 横版模块图，作为整页底部的场景与信息收束切片。延续前面的色调与品牌感，自然呈现适用场景、安心感、参数或材质信息，让整套 A+ 页面完整收束。画面可包含简洁英文信息区，但不应重新变成新的主视觉图。',
+  'aplus-hero': '为亚马逊普通 A+ 页面生成第一张横版模块图，作为整页顶部 hero 切片。画面要像成熟 A+ 页面的第一屏，有清晰主标题区、自然留白、温和品牌感和可信的生活方式场景。产品与参考图保持一致，产品是视觉主角，整体干净、简洁、有高级感，不要做成白底主图或夸张海报。',
+  'aplus-transform': '为亚马逊普通 A+ 页面生成第二张横版模块图，作为整页中段的机制讲解切片。延续第一页的色调和空间语境，更自然地表现产品如何展开、如何使用或为什么方便，可以带简洁英文说明、步骤感或形态变化，但不要做成说明书式拼贴。',
+  'aplus-grid': '为亚马逊普通 A+ 页面生成第三张横版模块图，作为整页卖点信息区切片。延续前两张的视觉气质，用更有层级的方式承载功能优势、结构亮点、材质细节或局部特写，可以有卡片、分区或局部放大，但整体仍然像成熟 A+ 页面，而不是独立卖货海报。',
+  'aplus-lifestyle': '为亚马逊普通 A+ 页面生成第四张横版模块图，作为整页底部的场景与信息收束切片。延续前面的色调与品牌感，自然呈现适用场景、安心感、参数或材质信息，让整套 A+ 页面完整收束。画面可包含简洁英文信息区，但不应重新变成新的主视觉图。',
   'aplus-feature': '为亚马逊普通 A+ 页面生成一张横版卖点模块图，延续整页语境，自然表现核心卖点、结构亮点或使用收益。',
   'aplus-detail': '为亚马逊普通 A+ 页面生成一张横版细节模块图，延续整页语境，重点表现材质、做工、局部结构或补充场景。',
 }
@@ -157,7 +155,11 @@ function createImageId() {
 }
 
 function getDefaultSizeForType(type: PromptKey): RenderSize {
-  return type.startsWith('aplus-') ? '1024x640' : '1024x1024'
+  return type.startsWith('aplus-') ? HIDDEN_APLUS_RENDER_SIZE : '1024x1024'
+}
+
+function getBillingSceneForPromptType(type: PromptKey): GenerationBillingScene {
+  return type.startsWith('aplus-') ? 'aplus' : 'amazon'
 }
 
 function collectObservationText(analysisResult: BasicAnalysisResult): string {
@@ -450,7 +452,10 @@ export default function AmazonPage({
     [promptResults, selectedBranch],
   )
   const canProceedToBranchSelection = Boolean(basicAnalysisResult && isStreamCompleted)
-  const generationCost = getGenerationCostDisplay('amazon')
+  const generationCost = useMemo(
+    () => getGenerationCostDisplay(selectedBranch === 'aplus' ? 'aplus' : 'amazon'),
+    [selectedBranch],
+  )
   const hasEnoughPointsToGenerate = pointsBalance >= generationCost
   const activeReferenceImageCount = referenceImages.length || storedReferenceImages.length
 
@@ -500,12 +505,12 @@ export default function AmazonPage({
         ? getDefaultAPlusPromptKey(getPromptResultForBranch(initialResumeState.promptResults, resolvedBranch))
         : 'main-white',
     )
-    setSelectedSize(resolvedBranch === 'aplus' ? '1024x640' : '1024x1024')
+    setSelectedSize(resolvedBranch === 'aplus' ? HIDDEN_APLUS_RENDER_SIZE : '1024x1024')
 
     if (initialResumeState.status === 'SUCCEEDED' && initialResumeState.basicAnalysisResult) {
       setIsStreamCompleted(true)
       setAnalysisStage('completed')
-      setAnalysisStageLabel('已从历史记录恢复分析结果，可以继续选择 Prompt 分支或生成图片')
+      setAnalysisStageLabel('已从历史记录恢复分析结果，可以继续选择提示词分支或生成图片')
       setAnalysisProgress(100)
       if (resolvedBranch && isPromptGenerationComplete(getPromptResultForBranch(initialResumeState.promptResults, resolvedBranch))) {
         setCurrentStep('generate')
@@ -567,7 +572,7 @@ export default function AmazonPage({
     formData.append('imageType', type)
     formData.append('size', size)
     formData.append('sourcePage', 'amazon')
-    formData.append('billingScene', 'amazon')
+    formData.append('billingScene', getBillingSceneForPromptType(type))
     if (type.startsWith('aplus-')) {
       formData.append('aspectRatio', '8:5')
     }
@@ -754,7 +759,7 @@ export default function AmazonPage({
             setIsStreamCompleted(true)
             setIsAnalyzing(false)
             setAnalysisStage('completed')
-            setAnalysisStageLabel('分析完成，可以进入下一步选择 Prompt 分支')
+            setAnalysisStageLabel('分析完成，可以进入下一步选择提示词分支')
             setAnalysisProgress(100)
             setSelectedImageType('main-white')
             setSelectedSize('1024x1024')
@@ -769,7 +774,7 @@ export default function AmazonPage({
           setIsStreamCompleted(true)
           setIsAnalyzing(false)
           setAnalysisStage('completed')
-          setAnalysisStageLabel('分析完成，可以进入下一步选择 Prompt 分支')
+          setAnalysisStageLabel('分析完成，可以进入下一步选择提示词分支')
           setAnalysisProgress(100)
         }
       }
@@ -820,12 +825,12 @@ export default function AmazonPage({
     const progressTimers = [
       window.setTimeout(() => {
         setBranchPromptStatus('analyzing')
-        setBranchPromptLabel(`正在生成${branch === 'aplus' ? ' A+ ' : ' Amazon 图组 '}Prompt`)
+        setBranchPromptLabel(`正在生成${branch === 'aplus' ? ' A+ ' : ' Amazon 图组 '}提示词`)
         setBranchPromptProgress(56)
       }, 450),
       window.setTimeout(() => {
         setBranchPromptStatus('saving')
-        setBranchPromptLabel('正在整理并保存 Prompt 结果')
+        setBranchPromptLabel('正在整理并保存提示词结果')
         setBranchPromptProgress(84)
       }, 1300),
     ]
@@ -842,7 +847,7 @@ export default function AmazonPage({
 
       const payload = await response.json()
       if (!response.ok) {
-        throw new Error(payload.error || 'Prompt 生成失败')
+        throw new Error(payload.error || '提示词生成失败')
       }
 
       const result = payload.result as PromptGenerationResult | APlusPromptGenerationResult
@@ -853,7 +858,7 @@ export default function AmazonPage({
         aplus: branch === 'aplus' ? result as APlusPromptGenerationResult : prev.aplus,
       }))
       setBranchPromptStatus('completed')
-      setBranchPromptLabel('Prompt 已生成，正在进入图片生成页')
+      setBranchPromptLabel('提示词已生成，正在进入图片生成页')
       setBranchPromptProgress(100)
       const defaultPromptKey: PromptKey = branch === 'amazon-set' ? 'main-white' : getDefaultAPlusPromptKey(result)
       setSelectedImageType(defaultPromptKey)
@@ -866,7 +871,7 @@ export default function AmazonPage({
     } catch (error) {
       progressTimers.forEach((timer) => window.clearTimeout(timer))
       console.error('Error generating branch prompts:', error)
-      setPromptGenerationError(error instanceof Error ? error.message : 'Prompt 生成失败')
+      setPromptGenerationError(error instanceof Error ? error.message : '提示词生成失败')
       setBranchPromptStatus('error')
       setBranchPromptLabel('')
       setBranchPromptProgress(0)
@@ -906,46 +911,6 @@ export default function AmazonPage({
       setIsGenerating(false)
     }
   }, [activeReferenceImageCount, basicAnalysisResult, editedPrompt, generationCost, hasEnoughPointsToGenerate, isGenerating, requestGenerate, selectedBranch, selectedImageType, selectedSize])
-
-  const handleGenerateFullSet = useCallback(async () => {
-    if (!basicAnalysisResult || selectedBranch !== 'amazon-set' || isGenerating) return
-    if (!activeReferenceImageCount) {
-      alert('请先上传至少一张参考图，或从历史分析记录恢复参考图后再生成。')
-      return
-    }
-    if (!hasEnoughPointsToGenerate) {
-      alert('积分不足，请先充值后再生成图片。')
-      return
-    }
-
-    setIsGenerating(true)
-    setRouteNotice('正在尝试第一线路')
-
-    try {
-      const nextImages: GeneratedImage[] = []
-
-      for (const imageType of imageTypeOrder) {
-        const result = await requestGenerate(imageType, undefined, getDefaultSizeForType(imageType))
-        nextImages.push({
-          id: createImageId(),
-          imageUrl: result.imageUrl,
-          prompt: result.prompt,
-          imageType,
-        })
-        setPointsBalance((prev) => Math.max(0, Number((prev - generationCost).toFixed(1))))
-      }
-
-      setGeneratedImages((prev) => [...nextImages.reverse(), ...prev])
-      setRouteNotice('整套图片已完成生成。')
-    } catch (error) {
-      console.error('Error generating full set:', error)
-      const message = error instanceof Error ? error.message : 'Failed to generate the full image set. Please check your API keys.'
-      setRouteNotice(message)
-      alert(message)
-    } finally {
-      setIsGenerating(false)
-    }
-  }, [activeReferenceImageCount, basicAnalysisResult, generationCost, hasEnoughPointsToGenerate, isGenerating, requestGenerate, selectedBranch])
 
   const handleRegenerate = useCallback(async () => {
     if (!editingImage || !activeReferenceImageCount || isGenerating) return
@@ -998,7 +963,7 @@ export default function AmazonPage({
   const handleCopyPrompt = async (prompt: string) => {
     try {
       await navigator.clipboard.writeText(prompt)
-      alert('Prompt copied!')
+      alert('提示词已复制')
     } catch (err) {
       console.error('Failed to copy:', err)
     }
@@ -1036,14 +1001,14 @@ export default function AmazonPage({
                 先分析商品，再生成适合 Amazon 的图片。
               </h2>
               <p className="mt-3 text-sm leading-6 text-slate-600 sm:text-base">
-                先输入商品信息并上传参考图，让系统理解商品卖点和平台规范，再选择生成 Amazon 图组 Prompt 或 A+ Prompt。
+                先输入商品信息并上传参考图，让系统理解商品卖点和平台规范，再选择生成 Amazon 图组提示词或 A+ 提示词。
               </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-4">
               {[
                 { step: '01', label: '填写商品信息' },
                 { step: '02', label: '查看 AI 分析' },
-                { step: '03', label: '选择 Prompt 分支' },
+                { step: '03', label: '选择提示词分支' },
                 { step: '04', label: '生成图片' },
               ].map((item) => (
                 <div key={item.step} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
@@ -1076,7 +1041,7 @@ export default function AmazonPage({
                     </span>
                     <h3 className="mt-3 text-2xl font-semibold text-slate-950">AI 商品图片规划</h3>
                     <p className="mt-2 text-sm text-slate-500">
-                      当前步骤只完成商品分析。分析完成后，再选择生成 Amazon 图组 Prompt 或 A+ Prompt。
+                      当前步骤只完成商品分析。分析完成后，再选择生成 Amazon 图组提示词或 A+ 提示词。
                     </p>
                   </div>
                   <div className="flex flex-col gap-3 sm:flex-row">
@@ -1093,7 +1058,7 @@ export default function AmazonPage({
                       disabled={!canProceedToBranchSelection}
                       className="inline-flex rounded-2xl bg-amazon-orange px-5 py-3 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-slate-400"
                     >
-                      {canProceedToBranchSelection ? '下一步：选择 Prompt 分支' : '正在完成基础分析'}
+                      {canProceedToBranchSelection ? '下一步：选择提示词分支' : '正在完成基础分析'}
                     </button>
                   </div>
                 </div>
@@ -1116,12 +1081,6 @@ export default function AmazonPage({
                   {streamError && (
                     <div className="rounded-3xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700 md:col-span-2">
                       {streamError}
-                    </div>
-                  )}
-
-                  {canProceedToBranchSelection && !hasEnoughPointsToGenerate && (
-                    <div className="rounded-3xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800 md:col-span-2">
-                      当前积分不足，Amazon 与 A+ 生图每张需要 {formatPoints(generationCost)} 积分。请先前往积分中心充值或兑换积分包。
                     </div>
                   )}
 
@@ -1255,7 +1214,7 @@ export default function AmazonPage({
                       <div className="rounded-3xl border border-slate-200 bg-white p-5 md:col-span-2">
                         <h4 className="mb-2 text-sm font-semibold text-slate-800">下一步</h4>
                         <p className="text-sm leading-6 text-slate-500">
-                          基础分析完成后，你可以在下一步选择生成 Amazon 图组 Prompt，或者生成 A+ 页面 Prompt。
+                          基础分析完成后，你可以在下一步选择生成 Amazon 图组提示词，或者生成 A+ 页面提示词。
                         </p>
                       </div>
                     </>
@@ -1288,9 +1247,9 @@ export default function AmazonPage({
                   <div className="inline-flex rounded-full bg-amazon-orange/10 px-3 py-1 text-xs font-semibold text-amazon-orange">
                     分支选择
                   </div>
-                  <h3 className="mt-4 text-2xl font-semibold text-slate-950">选择接下来要生成哪一类 Prompt</h3>
+                  <h3 className="mt-4 text-2xl font-semibold text-slate-950">选择接下来要生成哪一类提示词</h3>
                   <p className="mt-2 text-sm leading-6 text-slate-500">
-                    基础分析已经完成。现在选择继续生成 Amazon 图组 Prompt，或者生成 4 张按整页 A+ 页面思路编排的模块图 Prompt。
+                    基础分析已经完成。现在选择继续生成 Amazon 图组提示词，或者生成 4 张按整页 A+ 页面思路编排的模块图提示词。
                   </p>
                   {promptGenerationError && (
                     <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
@@ -1311,9 +1270,9 @@ export default function AmazonPage({
                       disabled={branchPromptStatus !== 'idle' && branchPromptStatus !== 'error'}
                       className="rounded-3xl border border-slate-200 bg-white p-5 text-left transition hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      <div className="text-base font-semibold text-slate-900">生成 Amazon 图组 Prompt</div>
+                      <div className="text-base font-semibold text-slate-900">生成 Amazon 图组提示词</div>
                       <p className="mt-2 text-sm leading-6 text-slate-500">
-                        生成现有 7 张 Amazon 图组的默认 Prompt：白底主图、尺寸图、细节图、两张卖点图和两张场景图。
+                        生成现有 7 张 Amazon 图组的默认提示词：白底主图、尺寸图、细节图、两张卖点图和两张场景图。
                       </p>
                     </button>
 
@@ -1323,9 +1282,9 @@ export default function AmazonPage({
                       disabled={branchPromptStatus !== 'idle' && branchPromptStatus !== 'error'}
                       className="rounded-3xl border border-slate-200 bg-white p-5 text-left transition hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      <div className="text-base font-semibold text-slate-900">生成 A+ Prompt</div>
+                      <div className="text-base font-semibold text-slate-900">生成 A+ 提示词</div>
                       <p className="mt-2 text-sm leading-6 text-slate-500">
-                        生成 4 条连续的 A+ 模块图 Prompt，对应 1024x640 的横版模块图，可拼成一整页 A+ 页面叙事。
+                        生成 4 条连续的 A+ 模块图提示词，可拼成一整页 A+ 页面叙事。
                       </p>
                     </button>
                   </div>
@@ -1333,7 +1292,7 @@ export default function AmazonPage({
                   {branchPromptStatus !== 'idle' && branchPromptStatus !== 'error' && (
                     <div className="mt-4">
                       <TaskStatusPanel
-                        title="Prompt 生成状态"
+                        title="提示词生成状态"
                         stage={branchPromptStatus}
                         label={branchPromptLabel}
                         progress={branchPromptProgress}
@@ -1341,7 +1300,7 @@ export default function AmazonPage({
                         helperText="这一步会复用刚才的基础分析结果，生成完成后会直接进入图片生成页。"
                         steps={[
                           { key: 'preparing', label: '读取分析' },
-                          { key: 'analyzing', label: '生成 Prompt' },
+                          { key: 'analyzing', label: '生成提示词' },
                           { key: 'saving', label: '保存结果' },
                           { key: 'completed', label: '完成' },
                         ]}
@@ -1376,17 +1335,8 @@ export default function AmazonPage({
                         onClick={() => setCurrentStep('branch-select')}
                         className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900"
                       >
-                        切换 Prompt 分支
+                        切换提示词分支
                       </button>
-                      {selectedBranch === 'amazon-set' && (
-                        <button
-                          onClick={handleGenerateFullSet}
-                          disabled={isGenerating}
-                          className="rounded-2xl bg-amazon-orange px-5 py-3 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-slate-400"
-                        >
-                          {isGenerating ? 'Generating...' : '直接生成整套图'}
-                        </button>
-                      )}
                     </div>
                   </div>
                 </div>
@@ -1420,39 +1370,32 @@ export default function AmazonPage({
                     ))}
                   </div>
 
-                  <div className="mt-6">
-                    <label className="mb-3 block text-sm font-medium text-slate-800">
-                      生成尺寸
-                    </label>
-                    {selectedBranch === 'amazon-set' ? (
-                      <>
-                        <div className="grid gap-3 md:grid-cols-3">
-                          {amazonSizeOptions.map((option) => (
-                            <button
-                              key={option.value}
-                              onClick={() => setSelectedSize(option.value)}
-                              className={`rounded-2xl border p-4 text-left transition ${
-                                selectedSize === option.value
-                                  ? 'border-amazon-orange bg-orange-50 shadow-sm'
-                                  : 'border-slate-200 bg-white hover:border-slate-300'
-                              }`}
-                            >
-                              <div className="text-sm font-medium text-slate-800">{option.label}</div>
-                              <div className="mt-1 text-xs text-slate-500">{option.note}</div>
-                            </button>
-                          ))}
-                        </div>
-                        <p className="mt-3 text-xs text-slate-500">
-                          Amazon 图组分支当前只保留方图输出：`1024x1024` 或 `2048x2048`。
-                        </p>
-                      </>
-                    ) : (
-                      <div className="rounded-2xl border border-amazon-orange bg-orange-50 px-4 py-4">
-                        <div className="text-sm font-semibold text-slate-900">1024 × 640</div>
-                        <div className="mt-1 text-xs text-slate-500">A+ 页面固定横版模块尺寸</div>
+                  {selectedBranch === 'amazon-set' && (
+                    <div className="mt-6">
+                      <label className="mb-3 block text-sm font-medium text-slate-800">
+                        生成尺寸
+                      </label>
+                      <div className="grid gap-3 md:grid-cols-3">
+                        {amazonSizeOptions.map((option) => (
+                          <button
+                            key={option.value}
+                            onClick={() => setSelectedSize(option.value)}
+                            className={`rounded-2xl border p-4 text-left transition ${
+                              selectedSize === option.value
+                                ? 'border-amazon-orange bg-orange-50 shadow-sm'
+                                : 'border-slate-200 bg-white hover:border-slate-300'
+                            }`}
+                          >
+                            <div className="text-sm font-medium text-slate-800">{option.label}</div>
+                            <div className="mt-1 text-xs text-slate-500">{option.note}</div>
+                          </button>
+                        ))}
                       </div>
-                    )}
-                  </div>
+                      <p className="mt-3 text-xs text-slate-500">
+                        Amazon 图组分支当前只保留方图输出：`1024x1024` 或 `2048x2048`。
+                      </p>
+                    </div>
+                  )}
 
                   <div className="mt-6">
                     <label className="mb-3 block text-sm font-medium text-slate-800">
@@ -1480,7 +1423,7 @@ export default function AmazonPage({
                       placeholder={selectedBranch === 'amazon-set' ? '比如：更偏高端感、强调礼赠属性、尽量避免人物出镜、强调北美家居场景等' : '比如：四张图统一暖白家居风、像同一页 A+ 页面切片、第二张更强调展开方式、第四张带简洁参数区等'}
                     />
                     <p className="mt-2 text-xs text-slate-500">
-                      这部分会在生成时附加到当前推荐 Prompt 后面，不会改写系统已经生成好的基础策略。
+                      这部分会在生成时附加到当前推荐提示词后面，不会改写系统已经生成好的基础策略。
                     </p>
                   </div>
 
@@ -1581,7 +1524,7 @@ export default function AmazonPage({
 
                 <div className="mb-5">
                   <label className="mb-2 block text-sm font-medium text-slate-800">
-                    Edit Prompt & Regenerate
+                    编辑提示词并重新生成
                   </label>
                   <textarea
                     value={editingImage.prompt}
@@ -1603,7 +1546,7 @@ export default function AmazonPage({
                     onClick={() => handleCopyPrompt(editingImage.prompt)}
                     className="flex-1 rounded-2xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-200"
                   >
-                    Copy Prompt
+                    复制提示词
                   </button>
                 </div>
               </div>

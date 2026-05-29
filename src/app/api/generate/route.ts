@@ -1,7 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireApiUser } from '@/lib/auth'
 import { generateImage } from '@/lib/openai'
-import { AspectRatio, RenderSize, SIZE_OPTIONS, getDefaultSizeForAspectRatio, getSizesForAspectRatio } from '@/lib/image-options'
+import {
+  appendHiddenAPlusSizeRequirement,
+  AspectRatio,
+  HIDDEN_APLUS_RENDER_SIZE,
+  RenderSize,
+  SIZE_OPTIONS,
+  stripHiddenAPlusSizeRequirement,
+  getDefaultSizeForAspectRatio,
+  getSizesForAspectRatio,
+} from '@/lib/image-options'
 import { GenerationBillingScene } from '@/lib/points-config'
 import { createReferenceImagePayloadsFromFiles, createReferenceImagePayloadsFromUrls } from '@/lib/reference-images'
 
@@ -10,6 +19,10 @@ function isRenderSize(value: string | null): value is RenderSize {
 }
 
 function getValidSize(size: string | null, aspectRatio: AspectRatio): RenderSize {
+  if (size === HIDDEN_APLUS_RENDER_SIZE) {
+    return HIDDEN_APLUS_RENDER_SIZE
+  }
+
   if (size === '1024x640') {
     return '1024x640'
   }
@@ -26,7 +39,7 @@ function createRequestId(): string {
 }
 
 function resolveBillingScene(sourcePage: string, rawBillingScene: string | null): GenerationBillingScene {
-  if (rawBillingScene === 'amazon' || rawBillingScene === 'reverse-prompt' || rawBillingScene === 'playground') {
+  if (rawBillingScene === 'amazon' || rawBillingScene === 'aplus' || rawBillingScene === 'reverse-prompt' || rawBillingScene === 'playground') {
     return rawBillingScene
   }
 
@@ -45,7 +58,7 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData()
 
     const prompt = formData.get('prompt') as string
-    const imageType = formData.get('imageType') as string
+    const imageType = (formData.get('imageType') as string | null) || ''
     const sourcePage = (formData.get('sourcePage') as string) || 'playground'
     const billingScene = resolveBillingScene(sourcePage, formData.get('billingScene') as string | null)
     const aspectRatio = (formData.get('aspectRatio') as AspectRatio | null) || '1:1'
@@ -58,6 +71,7 @@ export async function POST(request: NextRequest) {
     const referenceImageUrls = referenceImageUrlsRaw
       ? JSON.parse(referenceImageUrlsRaw).filter((item: unknown): item is string => typeof item === 'string' && item.length > 0)
       : []
+    const isAPlus = sourcePage === 'amazon' && imageType.startsWith('aplus-')
 
     if (!prompt?.trim()) {
       console.warn('[api/generate] rejected request', {
@@ -70,8 +84,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const validSize = getValidSize(size, aspectRatio)
     const trimmedPrompt = prompt.trim()
+    const validSize = isAPlus ? HIDDEN_APLUS_RENDER_SIZE : getValidSize(size, aspectRatio)
+    const upstreamPrompt = isAPlus ? appendHiddenAPlusSizeRequirement(trimmedPrompt) : trimmedPrompt
 
     console.info('[api/generate] request received', {
       requestId,
@@ -98,7 +113,7 @@ export async function POST(request: NextRequest) {
     const result = await generateImage(
       {
         userId: user.id,
-        prompt: trimmedPrompt,
+        prompt: upstreamPrompt,
         referenceImages: imagePayloads,
         size: validSize,
         aspectRatio,
@@ -118,6 +133,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       ...result,
+      revisedPrompt: isAPlus ? trimmedPrompt : stripHiddenAPlusSizeRequirement(result.revisedPrompt),
       imageUrl: result.imageUrl,
       imageType,
       aspectRatio,

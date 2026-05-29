@@ -72,7 +72,7 @@ export interface PromptGenerationResult {
 
 export interface APlusPromptGenerationResult extends PromptGenerationResult {
   imageSpec: {
-    size: '1024x640'
+    size: '1600x1000'
     aspectRatio: '8:5'
   }
 }
