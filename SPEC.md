@@ -11,7 +11,7 @@
 
 - **Frontend**: Next.js 14 + React + TailwindCSS
 - **Backend**: Next.js API Routes
-- **AI Text Model**: Claude API (Anthropic) - for understanding product context and generating image prompts
+- **AI Text Model**: Database-managed OpenAI-compatible text provider pool - for understanding product context and generating image prompts
 - **Image Generation Model**: GPT-Image 2 (OpenAI) - for generating product images
 - **State Management**: React hooks + Context API
 - **HTTP Client**: Axios

@@ -5,12 +5,12 @@ export type RenderSize =
   | '2048x1365'
   | '1024x1536'
   | '1365x2048'
-  | '1600x1000'
+  | '1536x960'
   | '1024x640'
 export type AspectRatio = '1:1' | '3:2' | '2:3' | '8:5'
 
-export const HIDDEN_APLUS_RENDER_SIZE = '1600x1000' as const
-const HIDDEN_APLUS_PROMPT_REQUIREMENT = '补充执行要求：输出为 1600x1000 的横版画面，保持 8:5 构图。'
+export const HIDDEN_APLUS_RENDER_SIZE = '1536x960' as const
+const HIDDEN_APLUS_PROMPT_REQUIREMENT = '补充执行要求：输出为 1536x960 的横版画面，保持 8:5 构图。'
 
 export interface SizeOption {
   value: RenderSize

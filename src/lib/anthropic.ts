@@ -64,7 +64,7 @@ export interface GeneratePromptsOutput {
 
 export interface GenerateAPlusPromptOutput extends GeneratePromptsOutput {
   imageSpec: {
-    size: '1600x1000'
+    size: '1536x960'
     aspectRatio: '8:5'
   }
 }
@@ -634,7 +634,7 @@ ${aplusSummary}
         'aplus-lifestyle': lifestylePrompt,
       },
       imageSpec: {
-        size: '1600x1000',
+        size: '1536x960',
         aspectRatio: '8:5',
       },
     }
@@ -648,7 +648,7 @@ ${aplusSummary}
         'aplus-lifestyle': APLUS_DEFAULT_PROMPTS['aplus-lifestyle'],
       },
       imageSpec: {
-        size: '1600x1000',
+        size: '1536x960',
         aspectRatio: '8:5',
       },
     }

@@ -14,7 +14,7 @@
 - 前端：Next.js 14 + React + TailwindCSS
 - 数据库：PostgreSQL + Prisma
 - 认证：邮箱密码 + 数据库 session
-- 文本分析：OpenAI-compatible text model
+- 文本分析：OpenAI-compatible text provider pool
 - 图片生成：OpenAI-compatible image provider pool
 - 图片存储：Tencent Cloud COS
 
@@ -70,6 +70,7 @@ ADMIN_PASSWORD=change_me_please
 - `PROVIDER_KEY_ENCRYPTION_KEY` 用于加密数据库里的上游 provider key
 - `RESEND_API_KEY` 和 `RESEND_FROM` 用于注册邮箱验证码发送
 - 图片和文本 provider 都通过数据库维护
+- 运行时不读取 `TEXT_KEY`、`TEXT_URL`、`TEXT_MODEL` 这类环境变量
 - provider 的 base URL、model、优先级和 key 都通过脚本或后台写入
 
 ## 本地启动
