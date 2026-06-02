@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { formatDateTimeInBeijing } from '@/lib/date'
 import { formatPoints } from '@/lib/points-config'
 interface HistoryAnalysisRecord {
   id: string
@@ -63,7 +64,7 @@ function formatStatus(status: 'STARTED' | 'SUCCEEDED' | 'FAILED') {
 }
 
 function formatDate(value: string) {
-  return new Date(value).toLocaleString()
+  return formatDateTimeInBeijing(value)
 }
 
 export default function HistoryPageClient({ initialData }: { initialData: HistoryPageData }) {

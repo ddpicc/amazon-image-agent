@@ -12,7 +12,8 @@
     "db:push": "node scripts/db-push.mjs",
     "db:migrate:deploy": "node scripts/prisma-run.mjs migrate deploy",
     "db:seed": "node prisma/seed.mjs",
-    "provider:upsert": "node scripts/upsert-image-provider.mjs"
+    "provider:upsert": "node scripts/upsert-image-provider.mjs",
+    "text-provider:upsert": "node scripts/upsert-text-provider.mjs"
   },
   "prisma": {
     "schema": "prisma/schema.prisma"
@@ -29,7 +30,8 @@
     "openai": "^4.47.1",
     "prisma": "^5.22.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "resend": "^6.12.4"
   },
   "devDependencies": {
     "@types/node": "^20.12.12",

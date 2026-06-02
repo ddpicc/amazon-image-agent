@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import AdminCreatePackageForm from './AdminCreatePackageForm'
 import { requireAdmin } from '@/lib/auth'
+import { formatDateTimeInBeijing } from '@/lib/date'
 import { formatPoints, toDisplayPoints } from '@/lib/points-config'
 import { prisma } from '@/lib/prisma'
 
@@ -103,7 +104,7 @@ export default async function AdminPointsPage() {
                     <td className="py-4 pr-4 text-slate-700">{user.email}</td>
                     <td className="py-4 pr-4 text-slate-700">{user.role}</td>
                     <td className="py-4 pr-4 text-slate-700">{formatPoints(toDisplayPoints(user.pointsBalance))}</td>
-                    <td className="py-4 text-slate-700">{user.createdAt.toLocaleString()}</td>
+                    <td className="py-4 text-slate-700">{formatDateTimeInBeijing(user.createdAt)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -131,7 +132,7 @@ export default async function AdminPointsPage() {
                     <td className="py-4 pr-4 text-slate-700">{entry.type}</td>
                     <td className="py-4 pr-4 text-slate-700">{formatPoints(toDisplayPoints(entry.pointsDelta))}</td>
                     <td className="py-4 pr-4 text-slate-700">{formatPoints(toDisplayPoints(entry.balanceAfter))}</td>
-                    <td className="py-4 text-slate-700">{entry.createdAt.toLocaleString()}</td>
+                    <td className="py-4 text-slate-700">{formatDateTimeInBeijing(entry.createdAt)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -159,7 +160,7 @@ export default async function AdminPointsPage() {
                     <td className="py-4 pr-4 text-slate-700">{order.paymentPackage.name}</td>
                     <td className="py-4 pr-4 text-slate-700">¥{(order.amountCents / 100).toFixed(2)}</td>
                     <td className="py-4 pr-4 text-slate-700">{order.status}</td>
-                    <td className="py-4 text-slate-700">{order.createdAt.toLocaleString()}</td>
+                    <td className="py-4 text-slate-700">{formatDateTimeInBeijing(order.createdAt)}</td>
                   </tr>
                 ))}
               </tbody>

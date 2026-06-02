@@ -1,4 +1,5 @@
 import OpenAI from 'openai'
+import { requestTextJsonCompletion } from '@/lib/text-model'
 
 export type AmazonImageType = 'main-white' | 'lifestyle' | 'infographic' | 'detail' | 'size'
 export type RecommendedPlanType =
@@ -77,24 +78,6 @@ export interface PromptGenerationProgress {
   usedFallback: boolean
 }
 
-const TEXT_PROVIDER_TOTAL_TIMEOUT_MS = 5 * 60 * 1000
-const TEXT_PROVIDER_MIN_ATTEMPT_TIMEOUT_MS = 15 * 1000
-const TEXT_SERVICE_UNAVAILABLE_MESSAGE = '网站暂不可用，请稍后再试。'
-
-interface TextProviderConfig {
-  apiKey: string
-  baseURL: string
-  model: string
-  name: string
-}
-
-class TextServiceUnavailableError extends Error {
-  constructor(message = TEXT_SERVICE_UNAVAILABLE_MESSAGE) {
-    super(message)
-    this.name = 'TextServiceUnavailableError'
-  }
-}
-
 function getSuggestedPromptKey(type: AmazonImageType, index: number): string {
   if (type === 'main-white' || type === 'size' || type === 'detail') {
     return type
@@ -167,125 +150,11 @@ const APLUS_DEFAULT_PROMPTS: Record<
   'aplus-main': '为亚马逊普通 A+ 页面生成一张横版模块图，产品与参考图保持一致，产品是视觉主角，整体感觉自然、干净、有品牌感，可带少量英文信息区，但不要做成 listing 白底主图。',
 }
 
-function getTextProviderConfigs(): TextProviderConfig[] {
-  const providers = [
-    {
-      name: 'primary',
-      apiKey: process.env.TEXT_KEY,
-      baseURL: process.env.TEXT_URL,
-      model: process.env.TEXT_MODEL,
-    },
-    {
-      name: 'backup',
-      apiKey: process.env.TEXT_KEY_2,
-      baseURL: process.env.TEXT_URL_2,
-      model: process.env.TEXT_MODEL_2,
-    },
-  ]
-
-  const validProviders = providers.filter((provider) => provider.apiKey && provider.baseURL && provider.model)
-
-  if (validProviders.length === 0) {
-    throw new Error('No valid text provider is configured')
-  }
-
-  return validProviders as TextProviderConfig[]
-}
-
-function getOpenAIClient(provider: TextProviderConfig): OpenAI {
-  return new OpenAI({
-    apiKey: provider.apiKey,
-    baseURL: provider.baseURL,
-  })
-}
-
-function getDefaultTextProvider(): TextProviderConfig {
-  return getTextProviderConfigs()[0]
-}
-
-function isAbortLikeError(error: unknown) {
-  return Boolean(
-    error
-      && typeof error === 'object'
-      && ('name' in error || 'message' in error)
-      && (
-        (error as { name?: string }).name === 'AbortError'
-        || (error as { message?: string }).message?.includes('aborted')
-      ),
-  )
-}
-
-async function createChatCompletionWithFallback<T>(
-  buildRequest: (provider: TextProviderConfig, remainingMs: number) => Promise<T>,
-): Promise<T> {
-  const providers = getTextProviderConfigs()
-  const startedAt = Date.now()
-  const failures: string[] = []
-
-  for (let index = 0; index < providers.length; index += 1) {
-    const provider = providers[index]
-    const elapsed = Date.now() - startedAt
-    const remaining = TEXT_PROVIDER_TOTAL_TIMEOUT_MS - elapsed
-
-    if (remaining <= 0) {
-      throw new TextServiceUnavailableError()
-    }
-
-    try {
-      return await buildRequest(provider, remaining)
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      failures.push(`${provider.name}: ${message}`)
-
-      const isLastProvider = index === providers.length - 1
-      const totalTimedOut = Date.now() - startedAt >= TEXT_PROVIDER_TOTAL_TIMEOUT_MS
-      if (isLastProvider || totalTimedOut) {
-        console.error('Text providers failed:', failures.join(' | '))
-        throw new TextServiceUnavailableError()
-      }
-    }
-  }
-
-  throw new TextServiceUnavailableError()
-}
-
 async function requestJsonChatCompletion(
   content: any[],
   maxTokens: number,
 ): Promise<string> {
-  return createChatCompletionWithFallback(async (provider, remainingMs) => {
-    const openai = getOpenAIClient(provider)
-    const controller = new AbortController()
-    const timeoutMs = remainingMs <= TEXT_PROVIDER_MIN_ATTEMPT_TIMEOUT_MS
-      ? remainingMs
-      : Math.min(remainingMs, TEXT_PROVIDER_TOTAL_TIMEOUT_MS)
-    const timeout = setTimeout(() => controller.abort(), timeoutMs)
-
-    try {
-      const message = await openai.chat.completions.create({
-        model: provider.model,
-        messages: [
-          {
-            role: 'user',
-            content,
-          },
-        ],
-        max_tokens: maxTokens,
-        response_format: { type: 'json_object' },
-      }, {
-        signal: controller.signal,
-      })
-
-      return message.choices[0]?.message?.content || ''
-    } catch (error) {
-      if (isAbortLikeError(error)) {
-        throw new TextServiceUnavailableError()
-      }
-      throw error
-    } finally {
-      clearTimeout(timeout)
-    }
-  })
+  return requestTextJsonCompletion(content, maxTokens)
 }
 
 export async function analyzeProduct(input: AnalyzeProductInput): Promise<AnalyzeProductOutput> {
@@ -522,8 +391,6 @@ async function generateSinglePrompt(
   analysisSummary = '',
   priorPromptContext?: string,
 ): Promise<{ plan: RecommendedImagePlanItem; prompt: string }> {
-  const provider = getDefaultTextProvider()
-  const openai = getOpenAIClient(provider)
   const config = IMAGE_TYPE_CONFIG[promptKey]
 
   const contextText = `商品名称：${productName}
@@ -594,19 +461,7 @@ ${priorPromptContext}
     })
   }
 
-  const message = await openai.chat.completions.create({
-    model: provider.model,
-    messages: [
-      {
-        role: 'user',
-        content,
-      },
-    ],
-    max_tokens: 800,
-    response_format: { type: 'json_object' },
-  })
-
-  const responseText = message.choices[0]?.message?.content || ''
+  const responseText = await requestJsonChatCompletion(content, 800)
 
   const lastHyphenIndex = promptKey.lastIndexOf('-')
   const hasIndex = lastHyphenIndex > 0 && /\d$/.test(promptKey)
@@ -696,8 +551,6 @@ export async function generateAPlusPrompt(
   referenceImages: Array<{ data: string; mediaType: string }> = [],
   analysisSummary = '',
 ): Promise<GenerateAPlusPromptOutput> {
-  const provider = getDefaultTextProvider()
-  const openai = getOpenAIClient(provider)
   const content: any[] = [
     {
       type: 'text',
@@ -757,19 +610,7 @@ ${aplusSummary}
   }
 
   try {
-    const message = await openai.chat.completions.create({
-      model: provider.model,
-      messages: [
-        {
-          role: 'user',
-          content,
-        },
-      ],
-      max_tokens: 1200,
-      response_format: { type: 'json_object' },
-    })
-
-    const responseText = message.choices[0]?.message?.content || ''
+    const responseText = await requestJsonChatCompletion(content, 1200)
     const parsed = JSON.parse(responseText)
     const heroPrompt = typeof parsed.heroPrompt === 'string' && parsed.heroPrompt.trim()
       ? parsed.heroPrompt.trim()
@@ -815,8 +656,6 @@ ${aplusSummary}
 }
 
 export async function refineReversePrompt(extractedPrompt: string, userIntent = ''): Promise<{ finalPrompt: string }> {
-  const provider = getDefaultTextProvider()
-  const openai = getOpenAIClient(provider)
   const trimmedPrompt = extractedPrompt.trim()
   const trimmedIntent = userIntent.trim()
 
@@ -850,19 +689,7 @@ export async function refineReversePrompt(extractedPrompt: string, userIntent = 
     },
   ]
 
-  const message = await openai.chat.completions.create({
-    model: provider.model,
-    messages: [
-      {
-        role: 'user',
-        content,
-      },
-    ],
-    max_tokens: 500,
-    response_format: { type: 'json_object' },
-  })
-
-  const responseText = message.choices[0]?.message?.content || ''
+  const responseText = await requestJsonChatCompletion(content, 500)
 
   try {
     const parsed = JSON.parse(responseText)

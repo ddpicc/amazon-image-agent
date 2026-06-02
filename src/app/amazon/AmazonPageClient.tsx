@@ -17,6 +17,7 @@ import {
   getPromptResultForBranch,
   isPromptGenerationComplete,
 } from '@/lib/amazon-workflow'
+import { formatDateTimeInBeijing } from '@/lib/date'
 import { HIDDEN_APLUS_RENDER_SIZE, RenderSize } from '@/lib/image-options'
 import { formatPoints, GenerationBillingScene, getGenerationCostDisplay } from '@/lib/points-config'
 
@@ -517,7 +518,7 @@ export default function AmazonPage({
       } else {
         setCurrentStep('branch-select')
       }
-      setResumeNotice(`已从 ${new Date(initialResumeState.createdAt).toLocaleString()} 的分析记录恢复，当前继续使用已保存的参考图。`)
+      setResumeNotice(`已从 ${formatDateTimeInBeijing(initialResumeState.createdAt)} 的分析记录恢复，当前继续使用已保存的参考图。`)
       return
     }
 

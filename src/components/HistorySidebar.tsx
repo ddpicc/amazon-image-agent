@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { formatShortDateTimeInBeijing } from '@/lib/date'
 
 interface HistoryItem {
   id: string
@@ -19,12 +20,7 @@ interface HistorySidebarProps {
 
 export default function HistorySidebar({ history, onSelectItem, onClearHistory }: HistorySidebarProps) {
   const formatDate = (date: Date) => {
-    return new Intl.DateTimeFormat('zh-CN', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    }).format(date)
+    return formatShortDateTimeInBeijing(date)
   }
 
   return (

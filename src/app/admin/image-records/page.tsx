@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { requireAdmin } from '@/lib/auth'
+import { formatDateTimeInBeijing } from '@/lib/date'
 import { prisma } from '@/lib/prisma'
 
 export default async function AdminImageRecordsPage() {
@@ -51,7 +52,7 @@ export default async function AdminImageRecordsPage() {
               {records.map((record: AdminImageRecord) => (
                 <tr key={record.id} className="border-t border-slate-200 align-top">
                   <td className="py-4 pr-4 text-slate-700">{record.user.email}</td>
-                  <td className="py-4 pr-4 text-slate-700">{record.createdAt.toLocaleString()}</td>
+                  <td className="py-4 pr-4 text-slate-700">{formatDateTimeInBeijing(record.createdAt)}</td>
                   <td className="py-4 pr-4 text-slate-700">{record.entryApi}</td>
                   <td className="py-4 pr-4 text-slate-700">{record.selectedProviderBaseUrl || '-'}</td>
                   <td className="py-4 pr-4 text-slate-700">

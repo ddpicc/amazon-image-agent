@@ -50,10 +50,22 @@ export function hashRedemptionCode(code: string): string {
   return crypto.createHash('sha256').update(`redeem:${appSecret}:${code.trim().toUpperCase()}`).digest('hex')
 }
 
+export function hashEmailVerificationCode(email: string, code: string): string {
+  const appSecret = requireEnv('APP_SECRET')
+  return crypto
+    .createHash('sha256')
+    .update(`email-verify:${appSecret}:${email.trim().toLowerCase()}:${code.trim()}`)
+    .digest('hex')
+}
+
 export function generateOpaqueToken(): string {
   return crypto.randomBytes(32).toString('hex')
 }
 
 export function generateReferralCode(): string {
   return crypto.randomBytes(4).toString('hex')
+}
+
+export function generateEmailVerificationCode(): string {
+  return crypto.randomInt(0, 1_000_000).toString().padStart(6, '0')
 }

@@ -2,6 +2,7 @@ import Link from 'next/link'
 import AdminCreateRedemptionCodesForm from './AdminCreateRedemptionCodesForm'
 import CopyCodeButton from './CopyCodeButton'
 import { requireAdmin } from '@/lib/auth'
+import { formatDateTimeInBeijing, formatNullableDateTimeInBeijing } from '@/lib/date'
 import { formatPoints, toDisplayPoints } from '@/lib/points-config'
 import { prisma } from '@/lib/prisma'
 
@@ -66,7 +67,7 @@ export default async function AdminRedemptionCodesPage() {
             <tbody>
               {codes.map((code) => (
                 <tr key={code.id} className="border-t border-slate-200">
-                  <td className="py-4 pr-4 text-slate-700">{code.createdAt.toLocaleString()}</td>
+                  <td className="py-4 pr-4 text-slate-700">{formatDateTimeInBeijing(code.createdAt)}</td>
                   <td className="py-4 pr-4 text-slate-700">
                     {code.plainCode ? (
                       <div className="inline-flex items-center gap-2">
@@ -79,7 +80,7 @@ export default async function AdminRedemptionCodesPage() {
                   <td className="py-4 pr-4 text-slate-700">{formatPoints(toDisplayPoints(code.points))}</td>
                   <td className="py-4 pr-4 text-slate-700">{code.batchId || '-'}</td>
                   <td className="py-4 pr-4 text-slate-700">{code.status}</td>
-                  <td className="py-4 pr-4 text-slate-700">{code.expiresAt ? code.expiresAt.toLocaleString() : '-'}</td>
+                  <td className="py-4 pr-4 text-slate-700">{formatNullableDateTimeInBeijing(code.expiresAt)}</td>
                   <td className="py-4 pr-4 text-slate-700">{code.redeemedBy?.email || '-'}</td>
                   <td className="py-4 text-slate-700">{code.createdBy.email}</td>
                 </tr>

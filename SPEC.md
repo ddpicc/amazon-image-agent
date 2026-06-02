@@ -156,10 +156,5 @@ Same as POST /api/generate - allows user to modify prompt and regenerate
 ## 7. Environment Variables
 
 ```
-TEXT_KEY=                 # text API key
-TEXT_URL=                 # text API base URL
-TEXT_MODEL=               # text model name
-IMAGE_KEY=                # image API key
-IMAGE_URL=                # image API base URL
-IMAGE_MODEL=              # image model name
+PROVIDER_KEY_ENCRYPTION_KEY=  # encrypts provider API keys stored in DB
 ```

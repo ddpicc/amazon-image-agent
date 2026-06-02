@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { formatDateTimeInBeijing } from '@/lib/date'
 import { formatPoints } from '@/lib/points-config'
 
 interface RechargePackageItem {
@@ -211,7 +212,7 @@ export default function RechargePageClient({
               <div>套餐：{createdOrder.paymentPackage.name}</div>
               <div>积分：{formatPoints(createdOrder.paymentPackage.points)}</div>
               <div>金额：{formatMoney(createdOrder.amountCents, createdOrder.currency)}</div>
-              <div>创建时间：{new Date(createdOrder.createdAt).toLocaleString()}</div>
+              <div>创建时间：{formatDateTimeInBeijing(createdOrder.createdAt)}</div>
             </div>
             {createdOrder.img ? (
               <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">

@@ -1,4 +1,5 @@
 import OpenAI from 'openai'
+import { requestTextJsonCompletion } from '@/lib/text-model'
 
 export interface ReversePromptInput {
   image: {
@@ -12,36 +13,11 @@ export interface ReversePromptOutput {
   summary: string
 }
 
-function getOpenAIClient(): OpenAI {
-  const apiKey = process.env.TEXT_KEY
-  const baseURL = process.env.TEXT_URL
-
-  if (!apiKey) {
-    throw new Error('TEXT_KEY environment variable is not set')
-  }
-
-  if (!baseURL) {
-    throw new Error('TEXT_URL environment variable is not set')
-  }
-
-  return new OpenAI({
-    apiKey,
-    baseURL,
-  })
-}
-
 function buildFallbackPrompt() {
   return '一张写实商务人物棚拍肖像，主体居中，背景干净简洁，人物形象专业自然。整体光线柔和均匀，画面清晰利落，具有职业形象照与商务宣传感。'
 }
 
 export async function analyzeImageToPrompt(input: ReversePromptInput): Promise<ReversePromptOutput> {
-  const model = process.env.TEXT_MODEL
-  if (!model) {
-    throw new Error('TEXT_MODEL environment variable is not set')
-  }
-
-  const openai = getOpenAIClient()
-
   const content: OpenAI.Chat.Completions.ChatCompletionContentPart[] = [
     {
       type: 'text',
@@ -75,19 +51,7 @@ export async function analyzeImageToPrompt(input: ReversePromptInput): Promise<R
     },
   ]
 
-  const message = await openai.chat.completions.create({
-    model,
-    messages: [
-      {
-        role: 'user',
-        content,
-      },
-    ],
-    max_tokens: 900,
-    response_format: { type: 'json_object' },
-  })
-
-  const responseText = message.choices[0]?.message?.content || ''
+  const responseText = await requestTextJsonCompletion(content, 900)
 
   try {
     const parsed = JSON.parse(responseText)

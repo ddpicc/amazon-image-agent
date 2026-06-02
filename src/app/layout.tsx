@@ -44,7 +44,7 @@ export default async function RootLayout({
                       <Link href="/admin/image-records" className="text-sm text-slate-600 transition hover:text-slate-900">
                         管理记录
                       </Link>
-                      <Link href="/admin/image-providers" className="text-sm text-slate-600 transition hover:text-slate-900">
+                      <Link href="/admin/providers" className="text-sm text-slate-600 transition hover:text-slate-900">
                         Provider 管理
                       </Link>
                       <Link href="/admin/points" className="text-sm text-slate-600 transition hover:text-slate-900">

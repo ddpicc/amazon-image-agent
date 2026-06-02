@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
@@ -13,22 +13,75 @@ export default function AuthForm({ mode, initialReferralCode = '' }: AuthFormPro
   const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [verificationCode, setVerificationCode] = useState('')
   const [referralCode, setReferralCode] = useState(initialReferralCode)
   const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isSendingCode, setIsSendingCode] = useState(false)
+  const [codeCooldown, setCodeCooldown] = useState(0)
 
   const isLogin = mode === 'login'
+
+  useEffect(() => {
+    if (codeCooldown <= 0) {
+      return
+    }
+
+    const timer = window.setTimeout(() => {
+      setCodeCooldown((current) => current - 1)
+    }, 1000)
+
+    return () => window.clearTimeout(timer)
+  }, [codeCooldown])
+
+  const handleSendCode = async () => {
+    if (!email.trim()) {
+      setError('请先输入邮箱')
+      return
+    }
+
+    setError('')
+    setMessage('')
+    setIsSendingCode(true)
+
+    try {
+      const response = await fetch('/api/auth/register/send-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      })
+
+      const data = await response.json()
+      if (!response.ok) {
+        setError(data.error || '验证码发送失败')
+        const retryAfter = Number(response.headers.get('Retry-After') || 0)
+        if (retryAfter > 0) {
+          setCodeCooldown(retryAfter)
+        }
+        return
+      }
+
+      setMessage('验证码已发送，请查收邮箱')
+      setCodeCooldown(60)
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : '验证码发送失败')
+    } finally {
+      setIsSendingCode(false)
+    }
+  }
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setError('')
+    setMessage('')
     setIsSubmitting(true)
 
     try {
       const response = await fetch(`/api/auth/${mode}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, referralCode }),
+        body: JSON.stringify({ email, password, referralCode, verificationCode }),
       })
 
       const data = await response.json()
@@ -88,6 +141,33 @@ export default function AuthForm({ mode, initialReferralCode = '' }: AuthFormPro
 
             {!isLogin && (
               <div>
+                <label className="mb-2 block text-sm font-medium text-slate-800">邮箱验证码</label>
+                <div className="flex gap-3">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]{6}"
+                    value={verificationCode}
+                    onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                    className="input-field"
+                    placeholder="6位数字验证码"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSendCode}
+                    disabled={isSendingCode || codeCooldown > 0}
+                    className="shrink-0 rounded-2xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
+                  >
+                    {isSendingCode ? '发送中...' : (codeCooldown > 0 ? `${codeCooldown}s 后重发` : '发送验证码')}
+                  </button>
+                </div>
+                <p className="mt-2 text-xs text-slate-500">验证码 5 分钟内有效，同一邮箱 60 秒内不可重复发送。</p>
+              </div>
+            )}
+
+            {!isLogin && (
+              <div>
                 <label className="mb-2 block text-sm font-medium text-slate-800">邀请码</label>
                 <input
                   type="text"
@@ -96,6 +176,12 @@ export default function AuthForm({ mode, initialReferralCode = '' }: AuthFormPro
                   className="input-field"
                   placeholder="选填，填写后注册可获 6 积分"
                 />
+              </div>
+            )}
+
+            {message && (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                {message}
               </div>
             )}
 

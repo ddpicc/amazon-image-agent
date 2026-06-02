@@ -48,13 +48,9 @@ DATABASE_URL=postgresql://user:password@host:5432/amazon_image_agent
 APP_SECRET=replace_with_a_long_random_secret
 PROVIDER_KEY_ENCRYPTION_KEY=replace_with_a_second_long_random_secret
 
-# Text generation config
-TEXT_KEY=your_text_api_key_here
-TEXT_URL=https://www.uocode.com/v1
-TEXT_MODEL=gpt-5.4
-TEXT_KEY_2=your_backup_text_api_key_here
-TEXT_URL_2=https://your-backup-text-provider.example/v1
-TEXT_MODEL_2=gpt-5.4
+# Resend email
+RESEND_API_KEY=re_xxxxxxxxx
+RESEND_FROM=noreply@your-domain.com
 
 # Tencent COS
 COS_SECRET_ID=your_cos_secret_id
@@ -72,8 +68,9 @@ ADMIN_PASSWORD=change_me_please
 
 - `APP_SECRET` 用于 session token 哈希
 - `PROVIDER_KEY_ENCRYPTION_KEY` 用于加密数据库里的上游 provider key
-- 图片 provider 不再用单个 `IMAGE_URL` / `IMAGE_KEY` 环境变量配置
-- 图片 provider 通过数据库维护，用脚本写入
+- `RESEND_API_KEY` 和 `RESEND_FROM` 用于注册邮箱验证码发送
+- 图片和文本 provider 都通过数据库维护
+- provider 的 base URL、model、优先级和 key 都通过脚本或后台写入
 
 ## 本地启动
 
@@ -120,7 +117,24 @@ npm run provider:upsert
 
 如果你要加 backup provider，再执行一次，换一组名字、URL、model 和 key 即可。`PRIORITY` 越小优先级越高。
 
-### 6. 启动开发服务器
+### 6. 写入至少一个文本 provider
+
+示例：
+
+```bash
+PROVIDER_NAME=text-primary \
+PROVIDER_VENDOR=openai-compatible \
+PROVIDER_BASE_URL=https://www.uocode.com/v1 \
+PROVIDER_MODEL=gpt-5.4 \
+PROVIDER_API_KEY=your_text_api_key \
+PROVIDER_PRIORITY=100 \
+PROVIDER_ENABLED=true \
+npm run text-provider:upsert
+```
+
+如果你要加 backup provider，再执行一次，换一组名字、URL、model 和 key 即可。`PRIORITY` 越小优先级越高。
+
+### 7. 启动开发服务器
 
 ```bash
 npm run dev
@@ -164,6 +178,7 @@ npm run dev
 - `/api/analyze/prompts`
 
 都会要求登录，分析结果会落库，供 `/history` 回看。
+- 文本分析、Prompt 生成和反推提示词都从数据库读取 text provider，按优先级顺序 fallback。
 
 ## 常用脚本
 
@@ -174,6 +189,7 @@ npm run prisma:generate
 npm run db:push
 npm run db:seed
 npm run provider:upsert
+npm run text-provider:upsert
 ```
 
 ## Zeabur 部署说明
@@ -195,9 +211,8 @@ DATABASE_URL=...
 - `DATABASE_URL`
 - `APP_SECRET`
 - `PROVIDER_KEY_ENCRYPTION_KEY`
-- `TEXT_KEY`
-- `TEXT_URL`
-- `TEXT_MODEL`
+- `RESEND_API_KEY`
+- `RESEND_FROM`
 - `COS_SECRET_ID`
 - `COS_SECRET_KEY`
 - `COS_REGION`
@@ -249,7 +264,35 @@ PROVIDER_ENABLED=true \
 npm run provider:upsert
 ```
 
-### 5. 启动命令
+### 5. 写入文本 provider
+
+在 Zeabur Shell 中执行一次或多次：
+
+```bash
+PROVIDER_NAME=text-primary \
+PROVIDER_VENDOR=openai-compatible \
+PROVIDER_BASE_URL=https://www.uocode.com/v1 \
+PROVIDER_MODEL=gpt-5.4 \
+PROVIDER_API_KEY=your_text_api_key \
+PROVIDER_PRIORITY=100 \
+PROVIDER_ENABLED=true \
+npm run text-provider:upsert
+```
+
+再写 backup provider：
+
+```bash
+PROVIDER_NAME=text-backup-1 \
+PROVIDER_VENDOR=openai-compatible \
+PROVIDER_BASE_URL=https://backup.example.com/v1 \
+PROVIDER_MODEL=gpt-5.4 \
+PROVIDER_API_KEY=your_backup_text_key \
+PROVIDER_PRIORITY=200 \
+PROVIDER_ENABLED=true \
+npm run text-provider:upsert
+```
+
+### 6. 启动命令
 
 Zeabur 应用启动命令可保持：
 
@@ -264,7 +307,7 @@ npm install
 npm run build
 ```
 
-### 6. 上线后检查
+### 7. 上线后检查
 
 按这个顺序验证：
 
@@ -274,13 +317,13 @@ npm run build
 4. 生图成功后返回的是 COS URL
 5. `/history` 能看到自己的分析与生图记录
 6. `/admin/image-records` 能看到 provider、上游 URL、尝试次数、耗时和结果图
-7. `/admin/image-providers` 能管理 provider、优先级、启用状态和 API key 轮换
+7. `/admin/providers` 能统一管理图片 provider 和文本 provider，包括优先级、启用状态和 API key 轮换
 
 ## Provider 管理建议
 
 当前版本支持两种维护方式：
 
-- 管理员后台：`/admin/image-providers`
+- 管理员后台：`/admin/providers`
 - 脚本维护：适合初始化或批量导入
 
 推荐做法：

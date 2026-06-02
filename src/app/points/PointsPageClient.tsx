@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
+import { formatDateTimeInBeijing } from '@/lib/date'
 import { formatPoints, getGenerationCostDisplay } from '@/lib/points-config'
 
 interface PointsUser {
@@ -216,7 +217,7 @@ export default function PointsPageClient({ initialData }: { initialData: PointsP
               <div key={entry.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                 <div>
                   <div className="text-sm font-medium text-slate-900">{formatLedgerType(entry)}</div>
-                  <div className="mt-1 text-xs text-slate-500">{new Date(entry.createdAt).toLocaleString()}</div>
+                  <div className="mt-1 text-xs text-slate-500">{formatDateTimeInBeijing(entry.createdAt)}</div>
                 </div>
                 <div className="text-right">
                   <div className={`text-sm font-semibold ${entry.pointsDelta >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
@@ -292,7 +293,7 @@ export default function PointsPageClient({ initialData }: { initialData: PointsP
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <div className="text-sm font-medium text-slate-900">{order.paymentPackage.name}</div>
-                    <div className="mt-1 text-xs text-slate-500">{new Date(order.createdAt).toLocaleString()}</div>
+                    <div className="mt-1 text-xs text-slate-500">{formatDateTimeInBeijing(order.createdAt)}</div>
                   </div>
                   <div className="text-right text-sm text-slate-700">
                     <div>{formatMoney(order.amountCents, order.currency)}</div>
