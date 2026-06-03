@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
 
 const entries = [
@@ -30,6 +31,10 @@ const entries = [
 
 export default async function Home() {
   const user = await getCurrentUser()
+
+  if (user?.role === 'ADMIN') {
+    redirect('/admin')
+  }
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(255,153,0,0.12),_transparent_32%),linear-gradient(180deg,#fff_0%,#f8fafc_100%)]">

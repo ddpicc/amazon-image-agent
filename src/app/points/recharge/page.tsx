@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { requireUser } from '@/lib/auth'
+import { requireNonAdminUser } from '@/lib/auth'
 import { getPointsSummary } from '@/lib/points'
 import RechargePageClient from './RechargePageClient'
 
@@ -10,7 +10,7 @@ interface RechargePageProps {
 }
 
 export default async function RechargePage({ searchParams }: RechargePageProps) {
-  const user = await requireUser()
+  const user = await requireNonAdminUser()
   const summary = await getPointsSummary(user.id)
   const selectedPackageId = searchParams?.packageId || summary.packages[0]?.id || ''
 

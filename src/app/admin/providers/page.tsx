@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
+import { AttemptStatus, AiProviderType } from '@prisma/client'
 import AdminCreateImageProviderForm from '@/app/admin/image-providers/AdminCreateImageProviderForm'
 import AdminImageProviderRowActions from '@/app/admin/image-providers/AdminImageProviderRowActions'
 import AdminCreateTextProviderForm from '@/app/admin/text-providers/AdminCreateTextProviderForm'
@@ -53,6 +54,10 @@ function ProviderSection(props: {
     lastSuccessAt: Date | null
     cooldownUntil: Date | null
     updatedAt: Date
+    requestCount24h: number
+    successCount24h: number
+    avgDurationMs24h: number | null
+    recentErrorMessage: string | null
   }>
   createForm: ReactNode
   rowActions: (provider: { id: string; name: string; priority: number; enabled: boolean }, canMoveUp: boolean, canMoveDown: boolean) => ReactNode
@@ -135,8 +140,20 @@ function ProviderSection(props: {
                           <div className="mt-1 text-slate-900">{formatDate(provider.cooldownUntil)}</div>
                         </div>
                         <div>
-                          <div className="text-xs font-medium uppercase tracking-[0.18em] text-slate-400">Updated</div>
-                          <div className="mt-1 text-slate-900">{formatDate(provider.updatedAt)}</div>
+                          <div className="text-xs font-medium uppercase tracking-[0.18em] text-slate-400">24h requests</div>
+                          <div className="mt-1 text-slate-900">{provider.requestCount24h}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs font-medium uppercase tracking-[0.18em] text-slate-400">24h success rate</div>
+                          <div className="mt-1 text-slate-900">{provider.requestCount24h > 0 ? `${Math.round((provider.successCount24h / provider.requestCount24h) * 100)}%` : '-'}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs font-medium uppercase tracking-[0.18em] text-slate-400">24h avg duration</div>
+                          <div className="mt-1 text-slate-900">{provider.avgDurationMs24h ? `${Math.round(provider.avgDurationMs24h)}ms` : '-'}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs font-medium uppercase tracking-[0.18em] text-slate-400">Recent error</div>
+                          <div className="mt-1 break-all text-slate-900">{provider.recentErrorMessage || '-'}</div>
                         </div>
                       </div>
                     </div>
@@ -167,7 +184,8 @@ function ProviderSection(props: {
 export default async function AdminProvidersPage() {
   await requireAdmin()
 
-  const [imageProviders, textProviders] = await Promise.all([
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000)
+  const [imageProviders, textProviders, textAttempts24h] = await Promise.all([
     prisma.imageProvider.findMany({
       orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }],
       select: {
@@ -183,6 +201,14 @@ export default async function AdminProvidersPage() {
         lastSuccessAt: true,
         cooldownUntil: true,
         updatedAt: true,
+        requests: {
+          where: { createdAt: { gte: since } },
+          select: {
+            status: true,
+            durationMs: true,
+            errorMessage: true,
+          },
+        },
       },
     }),
     prisma.textProvider.findMany({
@@ -202,7 +228,50 @@ export default async function AdminProvidersPage() {
         updatedAt: true,
       },
     }),
+    prisma.aiOperationAttempt.findMany({
+      where: {
+        providerType: AiProviderType.TEXT,
+        createdAt: { gte: since },
+      },
+      select: {
+        providerId: true,
+        providerName: true,
+        status: true,
+        durationMs: true,
+        errorMessage: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    }),
   ])
+
+  const imageProviderSummaries = imageProviders.map((provider) => {
+    const durations = provider.requests.map((item) => item.durationMs).filter((value): value is number => typeof value === 'number')
+    const successCount24h = provider.requests.filter((item) => item.status === 'SUCCEEDED').length
+    const recentErrorMessage = provider.requests.find((item) => item.errorMessage)?.errorMessage ?? null
+
+    return {
+      ...provider,
+      requestCount24h: provider.requests.length,
+      successCount24h,
+      avgDurationMs24h: durations.length > 0 ? durations.reduce((sum, value) => sum + value, 0) / durations.length : null,
+      recentErrorMessage,
+    }
+  })
+
+  const textProviderSummaries = textProviders.map((provider) => {
+    const relatedAttempts = textAttempts24h.filter((attempt) => attempt.providerId === provider.id)
+
+    return {
+      ...provider,
+      requestCount24h: relatedAttempts.length,
+      successCount24h: relatedAttempts.filter((item) => item.status === AttemptStatus.SUCCEEDED).length,
+      avgDurationMs24h: (() => {
+        const durations = relatedAttempts.map((item) => item.durationMs).filter((value): value is number => typeof value === 'number')
+        return durations.length > 0 ? durations.reduce((sum, value) => sum + value, 0) / durations.length : null
+      })(),
+      recentErrorMessage: relatedAttempts.find((item) => item.errorMessage)?.errorMessage ?? null,
+    }
+  })
 
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,#fff_0%,#f8fafc_100%)] px-4 py-8 sm:px-6 lg:px-8">
@@ -213,8 +282,8 @@ export default async function AdminProvidersPage() {
             <h1 className="mt-2 text-3xl font-semibold text-slate-950">Providers</h1>
             <p className="mt-2 text-sm text-slate-500">统一管理图片线路和文本线路的优先级、启停状态、失败冷却和 API key 轮换。</p>
           </div>
-          <Link href="/" className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900">
-            返回首页
+          <Link href="/admin" className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900">
+            返回工作台
           </Link>
         </div>
 
@@ -222,7 +291,7 @@ export default async function AdminProvidersPage() {
           title="图片线路"
           description="Amazon 生图和 Playground 生图都走这里的 provider 池。"
           emptyText="当前还没有图片 provider，请先创建一条线路。"
-          providers={imageProviders}
+          providers={imageProviderSummaries}
           createForm={<AdminCreateImageProviderForm />}
           rowActions={(provider, canMoveUp, canMoveDown) => (
             <AdminImageProviderRowActions
@@ -237,7 +306,7 @@ export default async function AdminProvidersPage() {
           title="文本线路"
           description="产品分析、Prompt 生成和反推提示词都走这里的 provider 池。"
           emptyText="当前还没有文本 provider，请先创建一条线路。"
-          providers={textProviders}
+          providers={textProviderSummaries}
           createForm={<AdminCreateTextProviderForm />}
           rowActions={(provider, canMoveUp, canMoveDown) => (
             <AdminTextProviderRowActions

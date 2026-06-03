@@ -1,6 +1,6 @@
 import AmazonPageClient from './AmazonPageClient'
 import { AmazonResumeState, normalizePromptResults, isBasicAnalysisResult, parseStoredReferenceImages } from '@/lib/amazon-workflow'
-import { requireUser } from '@/lib/auth'
+import { requireNonAdminUser } from '@/lib/auth'
 import { getUserPointsBalance } from '@/lib/points'
 import { prisma } from '@/lib/prisma'
 
@@ -12,7 +12,7 @@ interface AmazonPageProps {
 }
 
 export default async function AmazonPage({ searchParams }: AmazonPageProps) {
-  const user = await requireUser()
+  const user = await requireNonAdminUser()
   const pointsBalance = await getUserPointsBalance(user.id)
   const analysisId = searchParams?.analysisId
   let initialResumeState: AmazonResumeState | null = null

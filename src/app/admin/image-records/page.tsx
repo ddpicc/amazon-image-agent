@@ -27,8 +27,8 @@ export default async function AdminImageRecordsPage() {
             <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">管理员</div>
             <h1 className="mt-2 text-3xl font-semibold text-slate-950">生图调用记录</h1>
           </div>
-          <Link href="/" className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900">
-            返回首页
+          <Link href="/admin" className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900">
+            返回工作台
           </Link>
         </div>
 

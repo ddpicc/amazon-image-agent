@@ -14,6 +14,14 @@ export interface AuthUser {
   role: 'ADMIN' | 'USER'
 }
 
+export function getDefaultAppPathForRole(role: AuthUser['role']) {
+  return role === 'ADMIN' ? '/admin' : '/'
+}
+
+export function getDefaultAppPathForUser(user: Pick<AuthUser, 'role'>) {
+  return getDefaultAppPathForRole(user.role)
+}
+
 function getSessionExpiryDate(): Date {
   const expiresAt = new Date()
   expiresAt.setDate(expiresAt.getDate() + SESSION_TTL_DAYS)
@@ -91,6 +99,14 @@ export async function requireAdmin(): Promise<AuthUser> {
   const user = await requireUser()
   if (user.role !== 'ADMIN') {
     redirect('/')
+  }
+  return user
+}
+
+export async function requireNonAdminUser(): Promise<AuthUser> {
+  const user = await requireUser()
+  if (user.role === 'ADMIN') {
+    redirect('/admin')
   }
   return user
 }

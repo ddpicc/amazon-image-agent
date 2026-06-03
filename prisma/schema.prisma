@@ -72,6 +72,18 @@ enum PaymentOrderStatus {
   REFUNDED
 }
 
+enum AiOperationKind {
+  ANALYSIS
+  IMAGE_GENERATION
+  REVERSE_PROMPT_ANALYZE
+  REVERSE_PROMPT_REFINE
+}
+
+enum AiProviderType {
+  TEXT
+  IMAGE
+}
+
 model User {
   id                      String                   @id @default(cuid())
   email                   String                   @unique
@@ -85,6 +97,7 @@ model User {
   sessions                Session[]
   analysisRecords         AnalysisRecord[]
   imageGenerationRequests ImageGenerationRequest[]
+  aiOperations            AiOperation[]
   pointsLedgerEntries     PointsLedgerEntry[]      @relation("PointsLedgerUser")
   createdRedemptionCodes  RedemptionCode[]         @relation("RedemptionCodeCreator")
   redeemedCodes           RedemptionCode[]         @relation("RedemptionCodeRedeemer")
@@ -125,6 +138,7 @@ model EmailVerificationCode {
 model AnalysisRecord {
   id                  String         @id @default(cuid())
   userId              String
+  operationId         String?        @unique
   productName         String
   description         String
   category            String
@@ -135,10 +149,15 @@ model AnalysisRecord {
   productSummary      String?
   analysisJson        Json?
   promptPlanJson      Json?
+  requestSnapshotJson Json?
+  responseSnapshotJson Json?
+  completedAt         DateTime?
+  durationMs          Int?
   errorMessage        String?
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
   user                User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  operation           AiOperation?   @relation(fields: [operationId], references: [id], onDelete: SetNull)
 
   @@index([userId, createdAt(sort: Desc)])
 }
@@ -186,6 +205,7 @@ model TextProvider {
 model ImageGenerationRequest {
   id                      String                   @id @default(cuid())
   userId                  String
+  operationId             String?                  @unique
   sourcePage              SourcePage
   entryApi                String
   selectedProviderId      String?
@@ -197,16 +217,21 @@ model ImageGenerationRequest {
   status                  GenerationStatus         @default(STARTED)
   durationMs              Int?
   prompt                  String
+  finalPrompt             String?
   revisedPrompt           String?
   imageType               String?
   aspectRatio             String?
   size                    String?
   referenceImageCount     Int                      @default(0)
+  referenceImagesJson     Json?
+  requestSnapshotJson     Json?
+  responseSnapshotJson    Json?
   errorMessage            String?
   pointsLedgerEntryId     String?                  @unique
   createdAt               DateTime                 @default(now())
   updatedAt               DateTime                 @updatedAt
   user                    User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  operation               AiOperation?             @relation(fields: [operationId], references: [id], onDelete: SetNull)
   selectedProvider        ImageProvider?           @relation(fields: [selectedProviderId], references: [id], onDelete: SetNull)
   attempts                ImageGenerationAttempt[]
   assets                  GeneratedImageAsset[]
@@ -217,36 +242,101 @@ model ImageGenerationRequest {
 }
 
 model ImageGenerationAttempt {
-  id              String          @id @default(cuid())
-  requestId       String
-  providerId      String?
-  baseUrl         String
-  model           String
-  attemptIndex    Int
-  status          AttemptStatus   @default(STARTED)
-  durationMs      Int?
-  errorMessage    String?
-  upstreamApiKind UpstreamApiKind @default(UNKNOWN)
-  startedAt       DateTime        @default(now())
-  completedAt     DateTime?
-  request         ImageGenerationRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  provider        ImageProvider?  @relation(fields: [providerId], references: [id], onDelete: SetNull)
+  id                   String               @id @default(cuid())
+  requestId            String
+  operationAttemptId   String?              @unique
+  providerId           String?
+  baseUrl              String
+  model                String
+  attemptIndex         Int
+  status               AttemptStatus        @default(STARTED)
+  durationMs           Int?
+  errorMessage         String?
+  upstreamApiKind      UpstreamApiKind      @default(UNKNOWN)
+  requestSnapshotJson  Json?
+  responseSnapshotJson Json?
+  startedAt            DateTime             @default(now())
+  completedAt          DateTime?
+  request              ImageGenerationRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  operationAttempt     AiOperationAttempt?  @relation(fields: [operationAttemptId], references: [id], onDelete: SetNull)
+  provider             ImageProvider?       @relation(fields: [providerId], references: [id], onDelete: SetNull)
 
   @@index([requestId, attemptIndex])
   @@index([providerId])
 }
 
 model GeneratedImageAsset {
-  id        String   @id @default(cuid())
-  requestId String
-  cosUrl    String
-  cosKey    String
-  mimeType  String
-  bytes     Int
-  createdAt DateTime @default(now())
-  request   ImageGenerationRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  id                 String        @id @default(cuid())
+  requestId          String
+  operationId        String?
+  cosUrl             String
+  cosKey             String
+  mimeType           String
+  bytes              Int
+  upstreamSourceUrl  String?
+  createdAt          DateTime      @default(now())
+  request            ImageGenerationRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  operation          AiOperation?  @relation(fields: [operationId], references: [id], onDelete: SetNull)
 
   @@index([requestId])
+  @@index([operationId])
+}
+
+model AiOperation {
+  id                      String               @id @default(cuid())
+  userId                  String
+  kind                    AiOperationKind
+  sourcePage              String?
+  entryPoint              String?
+  status                  AttemptStatus        @default(STARTED)
+  inputSummaryJson        Json?
+  outputSummaryJson       Json?
+  requestSnapshotJson     Json?
+  responseSnapshotJson    Json?
+  finalPrompt             String?
+  errorMessage            String?
+  pointsLedgerEntryId     String?
+  expiresAt               DateTime?
+  startedAt               DateTime             @default(now())
+  completedAt             DateTime?
+  durationMs              Int?
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+  user                    User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  analysisRecord          AnalysisRecord?
+  imageGenerationRequest  ImageGenerationRequest?
+  attempts                AiOperationAttempt[]
+  generatedAssets         GeneratedImageAsset[]
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([kind, createdAt(sort: Desc)])
+  @@index([status, createdAt(sort: Desc)])
+}
+
+model AiOperationAttempt {
+  id                    String          @id @default(cuid())
+  operationId           String
+  providerType          AiProviderType
+  providerId            String?
+  providerName          String?
+  baseUrl               String?
+  model                 String?
+  attemptIndex          Int
+  status                AttemptStatus   @default(STARTED)
+  durationMs            Int?
+  errorMessage          String?
+  upstreamApiKind       UpstreamApiKind @default(UNKNOWN)
+  requestSnapshotJson   Json?
+  responseSnapshotJson  Json?
+  startedAt             DateTime        @default(now())
+  completedAt           DateTime?
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  operation             AiOperation     @relation(fields: [operationId], references: [id], onDelete: Cascade)
+  imageGenerationAttempt ImageGenerationAttempt?
+
+  @@index([operationId, attemptIndex])
+  @@index([status, createdAt(sort: Desc)])
 }
 
 model PointsPackage {

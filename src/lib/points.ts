@@ -116,66 +116,94 @@ export async function grantRegistrationRewards(params: { userId: string; inviter
     }
 
     const inviteeIdempotencyKey = `signup:${params.userId}:referral-invitee`
-    const inviterIdempotencyKey = `signup:${params.userId}:referral-inviter:${params.inviterUserId}`
-    const [existingInviteeEntry, existingInviterEntry, inviter] = await Promise.all([
-      tx.pointsLedgerEntry.findUnique({ where: { idempotencyKey: inviteeIdempotencyKey } }),
-      tx.pointsLedgerEntry.findUnique({ where: { idempotencyKey: inviterIdempotencyKey } }),
-      tx.user.findUniqueOrThrow({
-        where: { id: params.inviterUserId },
-        select: { pointsBalance: true },
-      }),
-    ])
+    const existingInviteeEntry = await tx.pointsLedgerEntry.findUnique({
+      where: { idempotencyKey: inviteeIdempotencyKey },
+    })
 
-    if (existingInviteeEntry && existingInviterEntry) {
-      return { inviteeEntry: existingInviteeEntry, inviterEntry: existingInviterEntry }
+    if (existingInviteeEntry) {
+      return { inviteeEntry: existingInviteeEntry, inviterEntry: null }
     }
 
     const inviteeNextBalance = user.pointsBalance + REFERRAL_INVITEE_BONUS_POINTS
-    const inviterNextBalance = inviter.pointsBalance + REFERRAL_INVITER_REWARD_POINTS
 
-    await Promise.all([
-      tx.user.update({
-        where: { id: params.userId },
-        data: { pointsBalance: inviteeNextBalance },
-      }),
-      tx.user.update({
-        where: { id: params.inviterUserId },
-        data: { pointsBalance: inviterNextBalance },
-      }),
-    ])
+    await tx.user.update({
+      where: { id: params.userId },
+      data: { pointsBalance: inviteeNextBalance },
+    })
 
-    const [inviteeEntry, inviterEntry] = await Promise.all([
-      existingInviteeEntry ?? tx.pointsLedgerEntry.create({
-        data: {
-          userId: params.userId,
-          type: PointsLedgerType.REFERRAL_INVITEE_BONUS,
-          pointsDelta: REFERRAL_INVITEE_BONUS_POINTS,
-          balanceAfter: inviteeNextBalance,
-          idempotencyKey: inviteeIdempotencyKey,
-          referenceType: 'user',
-          referenceId: params.inviterUserId,
-          metadata: {
-            inviterUserId: params.inviterUserId,
-          },
+    const inviteeEntry = await tx.pointsLedgerEntry.create({
+      data: {
+        userId: params.userId,
+        type: PointsLedgerType.REFERRAL_INVITEE_BONUS,
+        pointsDelta: REFERRAL_INVITEE_BONUS_POINTS,
+        balanceAfter: inviteeNextBalance,
+        idempotencyKey: inviteeIdempotencyKey,
+        referenceType: 'user',
+        referenceId: params.inviterUserId,
+        metadata: {
+          inviterUserId: params.inviterUserId,
         },
-      }),
-      existingInviterEntry ?? tx.pointsLedgerEntry.create({
-        data: {
-          userId: params.inviterUserId,
-          type: PointsLedgerType.REFERRAL_INVITER_REWARD,
-          pointsDelta: REFERRAL_INVITER_REWARD_POINTS,
-          balanceAfter: inviterNextBalance,
-          idempotencyKey: inviterIdempotencyKey,
-          referenceType: 'user',
-          referenceId: params.userId,
-          metadata: {
-            invitedUserId: params.userId,
-          },
-        },
-      }),
-    ])
+      },
+    })
 
-    return { inviteeEntry, inviterEntry }
+    return { inviteeEntry, inviterEntry: null }
+  })
+}
+
+async function grantReferralInviterRewardOnFirstRecharge(tx: Prisma.TransactionClient, params: {
+  inviteeUserId: string
+  paymentOrderId: string
+  outTradeNo?: string | null
+}) {
+  const invitee = await tx.user.findUnique({
+    where: { id: params.inviteeUserId },
+    select: { invitedByUserId: true },
+  })
+
+  if (!invitee?.invitedByUserId) {
+    return null
+  }
+
+  const inviterRewardIdempotencyKey = `referral:first-recharge:${params.inviteeUserId}:inviter:${invitee.invitedByUserId}`
+  const existingInviterEntry = await tx.pointsLedgerEntry.findUnique({
+    where: { idempotencyKey: inviterRewardIdempotencyKey },
+  })
+
+  if (existingInviterEntry) {
+    return existingInviterEntry
+  }
+
+  const inviter = await tx.user.findUnique({
+    where: { id: invitee.invitedByUserId },
+    select: { pointsBalance: true },
+  })
+
+  if (!inviter) {
+    return null
+  }
+
+  const inviterNextBalance = inviter.pointsBalance + REFERRAL_INVITER_REWARD_POINTS
+
+  await tx.user.update({
+    where: { id: invitee.invitedByUserId },
+    data: { pointsBalance: inviterNextBalance },
+  })
+
+  return tx.pointsLedgerEntry.create({
+    data: {
+      userId: invitee.invitedByUserId,
+      type: PointsLedgerType.REFERRAL_INVITER_REWARD,
+      pointsDelta: REFERRAL_INVITER_REWARD_POINTS,
+      balanceAfter: inviterNextBalance,
+      idempotencyKey: inviterRewardIdempotencyKey,
+      referenceType: 'user',
+      referenceId: params.inviteeUserId,
+      metadata: {
+        invitedUserId: params.inviteeUserId,
+        paymentOrderId: params.paymentOrderId,
+        outTradeNo: params.outTradeNo,
+      },
+    },
   })
 }
 
@@ -454,6 +482,12 @@ export async function applyPaymentOrderSuccess(params: {
         ),
         paidAt: effectivePaidAt,
       },
+    })
+
+    await grantReferralInviterRewardOnFirstRecharge(tx, {
+      inviteeUserId: order.userId,
+      paymentOrderId: order.id,
+      outTradeNo: order.outTradeNo,
     })
 
     return ledgerEntry

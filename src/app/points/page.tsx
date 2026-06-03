@@ -1,10 +1,10 @@
 import Link from 'next/link'
 import PointsPageClient, { PointsPageData } from './PointsPageClient'
-import { requireUser } from '@/lib/auth'
+import { requireNonAdminUser } from '@/lib/auth'
 import { getPointsSummary } from '@/lib/points'
 
 export default async function PointsPage() {
-  const user = await requireUser()
+  const user = await requireNonAdminUser()
   const summary = await getPointsSummary(user.id)
 
   const initialData: PointsPageData = {

@@ -1,9 +1,11 @@
 import OpenAI from 'openai'
+import { UpstreamApiKind } from '@prisma/client'
 import {
   listCandidateTextProviders,
   markTextProviderFailure,
   markTextProviderSuccess,
 } from '@/lib/text-providers'
+import { completeAiOperationAttempt, startAiOperationAttempt } from '@/lib/ai-operations'
 
 const TEXT_PROVIDER_TOTAL_TIMEOUT_MS = 5 * 60 * 1000
 const TEXT_PROVIDER_MIN_ATTEMPT_TIMEOUT_MS = 15 * 1000
@@ -16,6 +18,12 @@ interface TextProviderConfig {
   baseURL: string
   model: string
   name: string
+}
+
+interface TextOperationContext {
+  operationId?: string
+  sourcePage?: string
+  entryPoint?: string
 }
 
 export class TextServiceUnavailableError extends Error {
@@ -47,6 +55,7 @@ function isAbortLikeError(error: unknown) {
 export async function requestTextJsonCompletion(
   content: OpenAI.Chat.Completions.ChatCompletionContentPart[],
   maxTokens: number,
+  operationContext?: TextOperationContext,
 ): Promise<string> {
   const providers = await listCandidateTextProviders()
   const startedAt = Date.now()
@@ -67,6 +76,30 @@ export async function requestTextJsonCompletion(
       ? remaining
       : Math.min(remaining, TEXT_PROVIDER_TOTAL_TIMEOUT_MS)
     const timeout = setTimeout(() => controller.abort(), timeoutMs)
+    const requestSnapshot = {
+      sourcePage: operationContext?.sourcePage ?? null,
+      entryPoint: operationContext?.entryPoint ?? null,
+      maxTokens,
+      messagePartCount: content.length,
+      textPreview: content
+        .filter((part): part is OpenAI.Chat.Completions.ChatCompletionContentPartText => part.type === 'text')
+        .map((part) => part.text)
+        .join('\n')
+        .slice(0, 2000),
+    }
+    const operationAttempt = operationContext?.operationId
+      ? await startAiOperationAttempt({
+          operationId: operationContext.operationId,
+          providerType: 'TEXT',
+          providerId: provider.id,
+          providerName: provider.name,
+          baseUrl: provider.baseURL,
+          model: provider.model,
+          attemptIndex: index + 1,
+          upstreamApiKind: UpstreamApiKind.UNKNOWN,
+          requestSnapshot,
+        })
+      : null
 
     try {
       const message = await openai.chat.completions.create({
@@ -87,6 +120,17 @@ export async function requestTextJsonCompletion(
         await markTextProviderSuccess(provider.id)
       }
 
+      if (operationAttempt) {
+        await completeAiOperationAttempt({
+          attemptId: operationAttempt.id,
+          status: 'SUCCEEDED',
+          responseSnapshot: {
+            contentLength: message.choices[0]?.message?.content?.length ?? 0,
+            finishReason: message.choices[0]?.finish_reason ?? null,
+          },
+        })
+      }
+
       return message.choices[0]?.message?.content || ''
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -94,6 +138,18 @@ export async function requestTextJsonCompletion(
 
       if (provider.id) {
         await markTextProviderFailure(provider.id).catch(() => undefined)
+      }
+
+      if (operationAttempt) {
+        await completeAiOperationAttempt({
+          attemptId: operationAttempt.id,
+          status: 'FAILED',
+          errorMessage: message,
+          responseSnapshot: {
+            aborted: isAbortLikeError(error),
+            errorMessage: message,
+          },
+        }).catch(() => undefined)
       }
 
       const isLastProvider = index === providers.length - 1

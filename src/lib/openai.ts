@@ -1,8 +1,10 @@
 import OpenAI from 'openai'
+import { Prisma } from '@prisma/client'
 import { uploadBufferToCos } from '@/lib/cos'
 import { decryptSecret } from '@/lib/crypto'
 import { AspectRatio, RenderSize } from '@/lib/image-options'
 import { listCandidateImageProviders, markProviderFailure, markProviderSuccess } from '@/lib/image-providers'
+import { startAiOperation, completeAiOperation, startAiOperationAttempt, completeAiOperationAttempt, getAiOperationExpiryDate } from '@/lib/ai-operations'
 import { GenerationBillingScene } from '@/lib/points-config'
 import { debitPointForGeneration, ensureSufficientPointsForGenerationByScene, InsufficientPointsError } from '@/lib/points'
 import { prisma } from '@/lib/prisma'
@@ -31,6 +33,7 @@ interface GenerateImageOutput {
   size: RenderSize
   aspectRatio?: AspectRatio
   requestId: string
+  operationId: string
   routeSummary: {
     selectedLineName: string
     selectedLineIndex: number
@@ -377,17 +380,64 @@ export async function generateImage(input: GenerateImageInput): Promise<Generate
   const { userId, prompt, referenceImages, size = '1024x1024', aspectRatio, imageType, sourcePage, billingScene, entryApi, onStatus } = input
   const mode = referenceImages.length > 0 ? 'edit' : 'generate'
   const startedAt = Date.now()
+  const operation = await startAiOperation({
+    userId,
+    kind: 'IMAGE_GENERATION',
+    sourcePage,
+    entryPoint: entryApi,
+    inputSummary: {
+      promptLength: prompt.length,
+      sourcePage,
+      billingScene,
+      imageType: imageType ?? null,
+      aspectRatio: aspectRatio ?? null,
+      size,
+      referenceImageCount: referenceImages.length,
+      referenceMediaTypes: referenceImages.map((image) => image.mediaType),
+    },
+    requestSnapshot: {
+      prompt,
+      sourcePage,
+      billingScene,
+      imageType: imageType ?? null,
+      aspectRatio: aspectRatio ?? null,
+      size,
+      mode,
+      referenceImages: referenceImages.map((image, index) => ({
+        index,
+        mediaType: image.mediaType,
+        sizeBytes: Buffer.from(image.data, 'base64').byteLength,
+      })),
+    },
+    expiresAt: getAiOperationExpiryDate(),
+  })
 
   const requestRecord = await prisma.imageGenerationRequest.create({
     data: {
       userId,
+      operationId: operation.id,
       sourcePage: sourcePageToEnum(sourcePage),
       entryApi,
       prompt,
+      finalPrompt: prompt,
       imageType,
       aspectRatio,
       size,
       referenceImageCount: referenceImages.length,
+      referenceImagesJson: referenceImages.map((image, index) => ({
+        index,
+        mediaType: image.mediaType,
+        sizeBytes: Buffer.from(image.data, 'base64').byteLength,
+      })) as Prisma.InputJsonValue,
+      requestSnapshotJson: {
+        prompt,
+        sourcePage,
+        billingScene,
+        imageType: imageType ?? null,
+        aspectRatio: aspectRatio ?? null,
+        size,
+        mode,
+      },
       finalUpstreamApiKind: upstreamApiKindFromMode(mode),
       status: 'STARTED',
     },
@@ -406,6 +456,16 @@ export async function generateImage(input: GenerateImageInput): Promise<Generate
           durationMs: Date.now() - startedAt,
         },
       })
+      await completeAiOperation({
+        operationId: operation.id,
+        status: 'FAILED',
+        finalPrompt: prompt,
+        errorMessage,
+        responseSnapshot: {
+          stage: 'preflight',
+          reason: 'insufficient_points',
+        },
+      }).catch(() => undefined)
       throw error
     }
 
@@ -423,6 +483,16 @@ export async function generateImage(input: GenerateImageInput): Promise<Generate
         durationMs: Date.now() - startedAt,
       },
     })
+    await completeAiOperation({
+      operationId: operation.id,
+      status: 'FAILED',
+      finalPrompt: prompt,
+      errorMessage,
+      responseSnapshot: {
+        stage: 'provider-discovery',
+        reason: 'no_enabled_providers',
+      },
+    }).catch(() => undefined)
     throw new Error(errorMessage)
   }
 
@@ -458,15 +528,38 @@ export async function generateImage(input: GenerateImageInput): Promise<Generate
       await emitStatus(`正在尝试第一线路`)
     }
     const attemptStartedAt = Date.now()
+    const attemptRequestSnapshot = {
+      prompt,
+      size,
+      aspectRatio: aspectRatio ?? null,
+      mode,
+      referenceImageCount: referenceImages.length,
+      providerName: provider.name,
+      providerBaseUrl: provider.baseUrl,
+      providerModel: provider.model,
+    }
+    const operationAttempt = await startAiOperationAttempt({
+      operationId: operation.id,
+      providerType: 'IMAGE',
+      providerId: provider.id,
+      providerName: provider.name,
+      baseUrl: provider.baseUrl,
+      model: provider.model,
+      attemptIndex: index + 1,
+      upstreamApiKind: upstreamApiKindFromMode(mode),
+      requestSnapshot: attemptRequestSnapshot,
+    })
     const attempt = await prisma.imageGenerationAttempt.create({
       data: {
         requestId: requestRecord.id,
+        operationAttemptId: operationAttempt.id,
         providerId: provider.id,
         baseUrl: provider.baseUrl,
         model: provider.model,
         attemptIndex: index + 1,
         upstreamApiKind: upstreamApiKindFromMode(mode),
         status: 'STARTED',
+        requestSnapshotJson: attemptRequestSnapshot as Prisma.InputJsonValue,
       },
     })
 
@@ -530,10 +623,12 @@ export async function generateImage(input: GenerateImageInput): Promise<Generate
         await prisma.generatedImageAsset.create({
           data: {
             requestId: requestRecord.id,
+            operationId: operation.id,
             cosUrl: uploaded.url,
             cosKey: uploaded.key,
             mimeType: uploaded.mimeType,
             bytes: uploaded.bytes,
+            upstreamSourceUrl: extracted.returnedKind === 'remote-url' ? 'remote-upstream' : null,
           },
         })
 
@@ -555,7 +650,24 @@ export async function generateImage(input: GenerateImageInput): Promise<Generate
         data: {
           status: 'SUCCEEDED',
           durationMs: Date.now() - attemptStartedAt,
+          responseSnapshotJson: {
+            returnedImageUrlKind: attemptResult.returnedImageUrlKind,
+            uploadedUrl: attemptResult.uploaded.url,
+            uploadedBytes: attemptResult.uploaded.bytes,
+            revisedPrompt: attemptResult.revisedPrompt,
+          },
           completedAt: new Date(),
+        },
+      })
+
+      await completeAiOperationAttempt({
+        attemptId: operationAttempt.id,
+        status: 'SUCCEEDED',
+        responseSnapshot: {
+          returnedImageUrlKind: attemptResult.returnedImageUrlKind,
+          uploadedUrl: attemptResult.uploaded.url,
+          uploadedBytes: attemptResult.uploaded.bytes,
+          revisedPrompt: attemptResult.revisedPrompt,
         },
       })
 
@@ -568,8 +680,30 @@ export async function generateImage(input: GenerateImageInput): Promise<Generate
           selectedProviderModel: provider.model,
           attemptCount: index + 1,
           revisedPrompt: attemptResult.revisedPrompt,
+          responseSnapshotJson: {
+            selectedProviderName: provider.name,
+            returnedImageUrlKind: attemptResult.returnedImageUrlKind,
+            uploadedUrl: attemptResult.uploaded.url,
+          },
           status: 'SUCCEEDED',
           durationMs: Date.now() - startedAt,
+        },
+      })
+
+      await completeAiOperation({
+        operationId: operation.id,
+        status: 'SUCCEEDED',
+        finalPrompt: prompt,
+        outputSummary: {
+          selectedProviderName: provider.name,
+          selectedProviderModel: provider.model,
+          attemptCount: index + 1,
+          imageUrl: attemptResult.uploaded.url,
+        },
+        responseSnapshot: {
+          revisedPrompt: attemptResult.revisedPrompt,
+          returnedImageUrlKind: attemptResult.returnedImageUrlKind,
+          uploadedUrl: attemptResult.uploaded.url,
         },
       })
 
@@ -604,6 +738,7 @@ export async function generateImage(input: GenerateImageInput): Promise<Generate
 
       return {
         requestId: requestRecord.id,
+        operationId: operation.id,
         imageUrl: attemptResult.uploaded.url,
         revisedPrompt: attemptResult.revisedPrompt,
         size,
@@ -626,9 +761,21 @@ export async function generateImage(input: GenerateImageInput): Promise<Generate
           status: 'FAILED',
           durationMs: Date.now() - attemptStartedAt,
           errorMessage: message,
+          responseSnapshotJson: {
+            errorMessage: message,
+          },
           completedAt: new Date(),
         },
       })
+
+      await completeAiOperationAttempt({
+        attemptId: operationAttempt.id,
+        status: 'FAILED',
+        errorMessage: message,
+        responseSnapshot: {
+          errorMessage: message,
+        },
+      }).catch(() => undefined)
 
       await markProviderFailure(provider.id)
 
@@ -658,8 +805,24 @@ export async function generateImage(input: GenerateImageInput): Promise<Generate
       status: 'FAILED',
       durationMs: Date.now() - startedAt,
       errorMessage,
+      responseSnapshotJson: {
+        attemptedLines,
+      },
     },
   })
+
+  await completeAiOperation({
+    operationId: operation.id,
+    status: 'FAILED',
+    finalPrompt: prompt,
+    errorMessage,
+    outputSummary: {
+      attemptedLines,
+    },
+    responseSnapshot: {
+      attemptedLines,
+    },
+  }).catch(() => undefined)
 
   console.error('[image.generate] request failed', {
     requestId: requestRecord.id,

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { startAiOperation, completeAiOperation, getAiOperationExpiryDate } from '@/lib/ai-operations'
 import { requireApiUser } from '@/lib/auth'
 import {
   buildAPlusAnalysisSummary,
@@ -35,6 +36,8 @@ function mergePromptResults(
 }
 
 export async function POST(request: NextRequest) {
+  let operationId: string | null = null
+
   try {
     const user = await requireApiUser(request)
     if (!user) {
@@ -48,6 +51,22 @@ export async function POST(request: NextRequest) {
     if (!analysisId || !branch) {
       return NextResponse.json({ error: 'analysisId and branch are required' }, { status: 400 })
     }
+
+    operationId = (await startAiOperation({
+      userId: user.id,
+      kind: 'ANALYSIS',
+      sourcePage: 'amazon',
+      entryPoint: '/api/analyze/prompts',
+      inputSummary: {
+        analysisId,
+        branch,
+      },
+      requestSnapshot: {
+        analysisId,
+        branch,
+      },
+      expiresAt: getAiOperationExpiryDate(),
+    })).id
 
     const record = await prisma.analysisRecord.findFirst({
       where: {
@@ -108,6 +127,7 @@ export async function POST(request: NextRequest) {
           record.targetAudience,
           imagePayloads,
           analysisSummary,
+          operationId ?? undefined,
         )),
       }
       : {
@@ -119,6 +139,7 @@ export async function POST(request: NextRequest) {
           record.targetAudience,
           imagePayloads,
           analysisSummary,
+          operationId ?? undefined,
         )),
       }
 
@@ -131,11 +152,33 @@ export async function POST(request: NextRequest) {
       },
     })
 
+    if (operationId) {
+      await completeAiOperation({
+        operationId,
+        status: 'SUCCEEDED',
+        outputSummary: {
+          branch,
+          promptCount: Object.keys(result.suggestedPrompts).length,
+        },
+        responseSnapshot: result,
+      }).catch(() => undefined)
+    }
+
     return NextResponse.json({
       branch,
       result,
     })
   } catch (error) {
+    if (operationId) {
+      await completeAiOperation({
+        operationId,
+        status: 'FAILED',
+        errorMessage: error instanceof Error ? error.message : 'Failed to generate prompts',
+        responseSnapshot: {
+          errorMessage: error instanceof Error ? error.message : 'Failed to generate prompts',
+        },
+      }).catch(() => undefined)
+    }
     console.error('Generate prompts error:', error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to generate prompts' },

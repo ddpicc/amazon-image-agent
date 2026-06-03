@@ -6,6 +6,7 @@ export interface ReversePromptInput {
     data: string
     mediaType: string
   }
+  operationId?: string
 }
 
 export interface ReversePromptOutput {
@@ -51,7 +52,11 @@ export async function analyzeImageToPrompt(input: ReversePromptInput): Promise<R
     },
   ]
 
-  const responseText = await requestTextJsonCompletion(content, 900)
+  const responseText = await requestTextJsonCompletion(content, 900, {
+    operationId: input.operationId,
+    sourcePage: 'reverse-prompt',
+    entryPoint: '/api/reverse-prompt',
+  })
 
   try {
     const parsed = JSON.parse(responseText)

@@ -90,7 +90,7 @@ export default function AuthForm({ mode, initialReferralCode = '' }: AuthFormPro
         return
       }
 
-      router.push('/')
+      router.push(data.user.role === 'ADMIN' ? '/admin' : '/')
       router.refresh()
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : '请求失败')

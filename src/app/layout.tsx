@@ -6,6 +6,21 @@ import { getCurrentUser } from '@/lib/auth'
 import { formatPoints, toDisplayPoints } from '@/lib/points-config'
 import { prisma } from '@/lib/prisma'
 
+const userNavLinks = [
+  { href: '/history', label: '我的历史' },
+  { href: '/points', label: '积分中心' },
+]
+
+const adminNavLinks = [
+  { href: '/admin', label: '工作台' },
+  { href: '/admin/users', label: '用户' },
+  { href: '/admin/points', label: '积分与充值' },
+  { href: '/admin/operations', label: 'AI 操作' },
+  { href: '/admin/image-records', label: '生图记录' },
+  { href: '/admin/providers', label: 'Provider 管理' },
+  { href: '/admin/redemption-codes', label: '兑换码' },
+]
+
 export const metadata: Metadata = {
   title: 'PageMint | Amazon Listing & A+ Image Workflow',
   description: 'Generate professional Amazon listing and A+ images using AI',
@@ -21,40 +36,26 @@ export default async function RootLayout({
     where: { id: user.id },
     select: { pointsBalance: true },
   }) : null
+  const isAdmin = user?.role === 'ADMIN'
+  const homeHref = isAdmin ? '/admin' : '/'
+  const navLinks = isAdmin ? adminNavLinks : userNavLinks
 
   return (
     <html lang="en">
       <body className="min-h-screen bg-gray-100">
         <header className="border-b border-slate-200 bg-white/90 backdrop-blur">
           <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
-            <Link href="/" className="text-sm font-semibold tracking-[0.24em] text-slate-800 uppercase">
+            <Link href={homeHref} className="text-sm font-semibold tracking-[0.24em] text-slate-800 uppercase">
               PageMint
             </Link>
             <div className="flex items-center gap-3">
               {user ? (
                 <>
-                  <Link href="/history" className="text-sm text-slate-600 transition hover:text-slate-900">
-                    我的历史
-                  </Link>
-                  <Link href="/points" className="text-sm text-slate-600 transition hover:text-slate-900">
-                    积分中心
-                  </Link>
-                  {user.role === 'ADMIN' && (
-                    <>
-                      <Link href="/admin/image-records" className="text-sm text-slate-600 transition hover:text-slate-900">
-                        管理记录
-                      </Link>
-                      <Link href="/admin/providers" className="text-sm text-slate-600 transition hover:text-slate-900">
-                        Provider 管理
-                      </Link>
-                      <Link href="/admin/points" className="text-sm text-slate-600 transition hover:text-slate-900">
-                        积分管理
-                      </Link>
-                      <Link href="/admin/redemption-codes" className="text-sm text-slate-600 transition hover:text-slate-900">
-                        兑换码
-                      </Link>
-                    </>
-                  )}
+                  {navLinks.map((item) => (
+                    <Link key={item.href} href={item.href} className="text-sm text-slate-600 transition hover:text-slate-900">
+                      {item.label}
+                    </Link>
+                  ))}
                   <span className="hidden text-sm text-slate-500 md:inline">{formatPoints(toDisplayPoints(account?.pointsBalance ?? 0))} 积分</span>
                   <span className="hidden text-sm text-slate-500 sm:inline">{user.email}</span>
                   <LogoutButton />

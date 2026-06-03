@@ -1,10 +1,10 @@
 import HistoryPageClient, { HistoryPageData } from './HistoryPageClient'
-import { requireUser } from '@/lib/auth'
+import { requireNonAdminUser } from '@/lib/auth'
 import { toDisplayPoints } from '@/lib/points-config'
 import { prisma } from '@/lib/prisma'
 
 export default async function HistoryPage() {
-  const user = await requireUser()
+  const user = await requireNonAdminUser()
   const [analysisRecords, imageRequests] = await Promise.all([
     prisma.analysisRecord.findMany({
       where: { userId: user.id },

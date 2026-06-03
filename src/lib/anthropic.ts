@@ -1,6 +1,12 @@
 import OpenAI from 'openai'
 import { requestTextJsonCompletion } from '@/lib/text-model'
 
+interface TextOperationContext {
+  operationId?: string
+  sourcePage?: string
+  entryPoint?: string
+}
+
 export type AmazonImageType = 'main-white' | 'lifestyle' | 'infographic' | 'detail' | 'size'
 export type RecommendedPlanType =
   | AmazonImageType
@@ -21,6 +27,7 @@ export interface AnalyzeProductInput {
     data: string
     mediaType: string
   }>
+  operationId?: string
 }
 
 export interface RecommendedImagePlanItem {
@@ -153,12 +160,13 @@ const APLUS_DEFAULT_PROMPTS: Record<
 async function requestJsonChatCompletion(
   content: any[],
   maxTokens: number,
+  operationContext?: TextOperationContext,
 ): Promise<string> {
-  return requestTextJsonCompletion(content, maxTokens)
+  return requestTextJsonCompletion(content, maxTokens, operationContext)
 }
 
 export async function analyzeProduct(input: AnalyzeProductInput): Promise<AnalyzeProductOutput> {
-  const { productName, description, category, targetAudience, referenceImages = [] } = input
+  const { productName, description, category, targetAudience, referenceImages = [], operationId } = input
 
   const content: any[] = [
     {
@@ -208,7 +216,11 @@ export async function analyzeProduct(input: AnalyzeProductInput): Promise<Analyz
     })
   }
 
-  const responseText = await requestJsonChatCompletion(content, 2048)
+  const responseText = await requestJsonChatCompletion(content, 2048, {
+    operationId,
+    sourcePage: 'amazon',
+    entryPoint: '/api/analyze',
+  })
 
   try {
     const parsed = JSON.parse(responseText)
@@ -390,6 +402,7 @@ async function generateSinglePrompt(
   referenceImages: Array<{ data: string; mediaType: string }> = [],
   analysisSummary = '',
   priorPromptContext?: string,
+  _operationId?: string,
 ): Promise<{ plan: RecommendedImagePlanItem; prompt: string }> {
   const config = IMAGE_TYPE_CONFIG[promptKey]
 
@@ -461,7 +474,11 @@ ${priorPromptContext}
     })
   }
 
-  const responseText = await requestJsonChatCompletion(content, 800)
+  const responseText = await requestJsonChatCompletion(content, 800, {
+    operationId: _operationId,
+    sourcePage: 'amazon',
+    entryPoint: '/api/analyze/prompts',
+  })
 
   const lastHyphenIndex = promptKey.lastIndexOf('-')
   const hasIndex = lastHyphenIndex > 0 && /\d$/.test(promptKey)
@@ -517,6 +534,7 @@ async function generateSinglePromptWithFallback(
   referenceImages: Array<{ data: string; mediaType: string }> = [],
   analysisSummary = '',
   priorPromptContext?: string,
+  _operationId?: string,
 ): Promise<{ plan: RecommendedImagePlanItem; prompt: string; usedFallback: boolean }> {
   try {
     const result = await generateSinglePrompt(
@@ -528,6 +546,7 @@ async function generateSinglePromptWithFallback(
       referenceImages,
       analysisSummary,
       priorPromptContext,
+      _operationId,
     )
 
     return {
@@ -550,6 +569,7 @@ export async function generateAPlusPrompt(
   targetAudience: string,
   referenceImages: Array<{ data: string; mediaType: string }> = [],
   analysisSummary = '',
+  operationId?: string,
 ): Promise<GenerateAPlusPromptOutput> {
   const content: any[] = [
     {
@@ -610,7 +630,11 @@ ${aplusSummary}
   }
 
   try {
-    const responseText = await requestJsonChatCompletion(content, 1200)
+    const responseText = await requestJsonChatCompletion(content, 1200, {
+      operationId,
+      sourcePage: 'amazon',
+      entryPoint: '/api/analyze/prompts',
+    })
     const parsed = JSON.parse(responseText)
     const heroPrompt = typeof parsed.heroPrompt === 'string' && parsed.heroPrompt.trim()
       ? parsed.heroPrompt.trim()
@@ -655,7 +679,11 @@ ${aplusSummary}
   }
 }
 
-export async function refineReversePrompt(extractedPrompt: string, userIntent = ''): Promise<{ finalPrompt: string }> {
+export async function refineReversePrompt(
+  extractedPrompt: string,
+  userIntent = '',
+  operationId?: string,
+): Promise<{ finalPrompt: string }> {
   const trimmedPrompt = extractedPrompt.trim()
   const trimmedIntent = userIntent.trim()
 
@@ -689,7 +717,11 @@ export async function refineReversePrompt(extractedPrompt: string, userIntent = 
     },
   ]
 
-  const responseText = await requestJsonChatCompletion(content, 500)
+  const responseText = await requestJsonChatCompletion(content, 500, {
+    operationId,
+    sourcePage: 'reverse-prompt',
+    entryPoint: '/api/reverse-prompt/refine',
+  })
 
   try {
     const parsed = JSON.parse(responseText)
@@ -715,6 +747,7 @@ export async function generatePromptsWithProgress(
   referenceImages: Array<{ data: string; mediaType: string }> = [],
   analysisSummary = '',
   onProgress?: (progress: PromptGenerationProgress) => void | Promise<void>,
+  _operationId?: string,
 ): Promise<GeneratePromptsOutput> {
   const total = 7
   let completed = 0
@@ -762,6 +795,7 @@ export async function generatePromptsWithProgress(
           referenceImages,
           analysisSummary,
           priorPromptContext,
+          _operationId,
         )
 
         return { key, ...result }
@@ -789,6 +823,7 @@ export async function generateAllPrompts(
   targetAudience: string,
   referenceImages: Array<{ data: string; mediaType: string }> = [],
   analysisSummary = '',
+  operationId?: string,
 ): Promise<GeneratePromptsOutput> {
   const result = await generatePromptsWithProgress(
     productName,
@@ -797,6 +832,8 @@ export async function generateAllPrompts(
     targetAudience,
     referenceImages,
     analysisSummary,
+    undefined,
+    operationId,
   )
 
   return {
