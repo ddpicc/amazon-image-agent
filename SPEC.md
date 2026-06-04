@@ -105,29 +105,9 @@ amazon-image-agent/
 
 ## 6. API Endpoints
 
-### POST /api/analyze
+### POST /api/analyze/stream
 **Input**: product text description + reference image
-**Output**: analysis, image prompts, visual elements
-
-Request body (multipart/form-data):
-```json
-{
-  "productName": "string",
-  "description": "string",
-  "category": "string",
-  "targetAudience": "string",
-  "referenceImage": "file (image)"
-}
-```
-
-Response:
-```json
-{
-  "analysis": "string",
-  "imagePrompts": ["string", "string", "string"],
-  "visualElements": ["string"]
-}
-```
+**Output**: streamed analysis lifecycle events, final analysis persisted for later prompt generation
 
 ### POST /api/generate
 **Input**: image prompt (user-edited) + reference image

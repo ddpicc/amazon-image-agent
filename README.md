@@ -174,7 +174,6 @@ npm run dev
 
 ### 分析链路
 
-- `/api/analyze`
 - `/api/analyze/stream`
 - `/api/analyze/prompts`
 

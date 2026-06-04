@@ -28,6 +28,8 @@ export interface AnalyzeProductInput {
     mediaType: string
   }>
   operationId?: string
+  sourcePage?: string
+  entryPoint?: string
 }
 
 export interface RecommendedImagePlanItem {
@@ -166,7 +168,16 @@ async function requestJsonChatCompletion(
 }
 
 export async function analyzeProduct(input: AnalyzeProductInput): Promise<AnalyzeProductOutput> {
-  const { productName, description, category, targetAudience, referenceImages = [], operationId } = input
+  const {
+    productName,
+    description,
+    category,
+    targetAudience,
+    referenceImages = [],
+    operationId,
+    sourcePage = 'amazon',
+    entryPoint = '/api/analyze/stream',
+  } = input
 
   const content: any[] = [
     {
@@ -218,8 +229,8 @@ export async function analyzeProduct(input: AnalyzeProductInput): Promise<Analyz
 
   const responseText = await requestJsonChatCompletion(content, 2048, {
     operationId,
-    sourcePage: 'amazon',
-    entryPoint: '/api/analyze',
+    sourcePage,
+    entryPoint,
   })
 
   try {
