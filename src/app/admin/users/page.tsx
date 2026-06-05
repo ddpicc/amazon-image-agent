@@ -13,6 +13,11 @@ export default async function AdminUsersPage() {
       id: true,
       email: true,
       role: true,
+      invitedBy: {
+        select: {
+          email: true,
+        },
+      },
       pointsBalance: true,
       createdAt: true,
       _count: {
@@ -63,6 +68,7 @@ export default async function AdminUsersPage() {
             <thead className="text-slate-500">
               <tr>
                 <th className="pb-3 pr-4">邮箱</th>
+                <th className="pb-3 pr-4">邀请人</th>
                 <th className="pb-3 pr-4">角色</th>
                 <th className="pb-3 pr-4">注册时间</th>
                 <th className="pb-3 pr-4">当前余额</th>
@@ -88,6 +94,7 @@ export default async function AdminUsersPage() {
                 return (
                   <tr key={user.id} className="border-t border-slate-200 align-top">
                     <td className="py-4 pr-4 text-slate-700">{user.email}</td>
+                    <td className="py-4 pr-4 text-slate-700">{user.invitedBy?.email ?? '-'}</td>
                     <td className="py-4 pr-4 text-slate-700">{user.role}</td>
                     <td className="py-4 pr-4 text-slate-700">{formatDateTimeInBeijing(user.createdAt)}</td>
                     <td className="py-4 pr-4 text-slate-700">{formatPoints(toDisplayPoints(user.pointsBalance))}</td>
