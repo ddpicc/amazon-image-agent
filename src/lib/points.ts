@@ -494,6 +494,43 @@ export async function applyPaymentOrderSuccess(params: {
   })
 }
 
+export async function settlePaymentOrderManually(params: {
+  orderId: string
+  adminUserId: string
+}) {
+  const order = await prisma.paymentOrder.findUnique({
+    where: { id: params.orderId },
+    select: {
+      id: true,
+      outTradeNo: true,
+      amountCents: true,
+      status: true,
+      providerOrderId: true,
+    },
+  })
+
+  if (!order) {
+    throw new Error('订单不存在')
+  }
+
+  if (!order.outTradeNo) {
+    throw new Error('订单缺少商户单号，无法入账')
+  }
+
+  return applyPaymentOrderSuccess({
+    outTradeNo: order.outTradeNo,
+    providerOrderId: order.providerOrderId || undefined,
+    paidAmountCents: order.amountCents,
+    notifyPayload: {
+      source: 'admin_manual_settle',
+      adminUserId: params.adminUserId,
+      previousStatus: order.status,
+      settledAt: new Date().toISOString(),
+    },
+    paidAt: new Date(),
+  })
+}
+
 export async function redeemCode(params: { userId: string; code: string }) {
   const codeHash = hashRedemptionCode(params.code)
   const now = new Date()

@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import AdminCreatePackageForm from './AdminCreatePackageForm'
+import AdminPaymentOrderRowActions from './AdminPaymentOrderRowActions'
 import { requireAdmin } from '@/lib/auth'
 import { formatDateTimeInBeijing } from '@/lib/date'
 import { formatPoints, toDisplayPoints } from '@/lib/points-config'
@@ -147,20 +148,26 @@ export default async function AdminPointsPage() {
               <thead className="text-slate-500">
                 <tr>
                   <th className="pb-3 pr-4">用户</th>
+                  <th className="pb-3 pr-4">商户单号</th>
                   <th className="pb-3 pr-4">套餐</th>
                   <th className="pb-3 pr-4">金额</th>
                   <th className="pb-3 pr-4">状态</th>
-                  <th className="pb-3">时间</th>
+                  <th className="pb-3 pr-4">时间</th>
+                  <th className="pb-3">操作</th>
                 </tr>
               </thead>
               <tbody>
                 {paymentOrders.map((order) => (
                   <tr key={order.id} className="border-t border-slate-200">
                     <td className="py-4 pr-4 text-slate-700">{order.user.email}</td>
+                    <td className="py-4 pr-4 text-slate-700">{order.outTradeNo || '-'}</td>
                     <td className="py-4 pr-4 text-slate-700">{order.paymentPackage.name}</td>
                     <td className="py-4 pr-4 text-slate-700">¥{(order.amountCents / 100).toFixed(2)}</td>
                     <td className="py-4 pr-4 text-slate-700">{order.status}</td>
-                    <td className="py-4 text-slate-700">{formatDateTimeInBeijing(order.createdAt)}</td>
+                    <td className="py-4 pr-4 text-slate-700">{formatDateTimeInBeijing(order.createdAt)}</td>
+                    <td className="py-4 text-slate-700">
+                      <AdminPaymentOrderRowActions order={{ id: order.id, outTradeNo: order.outTradeNo, status: order.status }} />
+                    </td>
                   </tr>
                 ))}
               </tbody>
