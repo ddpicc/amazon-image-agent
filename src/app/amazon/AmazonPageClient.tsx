@@ -764,6 +764,17 @@ export default function AmazonPage({
         setRouteNotice(payload.errorMessage || payload.statusMessage || '')
       } catch (error) {
         console.error('Failed to poll image generation request:', error)
+        const message = error instanceof Error ? error.message : '同步生成结果失败'
+        setRouteNotice(message)
+        setGeneratedImages((prev) => prev.map((image) => (
+          image.id === params.imageId
+            ? {
+                ...image,
+                statusMessage: message,
+                errorMessage: image.errorMessage,
+              }
+            : image
+        )))
       }
     }
 

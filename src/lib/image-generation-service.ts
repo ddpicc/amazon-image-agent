@@ -596,9 +596,26 @@ export async function syncImageGenerationRequestFromWorker(requestId: string) {
   })
 }
 
+export async function syncImageGenerationRequestFromWorkerSafely(requestId: string) {
+  try {
+    return await syncImageGenerationRequestFromWorker(requestId)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '同步远端任务状态失败'
+
+    await prisma.imageGenerationRequest.update({
+      where: { id: requestId },
+      data: {
+        statusMessage: `同步远端任务状态失败：${message}`,
+      },
+    }).catch(() => undefined)
+
+    return getImageGenerationStatusRecord(requestId)
+  }
+}
+
 export async function syncActiveImageGenerationRequests(requestIds: string[]) {
   await Promise.allSettled(
-    requestIds.map((requestId) => syncImageGenerationRequestFromWorker(requestId)),
+    requestIds.map((requestId) => syncImageGenerationRequestFromWorkerSafely(requestId)),
   )
 }
 

@@ -205,6 +205,17 @@ export default function PlaygroundPage({ initialPointsBalance }: { initialPoints
         }
       } catch (error) {
         console.error('Failed to poll image generation request:', error)
+        const message = error instanceof Error ? error.message : '同步生成结果失败'
+        setRouteNotice(message)
+        setGeneratedImages((prev) => prev.map((image) => (
+          image.requestId === requestId
+            ? {
+                ...image,
+                statusMessage: message,
+                errorMessage: image.errorMessage,
+              }
+            : image
+        )))
       }
     }
 

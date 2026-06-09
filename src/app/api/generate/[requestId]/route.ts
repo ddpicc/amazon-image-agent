@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireApiUser } from '@/lib/auth'
-import { buildImageGenerationRouteSummary, getImageGenerationStatusRecord, syncImageGenerationRequestFromWorker } from '@/lib/image-generation-service'
+import { buildImageGenerationRouteSummary, getImageGenerationStatusRecord, syncImageGenerationRequestFromWorkerSafely } from '@/lib/image-generation-service'
 import { toDisplayPoints } from '@/lib/points-config'
 import { isImageGenerationActive } from '@/lib/image-generation'
 
@@ -26,7 +26,7 @@ export async function GET(
   }
 
   if (isImageGenerationActive(record.status as any) && record.workerJobId) {
-    record = (await syncImageGenerationRequestFromWorker(requestId)) || record
+    record = (await syncImageGenerationRequestFromWorkerSafely(requestId)) || record
   }
 
   const active = isImageGenerationActive(record.status as any)
