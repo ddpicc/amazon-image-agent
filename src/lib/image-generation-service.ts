@@ -401,7 +401,6 @@ async function upsertAttemptForRemote(params: {
 
   const attemptData = {
     operationAttemptId: operationAttempt?.id ?? existingAttempt?.operationAttemptId ?? null,
-    providerId: null,
     baseUrl: params.remoteAttempt.baseUrl,
     model: params.remoteAttempt.model,
     status: parseAttemptStatus(params.remoteAttempt.status),
