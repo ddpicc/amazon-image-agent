@@ -9,14 +9,14 @@ function getExtensionFromMediaType(mediaType: string): string {
   return 'bin'
 }
 
-function buildReferenceImageKey(recordId: string, index: number, mimeType: string): string {
+function buildReferenceImageKey(prefix: string, recordId: string, index: number, mimeType: string): string {
   const now = new Date()
   const yyyy = String(now.getUTCFullYear())
   const mm = String(now.getUTCMonth() + 1).padStart(2, '0')
   const dd = String(now.getUTCDate()).padStart(2, '0')
   const env = process.env.NODE_ENV || 'development'
   const ext = getExtensionFromMediaType(mimeType)
-  return `analysis-references/${env}/${yyyy}/${mm}/${dd}/${recordId}-${index + 1}.${ext}`
+  return `${prefix}/${env}/${yyyy}/${mm}/${dd}/${recordId}-${index + 1}.${ext}`
 }
 
 export async function createReferenceImagePayloadsFromFiles(files: File[]) {
@@ -42,7 +42,7 @@ export async function uploadReferenceImagesForAnalysis(params: {
       const mimeType = image.type || 'image/jpeg'
       const uploaded = await uploadBufferToCos({
         buffer,
-        key: buildReferenceImageKey(params.recordId, index, mimeType),
+        key: buildReferenceImageKey('analysis-references', params.recordId, index, mimeType),
         contentType: mimeType,
       })
 
@@ -69,6 +69,32 @@ export async function createReferenceImagePayloadsFromUrls(urls: string[]) {
       return {
         data: Buffer.from(arrayBuffer).toString('base64'),
         mediaType: response.headers.get('content-type') || 'image/jpeg',
+      }
+    }),
+  )
+}
+
+export async function uploadReferenceImagesForGeneration(params: {
+  requestId: string
+  files: File[]
+}): Promise<StoredReferenceImage[]> {
+  return Promise.all(
+    params.files.slice(0, 3).map(async (image, index) => {
+      const arrayBuffer = await image.arrayBuffer()
+      const buffer = Buffer.from(arrayBuffer)
+      const mimeType = image.type || 'image/jpeg'
+      const uploaded = await uploadBufferToCos({
+        buffer,
+        key: buildReferenceImageKey('generation-references', params.requestId, index, mimeType),
+        contentType: mimeType,
+      })
+
+      return {
+        url: uploaded.url,
+        key: uploaded.key,
+        mimeType: uploaded.mimeType,
+        bytes: uploaded.bytes,
+        name: image.name || `reference-${index + 1}.${getExtensionFromMediaType(mimeType)}`,
       }
     }),
   )

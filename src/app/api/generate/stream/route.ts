@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { requireApiUser } from '@/lib/auth'
-import { generateImage } from '@/lib/openai'
+import { createQueuedImageGenerationRequest, submitQueuedImageGenerationRequest } from '@/lib/image-generation-service'
 import {
   appendHiddenAPlusSizeRequirement,
   AspectRatio,
@@ -12,7 +12,7 @@ import {
   getSizesForAspectRatio,
 } from '@/lib/image-options'
 import { GenerationBillingScene } from '@/lib/points-config'
-import { createReferenceImagePayloadsFromFiles, createReferenceImagePayloadsFromUrls } from '@/lib/reference-images'
+import { uploadReferenceImagesForGeneration } from '@/lib/reference-images'
 
 type StreamEvent =
   | { type: 'status'; message: string }
@@ -28,6 +28,7 @@ type StreamEvent =
       }
     }
   | { type: 'error'; message: string }
+  | { type: 'queued'; data: { requestId: string; operationId: string; status: string; statusMessage: string } }
 
 function isRenderSize(value: string | null): value is RenderSize {
   return SIZE_OPTIONS.some((option) => option.value === value)
@@ -59,6 +60,10 @@ function resolveBillingScene(sourcePage: string, rawBillingScene: string | null)
   }
 
   return sourcePage === 'amazon' ? 'amazon' : 'playground'
+}
+
+function createRequestId(): string {
+  return `img_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 }
 
 export async function POST(request: NextRequest) {
@@ -105,32 +110,48 @@ export async function POST(request: NextRequest) {
         const trimmedPrompt = prompt.trim()
         const validSize = isAPlus ? HIDDEN_APLUS_RENDER_SIZE : getValidSize(size, aspectRatio)
         const upstreamPrompt = isAPlus ? appendHiddenAPlusSizeRequirement(trimmedPrompt) : trimmedPrompt
-        const imagePayloads = referenceImages.length > 0
-          ? await createReferenceImagePayloadsFromFiles(referenceImages)
-          : await createReferenceImagePayloadsFromUrls(referenceImageUrls)
 
-        const result = await generateImage({
+        let persistedRefImages: Awaited<ReturnType<typeof uploadReferenceImagesForGeneration>>
+
+        if (referenceImages.length > 0) {
+          const tempId = createRequestId()
+          persistedRefImages = await uploadReferenceImagesForGeneration({
+            requestId: tempId,
+            files: referenceImages,
+          })
+        } else if (referenceImageUrls.length > 0) {
+          persistedRefImages = referenceImageUrls.slice(0, 3).map((url: string, index: number) => ({
+            url,
+            key: '',
+            mimeType: 'image/jpeg',
+            bytes: 0,
+            name: `reference-${index + 1}`,
+          }))
+        } else {
+          persistedRefImages = []
+        }
+
+        const queued = await createQueuedImageGenerationRequest({
           userId: user.id,
           prompt: upstreamPrompt,
-          referenceImages: imagePayloads,
-          size: validSize,
-          aspectRatio,
-          imageType: imageType || undefined,
+          originalPrompt: trimmedPrompt,
           sourcePage: sourcePage === 'amazon' ? 'amazon' : 'playground',
           billingScene,
           entryApi: '/api/generate/stream',
-          onStatus: async (message) => {
-            push({ type: 'status', message })
-          },
+          imageType: imageType || null,
+          aspectRatio,
+          size: validSize,
+          referenceImages: persistedRefImages,
         })
 
-        push({
-          type: 'result',
-          data: {
-            ...result,
-            revisedPrompt: isAPlus ? trimmedPrompt : stripHiddenAPlusSizeRequirement(result.revisedPrompt),
-          },
-        })
+        await submitQueuedImageGenerationRequest(queued.requestId)
+
+        push({ type: 'queued', data: {
+          requestId: queued.requestId,
+          operationId: queued.operationId,
+          status: queued.status,
+          statusMessage: queued.statusMessage,
+        }})
         controller.close()
       } catch (error) {
         push({

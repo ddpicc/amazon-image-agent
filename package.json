@@ -12,7 +12,6 @@
     "db:push": "node scripts/db-push.mjs",
     "db:migrate:deploy": "node scripts/prisma-run.mjs migrate deploy",
     "db:seed": "node prisma/seed.mjs",
-    "provider:upsert": "node scripts/upsert-image-provider.mjs",
     "text-provider:upsert": "node scripts/upsert-text-provider.mjs"
   },
   "prisma": {
@@ -40,6 +39,7 @@
     "autoprefixer": "^10.4.19",
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.3",
+    "tsx": "^4.22.4",
     "typescript": "^5.4.5"
   }
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireApiUser } from '@/lib/auth'
-import { generateImage } from '@/lib/openai'
+import { createQueuedImageGenerationRequest, submitQueuedImageGenerationRequest } from '@/lib/image-generation-service'
 import {
   appendHiddenAPlusSizeRequirement,
   AspectRatio,
@@ -12,7 +12,7 @@ import {
   getSizesForAspectRatio,
 } from '@/lib/image-options'
 import { GenerationBillingScene } from '@/lib/points-config'
-import { createReferenceImagePayloadsFromFiles, createReferenceImagePayloadsFromUrls } from '@/lib/reference-images'
+import { uploadReferenceImagesForGeneration } from '@/lib/reference-images'
 
 function isRenderSize(value: string | null): value is RenderSize {
   return SIZE_OPTIONS.some((option) => option.value === value)
@@ -88,61 +88,59 @@ export async function POST(request: NextRequest) {
     const validSize = isAPlus ? HIDDEN_APLUS_RENDER_SIZE : getValidSize(size, aspectRatio)
     const upstreamPrompt = isAPlus ? appendHiddenAPlusSizeRequirement(trimmedPrompt) : trimmedPrompt
 
-    console.info('[api/generate] request received', {
-      requestId,
-      imageType: imageType || 'unknown',
-      aspectRatio,
-      requestedSize: size || 'unspecified',
-      resolvedSize: validSize,
-      promptLength: trimmedPrompt.length,
-      referenceImageCount: referenceImages.length || referenceImageUrls.length,
-      referenceMediaTypes: referenceImages.map((image) => image.type || 'image/jpeg'),
-    })
-
-    const imagePayloads = referenceImages.length > 0
-      ? await createReferenceImagePayloadsFromFiles(referenceImages)
-      : await createReferenceImagePayloadsFromUrls(referenceImageUrls)
-
     console.info('[api/generate] upstream dispatch', {
       requestId,
       imageType: imageType || 'unknown',
-      mode: imagePayloads.length > 0 ? 'edit' : 'generate',
-      payloadImageCount: imagePayloads.length,
+      mode: (referenceImages.length > 0 || referenceImageUrls.length > 0) ? 'edit' : 'generate',
+      payloadImageCount: referenceImages.length || referenceImageUrls.length,
     })
 
-    const result = await generateImage(
-      {
-        userId: user.id,
-        prompt: upstreamPrompt,
-        referenceImages: imagePayloads,
-        size: validSize,
-        aspectRatio,
-        imageType: imageType || undefined,
-        sourcePage: sourcePage === 'amazon' ? 'amazon' : 'playground',
-        billingScene,
-        entryApi: '/api/generate',
-      },
-    )
+    let persistedRefImages: Awaited<ReturnType<typeof uploadReferenceImagesForGeneration>>
 
-    console.info('[api/generate] request succeeded', {
-      requestId,
-      imageType: imageType || 'unknown',
-      returnedImageUrlKind: result.imageUrl.startsWith('data:') ? 'data-url' : (result.imageUrl ? 'url' : 'empty'),
-      revisedPromptLength: result.revisedPrompt.length,
+    if (referenceImages.length > 0) {
+      const tempId = createRequestId()
+      persistedRefImages = await uploadReferenceImagesForGeneration({
+        requestId: tempId,
+        files: referenceImages,
+      })
+    } else if (referenceImageUrls.length > 0) {
+      persistedRefImages = referenceImageUrls.slice(0, 3).map((url: string, index: number) => ({
+        url,
+        key: '',
+        mimeType: 'image/jpeg',
+        bytes: 0,
+        name: `reference-${index + 1}`,
+      }))
+    } else {
+      persistedRefImages = []
+    }
+
+    const queued = await createQueuedImageGenerationRequest({
+      userId: user.id,
+      prompt: upstreamPrompt,
+      originalPrompt: trimmedPrompt,
+      sourcePage: sourcePage === 'amazon' ? 'amazon' : 'playground',
+      billingScene,
+      entryApi: '/api/generate',
+      imageType: imageType || null,
+      aspectRatio,
+      size: validSize,
+      referenceImages: persistedRefImages,
     })
+
+    await submitQueuedImageGenerationRequest(queued.requestId)
 
     return NextResponse.json({
-      ...result,
-      revisedPrompt: isAPlus ? trimmedPrompt : stripHiddenAPlusSizeRequirement(result.revisedPrompt),
-      imageUrl: result.imageUrl,
+      requestId: queued.requestId,
+      operationId: queued.operationId,
+      status: queued.status,
+      statusMessage: queued.statusMessage,
       imageType,
       aspectRatio,
       size: validSize,
-    })
+      revisedPrompt: isAPlus ? trimmedPrompt : stripHiddenAPlusSizeRequirement(trimmedPrompt),
+    }, { status: 202 })
   } catch (error) {
-    const routeSummary = typeof error === 'object' && error && 'routeSummary' in error
-      ? (error as any).routeSummary
-      : null
     console.error('[api/generate] request failed', {
       requestId,
       error,
@@ -150,7 +148,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : 'Failed to generate image',
-        routeSummary,
       },
       { status: 500 }
     )

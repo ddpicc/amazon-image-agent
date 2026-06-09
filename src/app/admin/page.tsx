@@ -23,7 +23,7 @@ export default async function AdminWorkbenchPage() {
     generationDebits7d,
     recentImageFailures,
     recentAnalysisFailures,
-    providerIssues,
+    textProviderIssues,
     recentPayments,
     slowImageRequests,
   ] = await Promise.all([
@@ -92,7 +92,7 @@ export default async function AdminWorkbenchPage() {
         },
       },
     }),
-    prisma.imageProvider.findMany({
+    prisma.textProvider.findMany({
       where: {
         OR: [
           { enabled: false },
@@ -301,17 +301,17 @@ export default async function AdminWorkbenchPage() {
           <div className="panel p-6">
             <div className="flex items-center justify-between gap-4">
               <div>
-                <h2 className="text-lg font-semibold text-slate-950">异常 Provider</h2>
-                <p className="mt-1 text-sm text-slate-500">优先关注被禁用、进入冷却或失败次数偏高的线路。</p>
+                <h2 className="text-lg font-semibold text-slate-950">异常文本 Provider</h2>
+                <p className="mt-1 text-sm text-slate-500">图片线路已迁到远端 worker，这里只关注文本链路的禁用、冷却与失败情况。</p>
               </div>
               <Link href="/admin/providers" className="text-sm font-medium text-amazon-blue hover:text-blue-600">
                 查看 Provider
               </Link>
             </div>
             <div className="mt-4 space-y-3">
-              {providerIssues.length === 0 ? (
-                <p className="text-sm text-slate-500">当前没有异常 Provider。</p>
-              ) : providerIssues.map((provider) => (
+              {textProviderIssues.length === 0 ? (
+                <p className="text-sm text-slate-500">当前没有异常文本 Provider。</p>
+              ) : textProviderIssues.map((provider) => (
                 <div key={provider.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>

@@ -1,8 +1,6 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { AttemptStatus, AiProviderType } from '@prisma/client'
-import AdminCreateImageProviderForm from '@/app/admin/image-providers/AdminCreateImageProviderForm'
-import AdminImageProviderRowActions from '@/app/admin/image-providers/AdminImageProviderRowActions'
 import AdminCreateTextProviderForm from '@/app/admin/text-providers/AdminCreateTextProviderForm'
 import AdminTextProviderRowActions from '@/app/admin/text-providers/AdminTextProviderRowActions'
 import { requireAdmin } from '@/lib/auth'
@@ -185,32 +183,7 @@ export default async function AdminProvidersPage() {
   await requireAdmin()
 
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000)
-  const [imageProviders, textProviders, textAttempts24h] = await Promise.all([
-    prisma.imageProvider.findMany({
-      orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }],
-      select: {
-        id: true,
-        name: true,
-        vendor: true,
-        baseUrl: true,
-        model: true,
-        priority: true,
-        enabled: true,
-        failureCount: true,
-        lastFailureAt: true,
-        lastSuccessAt: true,
-        cooldownUntil: true,
-        updatedAt: true,
-        requests: {
-          where: { createdAt: { gte: since } },
-          select: {
-            status: true,
-            durationMs: true,
-            errorMessage: true,
-          },
-        },
-      },
-    }),
+  const [textProviders, textAttempts24h] = await Promise.all([
     prisma.textProvider.findMany({
       orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }],
       select: {
@@ -244,20 +217,6 @@ export default async function AdminProvidersPage() {
     }),
   ])
 
-  const imageProviderSummaries = imageProviders.map((provider) => {
-    const durations = provider.requests.map((item) => item.durationMs).filter((value): value is number => typeof value === 'number')
-    const successCount24h = provider.requests.filter((item) => item.status === 'SUCCEEDED').length
-    const recentErrorMessage = provider.requests.find((item) => item.errorMessage)?.errorMessage ?? null
-
-    return {
-      ...provider,
-      requestCount24h: provider.requests.length,
-      successCount24h,
-      avgDurationMs24h: durations.length > 0 ? durations.reduce((sum, value) => sum + value, 0) / durations.length : null,
-      recentErrorMessage,
-    }
-  })
-
   const textProviderSummaries = textProviders.map((provider) => {
     const relatedAttempts = textAttempts24h.filter((attempt) => attempt.providerId === provider.id)
 
@@ -280,27 +239,20 @@ export default async function AdminProvidersPage() {
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">管理员</div>
             <h1 className="mt-2 text-3xl font-semibold text-slate-950">Providers</h1>
-            <p className="mt-2 text-sm text-slate-500">统一管理图片线路和文本线路的优先级、启停状态、失败冷却和 API key 轮换。</p>
+            <p className="mt-2 text-sm text-slate-500">这里只维护文本 provider。图片线路已经迁到 `amazon-image-worker` 单独管理。</p>
           </div>
           <Link href="/admin" className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900">
             返回工作台
           </Link>
         </div>
 
-        <ProviderSection
-          title="图片线路"
-          description="Amazon 生图和 Playground 生图都走这里的 provider 池。"
-          emptyText="当前还没有图片 provider，请先创建一条线路。"
-          providers={imageProviderSummaries}
-          createForm={<AdminCreateImageProviderForm />}
-          rowActions={(provider, canMoveUp, canMoveDown) => (
-            <AdminImageProviderRowActions
-              provider={provider}
-              canMoveUp={canMoveUp}
-              canMoveDown={canMoveDown}
-            />
-          )}
-        />
+        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-xl font-semibold text-slate-950">图片线路</h2>
+          <p className="mt-2 text-sm text-slate-500">
+            Amazon、Playground 和 Reverse Prompt 的生图任务现在统一提交到远端 `amazon-image-worker`。
+            该 worker 自己维护图片 provider、队列、fallback 和对象存储，这个仓库不再提供本地图片线路管理入口。
+          </p>
+        </section>
 
         <ProviderSection
           title="文本线路"

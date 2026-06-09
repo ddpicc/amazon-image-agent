@@ -5,7 +5,7 @@
 - 登录注册与多用户隔离
 - 商品分析与 Prompt 套餐生成
 - Amazon 工作流与自由生图页
-- 多上游图片接口顺序 fallback
+- 通过 `amazon-image-worker` 统一中转图片生成
 - 生图结果统一上传腾讯云 COS
 - 用户历史页与管理员生图调用记录页
 
@@ -15,7 +15,7 @@
 - 数据库：PostgreSQL + Prisma
 - 认证：邮箱密码 + 数据库 session
 - 文本分析：OpenAI-compatible text provider pool
-- 图片生成：OpenAI-compatible image provider pool
+- 图片生成：本地建单 + 远端 `amazon-image-worker`
 - 图片存储：Tencent Cloud COS
 
 ## 核心能力
@@ -48,6 +48,11 @@ DATABASE_URL=postgresql://user:password@host:5432/amazon_image_agent
 APP_SECRET=replace_with_a_long_random_secret
 PROVIDER_KEY_ENCRYPTION_KEY=replace_with_a_second_long_random_secret
 
+# Remote image worker bridge
+IMAGE_WORKER_BASE_URL=https://your-image-worker.example.com
+IMAGE_WORKER_API_KEY=worker_api_key_for_agent
+IMAGE_WORKER_TIMEOUT_MS=15000
+
 # Resend email
 RESEND_API_KEY=re_xxxxxxxxx
 RESEND_FROM=noreply@your-domain.com
@@ -68,10 +73,12 @@ ADMIN_PASSWORD=change_me_please
 
 - `APP_SECRET` 用于 session token 哈希
 - `PROVIDER_KEY_ENCRYPTION_KEY` 用于加密数据库里的上游 provider key
+- `IMAGE_WORKER_BASE_URL` 和 `IMAGE_WORKER_API_KEY` 用于把生图任务提交到 `amazon-image-worker`
 - `RESEND_API_KEY` 和 `RESEND_FROM` 用于注册邮箱验证码发送
-- 图片和文本 provider 都通过数据库维护
+- 文本 provider 仍通过数据库维护
 - 运行时不读取 `TEXT_KEY`、`TEXT_URL`、`TEXT_MODEL` 这类环境变量
-- provider 的 base URL、model、优先级和 key 都通过脚本或后台写入
+- 图片 provider 改由 `amazon-image-worker` 自己维护
+- 文本 provider 的 base URL、model、优先级和 key 仍通过脚本或后台写入
 
 ## 本地启动
 
@@ -101,24 +108,7 @@ npm run db:seed
 
 如果 `.env.local` 里配置了 `ADMIN_EMAIL` 和 `ADMIN_PASSWORD`，这个步骤会创建或更新管理员账号。
 
-### 5. 写入至少一个图片 provider
-
-示例：
-
-```bash
-PROVIDER_NAME=primary \
-PROVIDER_VENDOR=openai-compatible \
-PROVIDER_BASE_URL=https://www.uocode.com/v1 \
-PROVIDER_MODEL=gpt-image-2 \
-PROVIDER_API_KEY=your_image_api_key \
-PROVIDER_PRIORITY=100 \
-PROVIDER_ENABLED=true \
-npm run provider:upsert
-```
-
-如果你要加 backup provider，再执行一次，换一组名字、URL、model 和 key 即可。`PRIORITY` 越小优先级越高。
-
-### 6. 写入至少一个文本 provider
+### 5. 写入至少一个文本 provider
 
 示例：
 
@@ -135,7 +125,7 @@ npm run text-provider:upsert
 
 如果你要加 backup provider，再执行一次，换一组名字、URL、model 和 key 即可。`PRIORITY` 越小优先级越高。
 
-### 7. 启动开发服务器
+### 6. 启动开发服务器
 
 ```bash
 npm run dev
@@ -160,17 +150,10 @@ npm run dev
 
 1. 校验登录态
 2. 写入生图请求记录
-3. 从数据库读取可用 provider，按优先级顺序尝试
-4. provider 失败时自动 fallback 到下一个
-5. 成功后把结果图上传到腾讯云 COS
-6. 前端只拿到 COS URL
-
-无论上游返回的是：
-
-- `data:image/...;base64,...`
-- 远程图片 URL
-
-都会先归一化，再统一上传 COS。
+3. 把任务提交到 `amazon-image-worker`
+4. 当前页和 `/history` 轮询本地记录，本地再同步远端状态
+5. 远端 worker 自己完成 provider fallback、出图和 COS 上传
+6. agent 只保存本地历史、状态和积分
 
 ### 分析链路
 
@@ -188,7 +171,6 @@ npm run build
 npm run prisma:generate
 npm run db:push
 npm run db:seed
-npm run provider:upsert
 npm run text-provider:upsert
 ```
 
@@ -211,6 +193,9 @@ DATABASE_URL=...
 - `DATABASE_URL`
 - `APP_SECRET`
 - `PROVIDER_KEY_ENCRYPTION_KEY`
+- `IMAGE_WORKER_BASE_URL`
+- `IMAGE_WORKER_API_KEY`
+- `IMAGE_WORKER_TIMEOUT_MS`
 - `RESEND_API_KEY`
 - `RESEND_FROM`
 - `COS_SECRET_ID`
@@ -236,32 +221,14 @@ npm run db:push
 npm run db:seed
 ```
 
-### 4. 写入图片 provider
+### 4. 配置远端图片 worker
 
-在 Zeabur Shell 中执行一次或多次：
-
-```bash
-PROVIDER_NAME=primary \
-PROVIDER_VENDOR=openai-compatible \
-PROVIDER_BASE_URL=https://www.uocode.com/v1 \
-PROVIDER_MODEL=gpt-image-2 \
-PROVIDER_API_KEY=your_primary_key \
-PROVIDER_PRIORITY=100 \
-PROVIDER_ENABLED=true \
-npm run provider:upsert
-```
-
-再写 backup provider：
+在 Zeabur 应用环境变量中配置：
 
 ```bash
-PROVIDER_NAME=backup-1 \
-PROVIDER_VENDOR=openai-compatible \
-PROVIDER_BASE_URL=https://backup.example.com/v1 \
-PROVIDER_MODEL=gpt-image-2 \
-PROVIDER_API_KEY=your_backup_key \
-PROVIDER_PRIORITY=200 \
-PROVIDER_ENABLED=true \
-npm run provider:upsert
+IMAGE_WORKER_BASE_URL=https://your-image-worker.example.com
+IMAGE_WORKER_API_KEY=worker_api_key_for_agent
+IMAGE_WORKER_TIMEOUT_MS=15000
 ```
 
 ### 5. 写入文本 provider
@@ -317,7 +284,7 @@ npm run build
 4. 生图成功后返回的是 COS URL
 5. `/history` 能看到自己的分析与生图记录
 6. `/admin/image-records` 能看到 provider、上游 URL、尝试次数、耗时和结果图
-7. `/admin/providers` 能统一管理图片 provider 和文本 provider，包括优先级、启用状态和 API key 轮换
+7. `/admin/providers` 能管理文本 provider；图片 provider 在 `amazon-image-worker` 侧维护
 
 ## Provider 管理建议
 
@@ -331,7 +298,7 @@ npm run build
 - `primary` 用主线路
 - `backup-*` 用备用线路
 - 通过 `PROVIDER_PRIORITY` 控制优先级
-- 故障时系统会在单次请求内顺序 fallback
+- 故障时文本链路会在单次请求内顺序 fallback
 
 Key 存储策略：
 
@@ -342,11 +309,12 @@ Key 存储策略：
 
 ## 迁移说明
 
-当前版本已经移除旧的图片代理主链路：
+当前版本已经移除 agent 本地图片执行主链路：
 
-- 不再依赖 `image-proxy`
-- 不再返回代理访问链接
-- 生成图片统一走 COS URL
+- 不再依赖本地 image provider 池
+- 不再在本仓库内消费图片队列
+- 图片生成统一通过 `amazon-image-worker` 执行
+- 最终仍返回 COS URL
 
 如果你之前的部署环境里还保留旧的 `IMAGE_PROXY_SECRET`，现在可以删除。
 

@@ -8,11 +8,16 @@ import { formatPoints, getGenerationCostDisplay } from '@/lib/points-config'
 
 interface GeneratedImage {
   id: string
-  imageUrl: string
+  requestId?: string
+  imageUrl: string | null
   prompt: string
   revisedPrompt: string
   size: RenderSize
   aspectRatio: AspectRatio
+  status: 'QUEUED' | 'PROCESSING' | 'SUCCEEDED' | 'FAILED'
+  statusMessage?: string | null
+  errorMessage?: string | null
+  charged?: boolean
 }
 
 interface RouteSummary {
@@ -30,8 +35,22 @@ interface RouteSummary {
 
 type GenerateStreamEvent =
   | { type: 'status'; message: string }
-  | { type: 'result'; data: { imageUrl: string; revisedPrompt: string; size: RenderSize; aspectRatio?: AspectRatio; routeSummary: RouteSummary | null } }
+  | { type: 'result'; data: { requestId: string; imageUrl: string; revisedPrompt: string; size: RenderSize; aspectRatio?: AspectRatio; routeSummary: RouteSummary | null } }
   | { type: 'error'; message: string }
+  | { type: 'queued'; data: { requestId: string; operationId: string; status: string; statusMessage: string } }
+
+interface GenerationStatusPayload {
+  requestId: string
+  status: 'QUEUED' | 'PROCESSING' | 'SUCCEEDED' | 'FAILED'
+  statusMessage: string | null
+  errorMessage: string | null
+  prompt: string
+  revisedPrompt: string | null
+  imageUrl: string | null
+  size: string | null
+  aspectRatio: string | null
+  active: boolean
+}
 
 function createImageId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
@@ -57,6 +76,7 @@ export default function ReversePromptPageClient({ initialPointsBalance }: { init
   const [userIntent, setUserIntent] = useState('')
   const [lastRefinedIntent, setLastRefinedIntent] = useState('')
   const promptTextareaRef = useRef<HTMLTextAreaElement>(null)
+  const pollingTimersRef = useRef<Map<string, number>>(new Map())
 
   const availableSizes = useMemo(() => getSizesForAspectRatio(aspectRatio), [aspectRatio])
   const generationCost = getGenerationCostDisplay('reverse-prompt')
@@ -97,6 +117,13 @@ export default function ReversePromptPageClient({ initialPointsBalance }: { init
     setRouteNotice('')
   }, [sourceImages])
 
+  useEffect(() => {
+    return () => {
+      pollingTimersRef.current.forEach((timerId) => window.clearInterval(timerId))
+      pollingTimersRef.current.clear()
+    }
+  }, [])
+
   const streamGenerate = async (formData: FormData) => {
     const response = await fetch('/api/generate/stream', {
       method: 'POST',
@@ -111,6 +138,7 @@ export default function ReversePromptPageClient({ initialPointsBalance }: { init
     const decoder = new TextDecoder()
     let buffer = ''
     let resultEvent: GenerateStreamEvent | null = null
+    let queuedEvent: Extract<GenerateStreamEvent, { type: 'queued' }> | null = null
 
     while (true) {
       const { value, done } = await reader.read()
@@ -134,6 +162,11 @@ export default function ReversePromptPageClient({ initialPointsBalance }: { init
           continue
         }
 
+        if (event.type === 'queued') {
+          queuedEvent = event
+          continue
+        }
+
         if (event.type === 'error') {
           throw new Error(event.message)
         }
@@ -146,16 +179,79 @@ export default function ReversePromptPageClient({ initialPointsBalance }: { init
         setRouteNotice(event.message)
       } else if (event.type === 'result') {
         resultEvent = event
+      } else if (event.type === 'queued') {
+        queuedEvent = event
       } else if (event.type === 'error') {
         throw new Error(event.message)
       }
+    }
+
+    if (queuedEvent) {
+      return { kind: 'queued' as const, data: queuedEvent.data }
     }
 
     if (!resultEvent || resultEvent.type !== 'result') {
       throw new Error('Image generation stream ended without a result')
     }
 
-    return resultEvent.data
+    return { kind: 'result' as const, data: resultEvent.data }
+  }
+
+  const startPollingRequest = (requestId: string) => {
+    if (pollingTimersRef.current.has(requestId)) {
+      return
+    }
+
+    const pollOnce = async () => {
+      try {
+        const response = await fetch(`/api/generate/${requestId}`, { cache: 'no-store' })
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`)
+        }
+
+        const payload = await response.json() as GenerationStatusPayload
+        setGeneratedImages((prev) => prev.map((image) => {
+          if (image.requestId !== requestId) {
+            return image
+          }
+
+          const nextImage: GeneratedImage = {
+            ...image,
+            imageUrl: payload.imageUrl,
+            prompt: payload.prompt || image.prompt,
+            revisedPrompt: payload.revisedPrompt || image.revisedPrompt,
+            size: (payload.size as RenderSize) || image.size,
+            aspectRatio: (payload.aspectRatio as AspectRatio) || image.aspectRatio,
+            status: payload.status,
+            statusMessage: payload.statusMessage,
+            errorMessage: payload.errorMessage,
+          }
+
+          if (payload.status === 'SUCCEEDED' && !image.charged) {
+            setPointsBalance((current) => Math.max(0, Number((current - generationCost).toFixed(1))))
+            nextImage.charged = true
+          }
+
+          return nextImage
+        }))
+
+        if (!payload.active) {
+          const timerId = pollingTimersRef.current.get(requestId)
+          if (timerId) {
+            window.clearInterval(timerId)
+            pollingTimersRef.current.delete(requestId)
+          }
+        }
+      } catch (error) {
+        console.error('Failed to poll image generation request:', error)
+      }
+    }
+
+    void pollOnce()
+    const timerId = window.setInterval(() => {
+      void pollOnce()
+    }, 5000)
+    pollingTimersRef.current.set(requestId, timerId)
   }
 
   const handleAnalyze = async () => {
@@ -274,17 +370,38 @@ export default function ReversePromptPageClient({ initialPointsBalance }: { init
 
       const result = await streamGenerate(formData)
 
-      const nextImage: GeneratedImage = {
-        id: createImageId(),
-        imageUrl: result.imageUrl as string,
-        prompt: resolvedPrompt,
-        revisedPrompt: (result.revisedPrompt || resolvedPrompt) as string,
-        size: (result.size || size) as RenderSize,
-        aspectRatio: (result.aspectRatio || aspectRatio) as AspectRatio,
-      }
+      if (result.kind === 'queued') {
+        setRouteNotice(result.data.statusMessage)
+        setGeneratedImages((prev) => [{
+          id: result.data.requestId,
+          requestId: result.data.requestId,
+          imageUrl: null,
+          prompt: resolvedPrompt,
+          revisedPrompt: resolvedPrompt,
+          size,
+          aspectRatio,
+          status: 'QUEUED',
+          statusMessage: result.data.statusMessage,
+          errorMessage: null,
+          charged: false,
+        }, ...prev])
+        startPollingRequest(result.data.requestId)
+      } else {
+        const nextImage: GeneratedImage = {
+          id: createImageId(),
+          requestId: result.data.requestId,
+          imageUrl: result.data.imageUrl as string,
+          prompt: resolvedPrompt,
+          revisedPrompt: (result.data.revisedPrompt || resolvedPrompt) as string,
+          size: (result.data.size || size) as RenderSize,
+          aspectRatio: (result.data.aspectRatio || aspectRatio) as AspectRatio,
+          status: 'SUCCEEDED',
+          charged: true,
+        }
 
-      setGeneratedImages((prev) => [nextImage, ...prev])
-      setPointsBalance((prev) => Math.max(0, Number((prev - generationCost).toFixed(1))))
+        setGeneratedImages((prev) => [nextImage, ...prev])
+        setPointsBalance((prev) => Math.max(0, Number((prev - generationCost).toFixed(1))))
+      }
     } catch (error) {
       console.error('Failed to generate reverse prompt image:', error)
       const message = error instanceof Error ? error.message : 'Failed to generate image. Please check your API keys.'
@@ -297,6 +414,7 @@ export default function ReversePromptPageClient({ initialPointsBalance }: { init
 
   const handleDownload = async (image: GeneratedImage) => {
     try {
+      if (!image.imageUrl) return
       const response = await fetch(image.imageUrl)
       const blob = await response.blob()
       const url = window.URL.createObjectURL(blob)
@@ -583,13 +701,27 @@ export default function ReversePromptPageClient({ initialPointsBalance }: { init
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                   {generatedImages.map((image) => (
                     <article key={image.id} className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-                      <img src={image.imageUrl} alt="生成结果" className="aspect-square w-full object-cover" />
+                      {image.imageUrl ? (
+                        <img src={image.imageUrl} alt="生成结果" className="aspect-square w-full object-cover" />
+                      ) : (
+                        <div className="flex aspect-square w-full items-center justify-center bg-slate-100 text-sm text-slate-400">
+                          {image.status === 'FAILED' ? '生成失败' : '生成中'}
+                        </div>
+                      )}
                       <div className="space-y-3 p-4">
                         <div className="flex flex-wrap gap-2 text-xs text-slate-500">
                           <span className="rounded-full bg-slate-100 px-2.5 py-1">{image.aspectRatio}</span>
                           <span className="rounded-full bg-slate-100 px-2.5 py-1">{image.size}</span>
+                          <span className="rounded-full bg-slate-100 px-2.5 py-1">{image.status}</span>
                         </div>
-                        <p className="line-clamp-3 text-sm leading-6 text-slate-600">{image.revisedPrompt}</p>
+                        {image.statusMessage && image.status !== 'SUCCEEDED' ? (
+                          <p className="text-sm leading-6 text-slate-500">{image.statusMessage}</p>
+                        ) : (
+                          <p className="line-clamp-3 text-sm leading-6 text-slate-600">{image.revisedPrompt}</p>
+                        )}
+                        {image.errorMessage && (
+                          <p className="text-sm text-rose-600">{image.errorMessage}</p>
+                        )}
                         <div className="flex gap-2">
                           <button
                             type="button"
@@ -598,13 +730,15 @@ export default function ReversePromptPageClient({ initialPointsBalance }: { init
                           >
                             复制提示词
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDownload(image)}
-                            className="flex-1 rounded-xl bg-amazon-blue px-3 py-2 text-xs font-medium text-white transition hover:bg-blue-600"
-                          >
-                            下载图片
-                          </button>
+                          {image.imageUrl && image.status === 'SUCCEEDED' && (
+                            <button
+                              type="button"
+                              onClick={() => handleDownload(image)}
+                              className="flex-1 rounded-xl bg-amazon-blue px-3 py-2 text-xs font-medium text-white transition hover:bg-blue-600"
+                            >
+                              下载图片
+                            </button>
+                          )}
                         </div>
                       </div>
                     </article>

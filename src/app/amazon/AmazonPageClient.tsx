@@ -40,9 +40,17 @@ interface ImageTypeOption {
 
 interface GeneratedImage {
   id: string
-  imageUrl: string
+  requestId?: string
+  imageUrl: string | null
   prompt: string
   imageType: string
+  revisedPrompt?: string
+  size?: RenderSize
+  aspectRatio?: string
+  status: 'QUEUED' | 'PROCESSING' | 'SUCCEEDED' | 'FAILED'
+  statusMessage?: string | null
+  errorMessage?: string | null
+  charged?: boolean
 }
 
 interface RouteSummary {
@@ -60,8 +68,24 @@ interface RouteSummary {
 
 type GenerateStreamEvent =
   | { type: 'status'; message: string }
-  | { type: 'result'; data: { imageUrl: string; revisedPrompt: string; routeSummary: RouteSummary | null; size?: RenderSize } }
+  | { type: 'result'; data: { requestId: string; imageUrl: string; revisedPrompt: string; routeSummary: RouteSummary | null; size?: RenderSize } }
   | { type: 'error'; message: string }
+  | { type: 'queued'; data: { requestId: string; operationId: string; status: string; statusMessage: string } }
+
+interface GenerationStatusPayload {
+  requestId: string
+  status: 'QUEUED' | 'PROCESSING' | 'SUCCEEDED' | 'FAILED'
+  statusMessage: string | null
+  errorMessage: string | null
+  prompt: string
+  revisedPrompt: string | null
+  imageUrl: string | null
+  imageType: string | null
+  size: string | null
+  aspectRatio: string | null
+  active: boolean
+  routeSummary: RouteSummary | null
+}
 
 type AnalysisStage = 'idle' | 'preparing' | 'analyzing' | 'completed' | 'error'
 type TaskStatus = 'idle' | 'preparing' | 'analyzing' | 'saving' | 'completed' | 'error'
@@ -447,6 +471,7 @@ export default function AmazonPage({
   const [resumeNotice, setResumeNotice] = useState('')
   const analyzeRequestIdRef = useRef(0)
   const analyzeAbortControllerRef = useRef<AbortController | null>(null)
+  const generationPollingRef = useRef<Map<string, number>>(new Map())
   const appliedResumeIdRef = useRef<string | null>(null)
   const currentPromptResult = useMemo(
     () => (selectedBranch ? getPromptResultForBranch(promptResults, selectedBranch) : null),
@@ -459,6 +484,13 @@ export default function AmazonPage({
   )
   const hasEnoughPointsToGenerate = pointsBalance >= generationCost
   const activeReferenceImageCount = referenceImages.length || storedReferenceImages.length
+
+  useEffect(() => {
+    return () => {
+      generationPollingRef.current.forEach((timerId) => window.clearInterval(timerId))
+      generationPollingRef.current.clear()
+    }
+  }, [])
 
   useEffect(() => {
     if (!initialResumeState || appliedResumeIdRef.current === initialResumeState.analysisId) {
@@ -598,6 +630,7 @@ export default function AmazonPage({
     const decoder = new TextDecoder()
     let buffer = ''
     let resultEvent: GenerateStreamEvent | null = null
+    let queuedEvent: Extract<GenerateStreamEvent, { type: 'queued' }> | null = null
 
     while (true) {
       const { value, done } = await reader.read()
@@ -621,6 +654,11 @@ export default function AmazonPage({
           continue
         }
 
+        if (event.type === 'queued') {
+          queuedEvent = event
+          continue
+        }
+
         if (event.type === 'error') {
           throw new Error(event.message)
         }
@@ -633,8 +671,20 @@ export default function AmazonPage({
         setRouteNotice(event.message)
       } else if (event.type === 'result') {
         resultEvent = event
+      } else if (event.type === 'queued') {
+        queuedEvent = event
       } else if (event.type === 'error') {
         throw new Error(event.message)
+      }
+    }
+
+    if (queuedEvent) {
+      return {
+        kind: 'queued' as const,
+        data: queuedEvent.data,
+        prompt,
+        size,
+        imageType: type,
       }
     }
 
@@ -643,11 +693,86 @@ export default function AmazonPage({
     }
 
     return {
-      imageUrl: resultEvent.data.imageUrl as string,
-      prompt: (resultEvent.data.revisedPrompt || prompt) as string,
-      routeSummary: (resultEvent.data.routeSummary || null) as RouteSummary | null,
+      kind: 'result' as const,
+      data: {
+        requestId: resultEvent.data.requestId,
+        imageUrl: resultEvent.data.imageUrl as string,
+        prompt: (resultEvent.data.revisedPrompt || prompt) as string,
+        routeSummary: (resultEvent.data.routeSummary || null) as RouteSummary | null,
+        size,
+        imageType: type,
+      },
     }
   }, [buildPrompt, currentPromptResult, referenceImages, storedReferenceImages])
+
+  const startPollingGenerationRequest = useCallback((params: {
+    requestId: string
+    imageId: string
+    fallbackPrompt: string
+    fallbackImageType: string
+  }) => {
+    if (generationPollingRef.current.has(params.requestId)) {
+      return
+    }
+
+    const pollOnce = async () => {
+      try {
+        const response = await fetch(`/api/generate/${params.requestId}`, { cache: 'no-store' })
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`)
+        }
+
+        const payload = await response.json() as GenerationStatusPayload
+        setGeneratedImages((prev) => prev.map((image) => {
+          if (image.id !== params.imageId) {
+            return image
+          }
+
+          const nextImage: GeneratedImage = {
+            ...image,
+            requestId: params.requestId,
+            imageUrl: payload.imageUrl,
+            prompt: payload.prompt || params.fallbackPrompt,
+            revisedPrompt: payload.revisedPrompt || payload.prompt || image.revisedPrompt || params.fallbackPrompt,
+            imageType: payload.imageType || image.imageType || params.fallbackImageType,
+            size: (payload.size as RenderSize) || image.size,
+            aspectRatio: payload.aspectRatio || image.aspectRatio,
+            status: payload.status,
+            statusMessage: payload.statusMessage,
+            errorMessage: payload.errorMessage,
+          }
+
+          if (payload.status === 'SUCCEEDED' && !image.charged) {
+            setPointsBalance((current) => Math.max(0, Number((current - generationCost).toFixed(1))))
+            nextImage.charged = true
+          }
+
+          return nextImage
+        }))
+
+        if (payload.active) {
+          setRouteNotice(payload.statusMessage || '任务仍在执行中')
+          return
+        }
+
+        const timerId = generationPollingRef.current.get(params.requestId)
+        if (timerId) {
+          window.clearInterval(timerId)
+          generationPollingRef.current.delete(params.requestId)
+        }
+
+        setRouteNotice(payload.errorMessage || payload.statusMessage || '')
+      } catch (error) {
+        console.error('Failed to poll image generation request:', error)
+      }
+    }
+
+    void pollOnce()
+    const timerId = window.setInterval(() => {
+      void pollOnce()
+    }, 5000)
+    generationPollingRef.current.set(params.requestId, timerId)
+  }, [generationCost])
 
   const handleAnalyze = useCallback(async (data: AnalyzeFormInput) => {
     const requestId = analyzeRequestIdRef.current + 1
@@ -895,14 +1020,45 @@ export default function AmazonPage({
 
     try {
       const result = await requestGenerate(selectedImageType, editedPrompt, selectedSize)
-      const newImage: GeneratedImage = {
-        id: createImageId(),
-        imageUrl: result.imageUrl,
-        prompt: result.prompt,
-        imageType: selectedImageType,
+
+      if (result.kind === 'queued') {
+        const imageId = result.data.requestId
+        setGeneratedImages((prev) => [{
+          id: imageId,
+          requestId: result.data.requestId,
+          imageUrl: null,
+          prompt: result.prompt,
+          revisedPrompt: result.prompt,
+          imageType: result.imageType,
+          size: result.size,
+          aspectRatio: selectedImageType.startsWith('aplus-') ? '8:5' : '1:1',
+          status: 'QUEUED',
+          statusMessage: result.data.statusMessage,
+          errorMessage: null,
+          charged: false,
+        }, ...prev])
+        startPollingGenerationRequest({
+          requestId: result.data.requestId,
+          imageId,
+          fallbackPrompt: result.prompt,
+          fallbackImageType: result.imageType,
+        })
+      } else {
+        const newImage: GeneratedImage = {
+          id: createImageId(),
+          requestId: result.data.requestId,
+          imageUrl: result.data.imageUrl,
+          prompt: result.data.prompt,
+          revisedPrompt: result.data.prompt,
+          imageType: selectedImageType,
+          size: result.data.size,
+          aspectRatio: selectedImageType.startsWith('aplus-') ? '8:5' : '1:1',
+          status: 'SUCCEEDED',
+          charged: true,
+        }
+        setGeneratedImages((prev) => [newImage, ...prev])
+        setPointsBalance((prev) => Math.max(0, Number((prev - generationCost).toFixed(1))))
       }
-      setGeneratedImages((prev) => [newImage, ...prev])
-      setPointsBalance((prev) => Math.max(0, Number((prev - generationCost).toFixed(1))))
     } catch (error) {
       console.error('Error generating image:', error)
       const message = error instanceof Error ? error.message : 'Failed to generate image. Please check your API keys.'
@@ -911,7 +1067,7 @@ export default function AmazonPage({
     } finally {
       setIsGenerating(false)
     }
-  }, [activeReferenceImageCount, basicAnalysisResult, editedPrompt, generationCost, hasEnoughPointsToGenerate, isGenerating, requestGenerate, selectedBranch, selectedImageType, selectedSize])
+  }, [activeReferenceImageCount, basicAnalysisResult, editedPrompt, generationCost, hasEnoughPointsToGenerate, isGenerating, requestGenerate, selectedBranch, selectedImageType, selectedSize, startPollingGenerationRequest])
 
   const handleRegenerate = useCallback(async () => {
     if (!editingImage || !activeReferenceImageCount || isGenerating) return
@@ -925,18 +1081,48 @@ export default function AmazonPage({
 
     try {
       const result = await requestGenerate(editingImage.imageType as PromptKey, editingImage.prompt, undefined, false)
-      const updatedImage: GeneratedImage = {
-        ...editingImage,
-        id: createImageId(),
-        imageUrl: result.imageUrl,
-        prompt: result.prompt,
-      }
 
-      setGeneratedImages((prev) =>
-        prev.map((image) => (image.id === editingImage.id ? updatedImage : image)),
-      )
-      setEditingImage(updatedImage)
-      setPointsBalance((prev) => Math.max(0, Number((prev - generationCost).toFixed(1))))
+      if (result.kind === 'queued') {
+        setGeneratedImages((prev) => prev.map((image) => (
+          image.id === editingImage.id
+            ? {
+                ...image,
+                requestId: result.data.requestId,
+                imageUrl: image.imageUrl,
+                prompt: editingImage.prompt,
+                revisedPrompt: editingImage.prompt,
+                status: 'QUEUED',
+                statusMessage: result.data.statusMessage,
+                errorMessage: null,
+                charged: false,
+              }
+            : image
+        )))
+        setEditingImage(null)
+        startPollingGenerationRequest({
+          requestId: result.data.requestId,
+          imageId: editingImage.id,
+          fallbackPrompt: editingImage.prompt,
+          fallbackImageType: editingImage.imageType,
+        })
+      } else {
+        const updatedImage: GeneratedImage = {
+          ...editingImage,
+          id: createImageId(),
+          requestId: result.data.requestId,
+          imageUrl: result.data.imageUrl,
+          prompt: result.data.prompt,
+          revisedPrompt: result.data.prompt,
+          status: 'SUCCEEDED',
+          charged: true,
+        }
+
+        setGeneratedImages((prev) =>
+          prev.map((image) => (image.id === editingImage.id ? updatedImage : image)),
+        )
+        setEditingImage(updatedImage)
+        setPointsBalance((prev) => Math.max(0, Number((prev - generationCost).toFixed(1))))
+      }
     } catch (error) {
       console.error('Error regenerating image:', error)
       const message = error instanceof Error ? error.message : 'Failed to regenerate image. Please check your API keys.'
@@ -945,10 +1131,11 @@ export default function AmazonPage({
     } finally {
       setIsGenerating(false)
     }
-  }, [activeReferenceImageCount, editingImage, generationCost, hasEnoughPointsToGenerate, isGenerating, requestGenerate])
+  }, [activeReferenceImageCount, editingImage, generationCost, hasEnoughPointsToGenerate, isGenerating, requestGenerate, startPollingGenerationRequest])
 
   const handleDownload = async (image: GeneratedImage) => {
     try {
+      if (!image.imageUrl) return
       const link = document.createElement('a')
       link.href = `/api/download?url=${encodeURIComponent(image.imageUrl)}&filename=${encodeURIComponent(`amazon-product-${image.id}.png`)}`
       link.download = `amazon-product-${image.id}.png`
@@ -1444,6 +1631,18 @@ export default function AmazonPage({
                     </p>
                   </div>
 
+                  <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <p className="text-sm text-slate-700">
+                      通常生成 1 张图片约需 90 秒到 2 分钟，生成 2K 图片通常更久。
+                    </p>
+                  </div>
+
+                  {isGenerating && routeNotice ? (
+                    <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
+                      <p>{routeNotice}</p>
+                    </div>
+                  ) : null}
+
                   <button
                     onClick={handleGenerateSingle}
                     disabled={isGenerating || !editedPrompt.trim()}
@@ -1469,28 +1668,48 @@ export default function AmazonPage({
                     <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                       {generatedImages.map((image) => (
                         <div key={image.id} className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-                          <img
-                            src={image.imageUrl}
-                            alt="Generated product"
-                            className={image.imageType.startsWith('aplus-') ? 'aspect-[8/5] w-full object-cover' : 'aspect-square w-full object-cover'}
-                          />
+                          {image.imageUrl ? (
+                            <img
+                              src={image.imageUrl}
+                              alt="Generated product"
+                              className={image.imageType.startsWith('aplus-') ? 'aspect-[8/5] w-full object-cover' : 'aspect-square w-full object-cover'}
+                            />
+                          ) : (
+                            <div className={`${image.imageType.startsWith('aplus-') ? 'aspect-[8/5]' : 'aspect-square'} flex w-full items-center justify-center bg-slate-100 text-sm text-slate-400`}>
+                              {image.status === 'FAILED' ? '生成失败' : '生成中'}
+                            </div>
+                          )}
                           <div className="p-4">
-                            <div className="mb-3 text-xs text-slate-500">
+                            <div className="mb-2 text-xs text-slate-500">
                               {[...imageTypeOptions, ...aplusImageTypeOptions].find((type) => type.value === image.imageType)?.label}
                             </div>
+                            <div className="mb-3 flex flex-wrap gap-2 text-[11px] text-slate-500">
+                              <span className="rounded-full bg-slate-100 px-2.5 py-1">{image.status}</span>
+                              {image.size && <span className="rounded-full bg-slate-100 px-2.5 py-1">{image.size}</span>}
+                            </div>
+                            {image.statusMessage && image.status !== 'SUCCEEDED' && (
+                              <p className="mb-3 text-xs leading-5 text-slate-500">{image.statusMessage}</p>
+                            )}
+                            {image.errorMessage && (
+                              <p className="mb-3 text-xs leading-5 text-rose-600">{image.errorMessage}</p>
+                            )}
                             <div className="flex gap-2">
-                              <button
-                                onClick={() => setEditingImage(image)}
-                                className="flex-1 rounded-xl bg-slate-100 px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-200"
-                              >
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => handleDownload(image)}
-                                className="flex-1 rounded-xl bg-amazon-blue px-3 py-2 text-xs font-medium text-white transition hover:bg-blue-600"
-                              >
-                                Download
-                              </button>
+                              {image.imageUrl && image.status === 'SUCCEEDED' && (
+                                <>
+                                  <button
+                                    onClick={() => setEditingImage(image)}
+                                    className="flex-1 rounded-xl bg-slate-100 px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-200"
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    onClick={() => handleDownload(image)}
+                                    className="flex-1 rounded-xl bg-amazon-blue px-3 py-2 text-xs font-medium text-white transition hover:bg-blue-600"
+                                  >
+                                    Download
+                                  </button>
+                                </>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -1517,7 +1736,7 @@ export default function AmazonPage({
 
                 <div className="mb-5">
                   <img
-                    src={editingImage.imageUrl}
+                    src={editingImage.imageUrl || ''}
                     alt="Editing"
                     className="mx-auto w-full max-w-xl rounded-3xl border border-slate-200"
                   />

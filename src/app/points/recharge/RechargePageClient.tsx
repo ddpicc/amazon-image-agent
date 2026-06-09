@@ -1,5 +1,6 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import { formatDateTimeInBeijing } from '@/lib/date'
 import { formatPoints } from '@/lib/points-config'
@@ -63,6 +64,7 @@ export default function RechargePageClient({
   initialPackages: RechargePackageItem[]
   initialPackageId: string
 }) {
+  const router = useRouter()
   const [selectedPackageId, setSelectedPackageId] = useState(initialPackageId)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -95,11 +97,12 @@ export default function RechargePageClient({
 
       setMessage(`订单 ${data.outTradeNo || ''} 已支付，积分已到账。`)
       setCreatedOrder((prev) => (prev ? { ...prev, status: 'PAID' } : prev))
+      router.refresh()
     }
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [])
+  }, [router])
 
   const handleCreateOrder = async () => {
     if (!selectedPackageId) return

@@ -60,14 +60,22 @@ export async function invalidateSession(token: string): Promise<void> {
 export async function getCurrentUserFromSessionToken(token?: string | null): Promise<AuthUser | null> {
   if (!token) return null
 
-  const session = await prisma.session.findUnique({
-    where: {
-      tokenHash: hashOpaqueToken(token),
-    },
-    include: {
-      user: true,
-    },
-  })
+  let session
+  try {
+    session = await prisma.session.findUnique({
+      where: {
+        tokenHash: hashOpaqueToken(token),
+      },
+      include: {
+        user: true,
+      },
+    })
+  } catch (error) {
+    console.error('[auth] failed to load session', {
+      error: error instanceof Error ? error.message : error,
+    })
+    return null
+  }
 
   if (!session) return null
   if (session.expiresAt.getTime() <= Date.now()) {

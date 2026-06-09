@@ -37,7 +37,8 @@ interface HistoryImageRequest {
   imageType: string | null
   prompt: string
   revisedPrompt: string | null
-  status: 'STARTED' | 'SUCCEEDED' | 'FAILED'
+  status: 'STARTED' | 'QUEUED' | 'PROCESSING' | 'SUCCEEDED' | 'FAILED'
+  statusMessage: string | null
   size: string | null
   aspectRatio: string | null
   durationMs: number | null
@@ -57,10 +58,14 @@ export interface HistoryPageData {
   imageRequests: HistoryImageRequest[]
 }
 
-function formatStatus(status: 'STARTED' | 'SUCCEEDED' | 'FAILED') {
-  if (status === 'STARTED') return '进行中'
+function formatStatus(status: HistoryImageRequest['status']) {
+  if (status === 'STARTED' || status === 'QUEUED' || status === 'PROCESSING') return '进行中'
   if (status === 'SUCCEEDED') return '已完成'
   return '失败'
+}
+
+function isActiveStatus(status: HistoryImageRequest['status']) {
+  return status === 'STARTED' || status === 'QUEUED' || status === 'PROCESSING'
 }
 
 function formatDate(value: string) {
@@ -72,7 +77,7 @@ export default function HistoryPageClient({ initialData }: { initialData: Histor
 
   useEffect(() => {
     const hasRunningTasks = data.analysisRecords.some((record) => record.status === 'STARTED')
-      || data.imageRequests.some((record) => record.status === 'STARTED')
+      || data.imageRequests.some((record) => isActiveStatus(record.status))
 
     if (!hasRunningTasks) {
       return
@@ -170,7 +175,7 @@ export default function HistoryPageClient({ initialData }: { initialData: Histor
                   </a>
                 ) : (
                   <div className="flex aspect-square h-44 items-center justify-center bg-slate-100 text-sm text-slate-400">
-                    {record.status === 'STARTED' ? '生成中' : '暂无图片'}
+                    {isActiveStatus(record.status) ? '生成中' : '暂无图片'}
                   </div>
                 )}
                 <div className="space-y-2 p-3">
@@ -184,8 +189,8 @@ export default function HistoryPageClient({ initialData }: { initialData: Histor
                       </span>
                     )}
                   </div>
-                  {record.status === 'STARTED' && (
-                    <p className="text-sm text-sky-700">生图任务仍在服务端执行，结果完成后会自动出现在这里。</p>
+                  {isActiveStatus(record.status) && (
+                    <p className="text-sm text-sky-700">{record.statusMessage || '生图任务仍在服务端执行，结果完成后会自动出现在这里。'}</p>
                   )}
                   {record.status === 'FAILED' && record.errorMessage && (
                     <p className="text-sm text-rose-700">{record.errorMessage}</p>
