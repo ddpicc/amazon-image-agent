@@ -7,6 +7,7 @@ import { formatPoints, toDisplayPoints } from '@/lib/points-config'
 import { prisma } from '@/lib/prisma'
 
 const userNavLinks = [
+  { href: '/', label: '首页' },
   { href: '/history', label: '我的历史' },
   { href: '/points', label: '积分中心' },
 ]

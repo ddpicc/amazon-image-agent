@@ -1027,7 +1027,7 @@ export default function AmazonPage({
     }
 
     setIsGenerating(true)
-    setRouteNotice('正在尝试第一线路')
+    setRouteNotice('正在提交任务到图片服务')
 
     try {
       const result = await requestGenerate(selectedImageType, editedPrompt, selectedSize)
@@ -1088,7 +1088,7 @@ export default function AmazonPage({
     }
 
     setIsGenerating(true)
-    setRouteNotice('正在尝试第一线路')
+    setRouteNotice('正在提交任务到图片服务')
 
     try {
       const result = await requestGenerate(editingImage.imageType as PromptKey, editingImage.prompt, undefined, false)
@@ -1183,9 +1183,6 @@ export default function AmazonPage({
               <h1 className="text-xl font-semibold text-slate-950">Amazon 图片工作流</h1>
             </div>
           </div>
-          <Link href="/" className="hidden rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900 md:inline-flex">
-            返回首页
-          </Link>
         </div>
       </header>
 

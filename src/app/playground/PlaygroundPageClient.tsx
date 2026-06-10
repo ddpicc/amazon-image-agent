@@ -234,7 +234,7 @@ export default function PlaygroundPage({ initialPointsBalance }: { initialPoints
     }
 
     setIsGenerating(true)
-    setRouteNotice('正在尝试第一线路')
+    setRouteNotice('正在提交任务到图片服务')
 
     try {
       const formData = new FormData()
@@ -317,9 +317,6 @@ export default function PlaygroundPage({ initialPointsBalance }: { initialPoints
             <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">自由生成</div>
             <h1 className="text-xl font-semibold text-slate-950">单张自由生成</h1>
           </div>
-          <Link href="/" className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900">
-            返回首页
-          </Link>
         </div>
       </header>
 
