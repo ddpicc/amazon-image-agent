@@ -11,10 +11,6 @@ export default async function AdminImageRecordsPage() {
     take: 100,
     include: {
       user: true,
-      assets: true,
-      attempts: {
-        orderBy: { attemptIndex: 'asc' },
-      },
     },
   })
   type AdminImageRecord = (typeof records)[number]
@@ -39,10 +35,6 @@ export default async function AdminImageRecordsPage() {
                 <th className="pb-3 pr-4">用户</th>
                 <th className="pb-3 pr-4">时间</th>
                 <th className="pb-3 pr-4">接口</th>
-                <th className="pb-3 pr-4">上游 URL</th>
-                <th className="pb-3 pr-4">线路</th>
-                <th className="pb-3 pr-4">上游接口</th>
-                <th className="pb-3 pr-4">尝试</th>
                 <th className="pb-3 pr-4">耗时</th>
                 <th className="pb-3 pr-4">状态</th>
                 <th className="pb-3">产出</th>
@@ -54,19 +46,12 @@ export default async function AdminImageRecordsPage() {
                   <td className="py-4 pr-4 text-slate-700">{record.user.email}</td>
                   <td className="py-4 pr-4 text-slate-700">{formatDateTimeInBeijing(record.createdAt)}</td>
                   <td className="py-4 pr-4 text-slate-700">{record.entryApi}</td>
-                  <td className="py-4 pr-4 text-slate-700">{record.selectedProviderBaseUrl || '-'}</td>
-                  <td className="py-4 pr-4 text-slate-700">
-                    <div>{record.selectedProviderName || '-'}</div>
-                    <div className="text-xs text-slate-500">{record.selectedProviderModel || '-'}</div>
-                  </td>
-                  <td className="py-4 pr-4 text-slate-700">{record.finalUpstreamApiKind}</td>
-                  <td className="py-4 pr-4 text-slate-700">{record.attemptCount}</td>
                   <td className="py-4 pr-4 text-slate-700">{record.durationMs ? `${record.durationMs}ms` : '-'}</td>
                   <td className="py-4 pr-4 text-slate-700">{record.status}</td>
                   <td className="py-4">
-                    {record.assets[0] ? (
-                      <a href={record.assets[0].cosUrl} target="_blank" className="block">
-                        <img src={record.assets[0].cosUrl} alt="" className="h-16 w-16 rounded-xl object-cover" />
+                    {record.imageUrl ? (
+                      <a href={record.imageUrl} target="_blank" className="block">
+                        <img src={record.imageUrl} alt="" className="h-16 w-16 rounded-xl object-cover" />
                       </a>
                     ) : (
                       <span className="text-slate-400">-</span>

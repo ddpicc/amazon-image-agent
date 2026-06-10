@@ -40,9 +40,6 @@ export default async function AdminOperationDetailPage({
       attempts: {
         orderBy: { attemptIndex: 'asc' },
       },
-      generatedAssets: {
-        orderBy: { createdAt: 'asc' },
-      },
       imageGenerationRequest: true,
       analysisRecord: true,
     },
@@ -123,15 +120,14 @@ export default async function AdminOperationDetailPage({
           <div className="panel p-6">
             <h2 className="text-lg font-semibold text-slate-950">输出图片</h2>
             <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {operation.generatedAssets.length === 0 ? (
+              {!operation.imageGenerationRequest?.imageUrl ? (
                 <p className="text-sm text-slate-500">当前操作没有保存输出图片。</p>
-              ) : operation.generatedAssets.map((asset) => (
-                <a key={asset.id} href={asset.cosUrl} target="_blank" className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                  <img src={asset.cosUrl} alt="" className="h-40 w-full rounded-xl object-cover" />
-                  <div className="mt-2 text-xs text-slate-500">{asset.mimeType} · {asset.bytes} bytes</div>
-                  <div className="mt-1 text-xs text-slate-500">上游来源：{asset.upstreamSourceUrl || '-'}</div>
+              ) : (
+                <a href={operation.imageGenerationRequest.imageUrl} target="_blank" className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <img src={operation.imageGenerationRequest.imageUrl} alt="" className="h-40 w-full rounded-xl object-cover" />
+                  <div className="mt-2 text-xs text-slate-500 break-all">{operation.imageGenerationRequest.imageUrl}</div>
                 </a>
-              ))}
+              )}
             </div>
           </div>
         </section>
@@ -146,9 +142,9 @@ export default async function AdminOperationDetailPage({
               <div>参考图数量：<span className="font-medium text-slate-900">{operation.imageGenerationRequest.referenceImageCount}</span></div>
             </div>
             <pre className="mt-4 overflow-x-auto rounded-2xl bg-slate-950 p-4 text-xs text-slate-100">{prettyJson({
+              imageUrl: operation.imageGenerationRequest.imageUrl,
               referenceImagesJson: operation.imageGenerationRequest.referenceImagesJson,
               requestSnapshotJson: operation.imageGenerationRequest.requestSnapshotJson,
-              responseSnapshotJson: operation.imageGenerationRequest.responseSnapshotJson,
             })}</pre>
           </section>
         )}
@@ -202,7 +198,6 @@ export default async function AdminOperationDetailPage({
             <pre className="mt-4 overflow-x-auto rounded-2xl bg-slate-950 p-4 text-xs text-slate-100">{prettyJson({
               outputSummaryJson: operation.outputSummaryJson,
               responseSnapshotJson: operation.responseSnapshotJson,
-              imageGenerationRequest: operation.imageGenerationRequest?.responseSnapshotJson,
               analysisRecord: operation.analysisRecord?.responseSnapshotJson,
             })}</pre>
           </div>

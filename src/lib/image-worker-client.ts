@@ -1,70 +1,37 @@
-import { AttemptStatus, UpstreamApiKind } from '@prisma/client'
+type RemoteTaskStatus = 'pending' | 'processing' | 'completed' | 'failed'
 
-type RemoteTaskStatus = 'QUEUED' | 'PROCESSING' | 'SUCCEEDED' | 'FAILED'
-
-export interface RemoteTaskAttempt {
-  id: string
-  providerId: string | null
-  baseUrl: string
-  model: string
-  attemptIndex: number
-  status: AttemptStatus
-  durationMs: number | null
-  errorMessage: string | null
-  upstreamApiKind: UpstreamApiKind
-  requestSnapshotJson: Record<string, unknown> | null
-  responseSnapshotJson: Record<string, unknown> | null
-  startedAt: string
-  completedAt: string | null
+export interface RemoteTaskOutput {
+  url: string
+  revised_prompt: string | null
 }
 
-export interface RemoteTaskAsset {
-  id: string
-  cosUrl: string
-  cosKey: string
-  mimeType: string
-  bytes: number
-  upstreamSourceUrl: string | null
-  createdAt: string
+export interface RemoteTaskError {
+  message: string
 }
 
 export interface RemoteTaskRecord {
+  created: number
   id: string
+  model: string
+  object: string
+  progress: number
   status: RemoteTaskStatus
-  statusMessage: string | null
-  errorMessage: string | null
-  durationMs: number | null
-  prompt: string
-  finalPrompt: string | null
-  revisedPrompt: string | null
-  imageType: string | null
-  aspectRatio: string | null
-  size: string | null
-  selectedProviderId: string | null
-  selectedProviderName: string | null
-  selectedProviderBaseUrl: string | null
-  selectedProviderModel: string | null
-  attemptCount: number
-  responseSnapshotJson: Record<string, unknown> | null
-  createdAt: string
-  updatedAt: string
-  queuedAt: string | null
-  startedAt: string | null
-  completedAt: string | null
-  attempts: RemoteTaskAttempt[]
-  assets: RemoteTaskAsset[]
+  task_info?: {
+    type?: string
+  } | null
+  usage?: {
+    cost?: number | null
+    cost_status?: string | null
+    currency?: string | null
+  } | null
+  data: RemoteTaskOutput[]
+  error: RemoteTaskError | null
 }
 
 export interface SubmitRemoteTaskInput {
   prompt: string
-  imageType?: string | null
-  aspectRatio?: string | null
   size?: string | null
-  metadata?: Record<string, unknown> | null
-  referenceImages: Array<{
-    data: string
-    mediaType: string
-  }>
+  referenceImageUrls: string[]
 }
 
 export interface SubmitRemoteTaskResult {
@@ -106,19 +73,19 @@ async function parseJson(response: Response) {
 }
 
 export async function submitRemoteImageTask(input: SubmitRemoteTaskInput): Promise<SubmitRemoteTaskResult> {
-  const response = await fetch(`${getWorkerBaseUrl()}/api/v1/tasks`, {
+  const response = await fetch(`${getWorkerBaseUrl()}/v1/images/generations`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${getWorkerApiKey()}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
+      model: 'gpt-image-2',
       prompt: input.prompt,
-      imageType: input.imageType ?? null,
-      aspectRatio: input.aspectRatio ?? null,
-      size: input.size ?? null,
-      metadata: input.metadata ?? undefined,
-      referenceImages: input.referenceImages,
+      image_urls: input.referenceImageUrls,
+      size: input.size ?? '1024x1024',
+      quality: 'medium',
+      n: 1,
     }),
     cache: 'no-store',
     signal: createTimeoutSignal(),
@@ -129,19 +96,19 @@ export async function submitRemoteImageTask(input: SubmitRemoteTaskInput): Promi
     throw new Error(payload?.error || `Remote image worker submit failed: ${response.status}`)
   }
 
-  if (!payload?.requestId || !payload?.status) {
+  if (!payload?.id || !payload?.status) {
     throw new Error('Remote image worker submit returned an invalid payload')
   }
 
   return {
-    requestId: payload.requestId,
+    requestId: payload.id,
     status: payload.status,
     statusMessage: payload.statusMessage || '',
   }
 }
 
 export async function fetchRemoteImageTask(remoteRequestId: string): Promise<RemoteTaskRecord> {
-  const response = await fetch(`${getWorkerBaseUrl()}/api/v1/tasks/${remoteRequestId}`, {
+  const response = await fetch(`${getWorkerBaseUrl()}/v1/images/tasks/${remoteRequestId}`, {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${getWorkerApiKey()}`,
@@ -155,9 +122,9 @@ export async function fetchRemoteImageTask(remoteRequestId: string): Promise<Rem
     throw new Error(payload?.error || `Remote image worker status fetch failed: ${response.status}`)
   }
 
-  if (!payload?.data?.id) {
+  if (!payload?.id || !payload?.status) {
     throw new Error('Remote image worker status returned an invalid payload')
   }
 
-  return payload.data as RemoteTaskRecord
+  return payload as RemoteTaskRecord
 }

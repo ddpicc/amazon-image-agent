@@ -71,8 +71,6 @@ export default async function AdminWorkbenchPage() {
         createdAt: true,
         entryApi: true,
         errorMessage: true,
-        selectedProviderName: true,
-        selectedProviderModel: true,
         user: {
           select: { email: true },
         },
@@ -137,7 +135,6 @@ export default async function AdminWorkbenchPage() {
         durationMs: true,
         status: true,
         entryApi: true,
-        selectedProviderName: true,
         user: {
           select: { email: true },
         },
@@ -230,7 +227,6 @@ export default async function AdminWorkbenchPage() {
                     <div className="text-xs text-slate-500">{formatDateTimeInBeijing(item.createdAt)}</div>
                   </div>
                   <div className="mt-2 text-sm text-slate-600">接口：{item.entryApi}</div>
-                  <div className="mt-1 text-sm text-slate-600">线路：{item.selectedProviderName || '-'} / {item.selectedProviderModel || '-'}</div>
                   <div className="mt-2 text-sm text-rose-600">{item.errorMessage || '未记录错误信息'}</div>
                 </div>
               ))}
@@ -346,7 +342,6 @@ export default async function AdminWorkbenchPage() {
                   <th className="pb-3 pr-4">用户</th>
                   <th className="pb-3 pr-4">时间</th>
                   <th className="pb-3 pr-4">接口</th>
-                  <th className="pb-3 pr-4">Provider</th>
                   <th className="pb-3 pr-4">状态</th>
                   <th className="pb-3">耗时</th>
                 </tr>
@@ -357,7 +352,6 @@ export default async function AdminWorkbenchPage() {
                     <td className="py-4 pr-4 text-slate-700">{record.user.email}</td>
                     <td className="py-4 pr-4 text-slate-700">{formatDateTimeInBeijing(record.createdAt)}</td>
                     <td className="py-4 pr-4 text-slate-700">{record.entryApi}</td>
-                    <td className="py-4 pr-4 text-slate-700">{record.selectedProviderName || '-'}</td>
                     <td className="py-4 pr-4 text-slate-700">{record.status}</td>
                     <td className="py-4 text-slate-700">{record.durationMs ? `${record.durationMs}ms` : '-'}</td>
                   </tr>

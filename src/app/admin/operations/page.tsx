@@ -87,8 +87,10 @@ export default async function AdminOperationsPage({
       attempts: {
         orderBy: { attemptIndex: 'asc' },
       },
-      generatedAssets: {
-        orderBy: { createdAt: 'asc' },
+      imageGenerationRequest: {
+        select: {
+          imageUrl: true,
+        },
       },
     },
   })
@@ -178,7 +180,7 @@ export default async function AdminOperationsPage({
                   <td className="py-4 pr-4 text-slate-700">{formatOperationStatus(operation.status)}</td>
                   <td className="py-4 pr-4 text-slate-700">{operation.attempts.length}</td>
                   <td className="py-4 pr-4 text-slate-700">{operation.durationMs ? `${operation.durationMs}ms` : '-'}</td>
-                  <td className="py-4 pr-4 text-slate-700">{operation.generatedAssets.length}</td>
+                  <td className="py-4 pr-4 text-slate-700">{operation.imageGenerationRequest?.imageUrl ? 1 : 0}</td>
                   <td className="py-4 pr-4 text-slate-700">{formatNullableDateTimeInBeijing(operation.expiresAt)}</td>
                   <td className="py-4 text-slate-700">
                     <Link href={`/admin/operations/${operation.id}`} className="font-medium text-amazon-blue hover:text-blue-600">

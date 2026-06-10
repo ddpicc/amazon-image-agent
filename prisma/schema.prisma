@@ -190,17 +190,13 @@ model ImageGenerationRequest {
   sourcePage              SourcePage
   entryApi                String
   billingScene            String?
-  selectedProviderName    String?
-  selectedProviderBaseUrl String?
-  selectedProviderModel   String?
-  attemptCount            Int                      @default(0)
-  finalUpstreamApiKind    UpstreamApiKind          @default(UNKNOWN)
   status                  GenerationStatus         @default(STARTED)
   statusMessage           String?
   durationMs              Int?
   prompt                  String
   finalPrompt             String?
   revisedPrompt           String?
+  imageUrl                String?
   imageType               String?
   aspectRatio             String?
   size                    String?
@@ -208,7 +204,6 @@ model ImageGenerationRequest {
   referenceImagesJson     Json?
   requestPayloadJson      Json?
   requestSnapshotJson     Json?
-  responseSnapshotJson    Json?
   errorMessage            String?
   workerJobId             String?
   queuedAt                DateTime?
@@ -219,50 +214,10 @@ model ImageGenerationRequest {
   updatedAt               DateTime                 @updatedAt
   user                    User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
   operation               AiOperation?             @relation(fields: [operationId], references: [id], onDelete: SetNull)
-  attempts                ImageGenerationAttempt[]
-  assets                  GeneratedImageAsset[]
   pointsLedgerEntry       PointsLedgerEntry?       @relation(fields: [pointsLedgerEntryId], references: [id], onDelete: SetNull)
 
   @@index([userId, createdAt(sort: Desc)])
   @@index([status, createdAt(sort: Desc)])
-}
-
-model ImageGenerationAttempt {
-  id                   String               @id @default(cuid())
-  requestId            String
-  operationAttemptId   String?              @unique
-  baseUrl              String
-  model                String
-  attemptIndex         Int
-  status               AttemptStatus        @default(STARTED)
-  durationMs           Int?
-  errorMessage         String?
-  upstreamApiKind      UpstreamApiKind      @default(UNKNOWN)
-  requestSnapshotJson  Json?
-  responseSnapshotJson Json?
-  startedAt            DateTime             @default(now())
-  completedAt          DateTime?
-  request              ImageGenerationRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  operationAttempt     AiOperationAttempt?  @relation(fields: [operationAttemptId], references: [id], onDelete: SetNull)
-
-  @@index([requestId, attemptIndex])
-}
-
-model GeneratedImageAsset {
-  id                 String        @id @default(cuid())
-  requestId          String
-  operationId        String?
-  cosUrl             String
-  cosKey             String
-  mimeType           String
-  bytes              Int
-  upstreamSourceUrl  String?
-  createdAt          DateTime      @default(now())
-  request            ImageGenerationRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  operation          AiOperation?  @relation(fields: [operationId], references: [id], onDelete: SetNull)
-
-  @@index([requestId])
-  @@index([operationId])
 }
 
 model AiOperation {
@@ -289,7 +244,6 @@ model AiOperation {
   analysisRecord          AnalysisRecord?
   imageGenerationRequest  ImageGenerationRequest?
   attempts                AiOperationAttempt[]
-  generatedAssets         GeneratedImageAsset[]
 
   @@index([userId, createdAt(sort: Desc)])
   @@index([kind, createdAt(sort: Desc)])
@@ -316,7 +270,6 @@ model AiOperationAttempt {
   createdAt             DateTime        @default(now())
   updatedAt             DateTime        @updatedAt
   operation             AiOperation     @relation(fields: [operationId], references: [id], onDelete: Cascade)
-  imageGenerationAttempt ImageGenerationAttempt?
 
   @@index([operationId, attemptIndex])
   @@index([status, createdAt(sort: Desc)])

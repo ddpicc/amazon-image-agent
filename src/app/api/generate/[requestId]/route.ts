@@ -40,7 +40,7 @@ export async function GET(
     errorMessage: record.errorMessage,
     prompt: record.prompt,
     revisedPrompt: record.revisedPrompt,
-    imageUrl: record.assets[0]?.cosUrl || null,
+    imageUrl: record.imageUrl,
     imageType: record.imageType,
     size: record.size,
     aspectRatio: record.aspectRatio,

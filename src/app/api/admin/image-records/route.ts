@@ -16,10 +16,6 @@ export async function GET(request: NextRequest) {
     take: 100,
     include: {
       user: true,
-      assets: true,
-      attempts: {
-        orderBy: { attemptIndex: 'asc' },
-      },
     },
   })
 
