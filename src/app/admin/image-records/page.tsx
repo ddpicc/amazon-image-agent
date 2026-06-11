@@ -34,7 +34,6 @@ export default async function AdminImageRecordsPage() {
               <tr>
                 <th className="pb-3 pr-4">用户</th>
                 <th className="pb-3 pr-4">时间</th>
-                <th className="pb-3 pr-4">接口</th>
                 <th className="pb-3 pr-4">耗时</th>
                 <th className="pb-3 pr-4">状态</th>
                 <th className="pb-3">产出</th>
@@ -45,7 +44,6 @@ export default async function AdminImageRecordsPage() {
                 <tr key={record.id} className="border-t border-slate-200 align-top">
                   <td className="py-4 pr-4 text-slate-700">{record.user.email}</td>
                   <td className="py-4 pr-4 text-slate-700">{formatDateTimeInBeijing(record.createdAt)}</td>
-                  <td className="py-4 pr-4 text-slate-700">{record.entryApi}</td>
                   <td className="py-4 pr-4 text-slate-700">{record.durationMs ? `${record.durationMs}ms` : '-'}</td>
                   <td className="py-4 pr-4 text-slate-700">{record.status}</td>
                   <td className="py-4">

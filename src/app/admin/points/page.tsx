@@ -9,29 +9,12 @@ import { prisma } from '@/lib/prisma'
 export default async function AdminPointsPage() {
   await requireAdmin()
 
-  const [users, packages, ledgerEntries, paymentOrders] = await Promise.all([
-    prisma.user.findMany({
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        email: true,
-        role: true,
-        pointsBalance: true,
-        createdAt: true,
-      },
-    }),
+  const [packages, paymentOrders] = await Promise.all([
     prisma.pointsPackage.findMany({
       orderBy: [
         { displayOrder: 'asc' },
         { createdAt: 'asc' },
       ],
-    }),
-    prisma.pointsLedgerEntry.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-      include: {
-        user: true,
-      },
     }),
     prisma.paymentOrder.findMany({
       orderBy: { createdAt: 'desc' },
@@ -84,60 +67,6 @@ export default async function AdminPointsPage() {
               </table>
             </div>
             <AdminCreatePackageForm />
-          </div>
-        </section>
-
-        <section className="panel p-6">
-          <h2 className="text-lg font-semibold text-slate-950">注册用户与余额</h2>
-          <div className="mt-4 overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
-              <thead className="text-slate-500">
-                <tr>
-                  <th className="pb-3 pr-4">邮箱</th>
-                  <th className="pb-3 pr-4">角色</th>
-                  <th className="pb-3 pr-4">当前余额</th>
-                  <th className="pb-3">注册时间</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map((user) => (
-                  <tr key={user.id} className="border-t border-slate-200">
-                    <td className="py-4 pr-4 text-slate-700">{user.email}</td>
-                    <td className="py-4 pr-4 text-slate-700">{user.role}</td>
-                    <td className="py-4 pr-4 text-slate-700">{formatPoints(toDisplayPoints(user.pointsBalance))}</td>
-                    <td className="py-4 text-slate-700">{formatDateTimeInBeijing(user.createdAt)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <section className="panel p-6">
-          <h2 className="text-lg font-semibold text-slate-950">最近积分流水</h2>
-          <div className="mt-4 overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
-              <thead className="text-slate-500">
-                <tr>
-                  <th className="pb-3 pr-4">用户</th>
-                  <th className="pb-3 pr-4">类型</th>
-                  <th className="pb-3 pr-4">变动</th>
-                  <th className="pb-3 pr-4">余额</th>
-                  <th className="pb-3">时间</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ledgerEntries.map((entry) => (
-                  <tr key={entry.id} className="border-t border-slate-200">
-                    <td className="py-4 pr-4 text-slate-700">{entry.user.email}</td>
-                    <td className="py-4 pr-4 text-slate-700">{entry.type}</td>
-                    <td className="py-4 pr-4 text-slate-700">{formatPoints(toDisplayPoints(entry.pointsDelta))}</td>
-                    <td className="py-4 pr-4 text-slate-700">{formatPoints(toDisplayPoints(entry.balanceAfter))}</td>
-                    <td className="py-4 text-slate-700">{formatDateTimeInBeijing(entry.createdAt)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           </div>
         </section>
 

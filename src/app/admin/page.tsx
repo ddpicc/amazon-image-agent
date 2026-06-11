@@ -341,7 +341,6 @@ export default async function AdminWorkbenchPage() {
                 <tr>
                   <th className="pb-3 pr-4">用户</th>
                   <th className="pb-3 pr-4">时间</th>
-                  <th className="pb-3 pr-4">接口</th>
                   <th className="pb-3 pr-4">状态</th>
                   <th className="pb-3">耗时</th>
                 </tr>
@@ -351,7 +350,6 @@ export default async function AdminWorkbenchPage() {
                   <tr key={record.id} className="border-t border-slate-200">
                     <td className="py-4 pr-4 text-slate-700">{record.user.email}</td>
                     <td className="py-4 pr-4 text-slate-700">{formatDateTimeInBeijing(record.createdAt)}</td>
-                    <td className="py-4 pr-4 text-slate-700">{record.entryApi}</td>
                     <td className="py-4 pr-4 text-slate-700">{record.status}</td>
                     <td className="py-4 text-slate-700">{record.durationMs ? `${record.durationMs}ms` : '-'}</td>
                   </tr>

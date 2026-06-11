@@ -161,7 +161,6 @@ export default async function AdminOperationsPage({
                 <th className="pb-3 pr-4">时间</th>
                 <th className="pb-3 pr-4">用户</th>
                 <th className="pb-3 pr-4">类型</th>
-                <th className="pb-3 pr-4">入口</th>
                 <th className="pb-3 pr-4">状态</th>
                 <th className="pb-3 pr-4">尝试数</th>
                 <th className="pb-3 pr-4">耗时</th>
@@ -176,7 +175,6 @@ export default async function AdminOperationsPage({
                   <td className="py-4 pr-4 text-slate-700">{formatDateTimeInBeijing(operation.createdAt)}</td>
                   <td className="py-4 pr-4 text-slate-700">{operation.user.email}</td>
                   <td className="py-4 pr-4 text-slate-700">{formatOperationKind(operation.kind)}</td>
-                  <td className="py-4 pr-4 text-slate-700">{operation.entryPoint || '-'}</td>
                   <td className="py-4 pr-4 text-slate-700">{formatOperationStatus(operation.status)}</td>
                   <td className="py-4 pr-4 text-slate-700">{operation.attempts.length}</td>
                   <td className="py-4 pr-4 text-slate-700">{operation.durationMs ? `${operation.durationMs}ms` : '-'}</td>
