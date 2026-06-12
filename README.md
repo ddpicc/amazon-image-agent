@@ -73,7 +73,7 @@ ADMIN_PASSWORD=change_me_please
 
 - `APP_SECRET` 用于 session token 哈希
 - `PROVIDER_KEY_ENCRYPTION_KEY` 用于加密数据库里的上游 provider key
-- `IMAGE_WORKER_BASE_URL` 和 `IMAGE_WORKER_API_KEY` 用于把生图任务提交到 `amazon-image-worker`
+- `IMAGE_WORKER_BASE_URL` 和 `IMAGE_WORKER_API_KEY` 用于把生图任务提交到 `amazon-image-worker` 的 OpenAI-compatible 图片接口
 - `RESEND_API_KEY` 和 `RESEND_FROM` 用于注册邮箱验证码发送
 - 文本 provider 仍通过数据库维护
 - 运行时不读取 `TEXT_KEY`、`TEXT_URL`、`TEXT_MODEL` 这类环境变量
@@ -150,7 +150,9 @@ npm run dev
 
 1. 校验登录态
 2. 写入生图请求记录
-3. 把任务提交到 `amazon-image-worker`
+3. 按请求内容把任务提交到 `amazon-image-worker`
+   - 无参考图：`POST /v1/images/generations`
+   - 有参考图：`POST /v1/images/edits`
 4. 当前页和 `/history` 轮询本地记录，本地再同步远端状态
 5. 远端 worker 自己完成 provider fallback、出图和 COS 上传
 6. agent 只保存本地历史、状态和积分

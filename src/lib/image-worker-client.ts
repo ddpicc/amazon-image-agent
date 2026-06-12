@@ -73,20 +73,31 @@ async function parseJson(response: Response) {
 }
 
 export async function submitRemoteImageTask(input: SubmitRemoteTaskInput): Promise<SubmitRemoteTaskResult> {
-  const response = await fetch(`${getWorkerBaseUrl()}/v1/images/generations`, {
+  const isEditRequest = input.referenceImageUrls.length > 0
+  const endpoint = isEditRequest ? '/v1/images/edits' : '/v1/images/generations'
+  const body = isEditRequest
+    ? {
+        model: 'gpt-image-2',
+        prompt: input.prompt,
+        image: input.referenceImageUrls,
+        size: input.size ?? '1024x1024',
+        n: 1,
+      }
+    : {
+        model: 'gpt-image-2',
+        prompt: input.prompt,
+        size: input.size ?? '1024x1024',
+        quality: 'medium',
+        n: 1,
+      }
+
+  const response = await fetch(`${getWorkerBaseUrl()}${endpoint}`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${getWorkerApiKey()}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      model: 'gpt-image-2',
-      prompt: input.prompt,
-      image_urls: input.referenceImageUrls,
-      size: input.size ?? '1024x1024',
-      quality: 'medium',
-      n: 1,
-    }),
+    body: JSON.stringify(body),
     cache: 'no-store',
     signal: createTimeoutSignal(),
   })

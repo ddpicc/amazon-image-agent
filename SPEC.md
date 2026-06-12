@@ -46,8 +46,10 @@
    - User can edit prompt before generation
 
 5. **Image Generation**
-   - Generate images using GPT-Image 2 via `/v1/images/edits`
-   - Reference image is sent along with prompt
+   - Generate images using GPT-Image 2 through the remote `amazon-image-worker`
+   - Requests without reference images use `/v1/images/generations`
+   - Requests with reference images use `/v1/images/edits`
+   - Reference image is sent along with prompt when present
    - Support multiple image types and variations
 
 6. **Image Preview & Edit**
