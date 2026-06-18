@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import ReferenceImageUploader from '@/components/ReferenceImageUploader'
-import { ASPECT_RATIO_OPTIONS, AspectRatio, getDefaultSizeForAspectRatio, getSizesForAspectRatio, RenderSize } from '@/lib/image-options'
+import { RenderSize, SIZE_OPTIONS } from '@/lib/image-options'
 import { formatPoints, getGenerationCostDisplay } from '@/lib/points-config'
 
 interface GeneratedImage {
@@ -13,7 +13,6 @@ interface GeneratedImage {
   prompt: string
   revisedPrompt: string
   size: RenderSize
-  aspectRatio: AspectRatio
   status: 'QUEUED' | 'PROCESSING' | 'SUCCEEDED' | 'FAILED'
   statusMessage?: string | null
   errorMessage?: string | null
@@ -35,7 +34,7 @@ interface RouteSummary {
 
 type GenerateStreamEvent =
   | { type: 'status'; message: string }
-  | { type: 'result'; data: { requestId: string; imageUrl: string; revisedPrompt: string; size: RenderSize; aspectRatio?: AspectRatio; routeSummary: RouteSummary | null } }
+  | { type: 'result'; data: { requestId: string; imageUrl: string; revisedPrompt: string; size: RenderSize; routeSummary: RouteSummary | null } }
   | { type: 'error'; message: string }
   | { type: 'queued'; data: { requestId: string; operationId: string; status: string; statusMessage: string } }
 
@@ -48,7 +47,6 @@ interface GenerationStatusPayload {
   revisedPrompt: string | null
   imageUrl: string | null
   size: string | null
-  aspectRatio: string | null
   active: boolean
 }
 
@@ -61,8 +59,7 @@ export default function ReversePromptPageClient({ initialPointsBalance }: { init
   const [prompt, setPrompt] = useState('')
   const [analysisSummary, setAnalysisSummary] = useState('')
   const [generationReferenceImages, setGenerationReferenceImages] = useState<File[]>([])
-  const [aspectRatio, setAspectRatio] = useState<AspectRatio>('1:1')
-  const [size, setSize] = useState<RenderSize>(getDefaultSizeForAspectRatio('1:1'))
+  const [size, setSize] = useState<RenderSize>('1024x1024')
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
   const [pointsBalance, setPointsBalance] = useState(initialPointsBalance)
@@ -78,7 +75,6 @@ export default function ReversePromptPageClient({ initialPointsBalance }: { init
   const promptTextareaRef = useRef<HTMLTextAreaElement>(null)
   const pollingTimersRef = useRef<Map<string, number>>(new Map())
 
-  const availableSizes = useMemo(() => getSizesForAspectRatio(aspectRatio), [aspectRatio])
   const generationCost = getGenerationCostDisplay('reverse-prompt')
   const hasEnoughPointsToGenerate = pointsBalance >= generationCost
   const sourcePreviewUrl = useMemo(() => {
@@ -90,12 +86,6 @@ export default function ReversePromptPageClient({ initialPointsBalance }: { init
     if (!sourcePreviewUrl) return
     return () => window.URL.revokeObjectURL(sourcePreviewUrl)
   }, [sourcePreviewUrl])
-
-  useEffect(() => {
-    if (!availableSizes.some((option) => option.value === size)) {
-      setSize(getDefaultSizeForAspectRatio(aspectRatio))
-    }
-  }, [aspectRatio, availableSizes, size])
 
   useEffect(() => {
     if (!copiedPrompt) return
@@ -221,7 +211,6 @@ export default function ReversePromptPageClient({ initialPointsBalance }: { init
             prompt: payload.prompt || image.prompt,
             revisedPrompt: payload.revisedPrompt || image.revisedPrompt,
             size: (payload.size as RenderSize) || image.size,
-            aspectRatio: (payload.aspectRatio as AspectRatio) || image.aspectRatio,
             status: payload.status,
             statusMessage: payload.statusMessage,
             errorMessage: payload.errorMessage,
@@ -371,7 +360,6 @@ export default function ReversePromptPageClient({ initialPointsBalance }: { init
       const resolvedPrompt = prompt.trim()
       const formData = new FormData()
       formData.append('prompt', resolvedPrompt)
-      formData.append('aspectRatio', aspectRatio)
       formData.append('size', size)
       formData.append('sourcePage', 'playground')
       formData.append('billingScene', 'reverse-prompt')
@@ -390,7 +378,6 @@ export default function ReversePromptPageClient({ initialPointsBalance }: { init
           prompt: resolvedPrompt,
           revisedPrompt: resolvedPrompt,
           size,
-          aspectRatio,
           status: 'QUEUED',
           statusMessage: result.data.statusMessage,
           errorMessage: null,
@@ -405,7 +392,6 @@ export default function ReversePromptPageClient({ initialPointsBalance }: { init
           prompt: resolvedPrompt,
           revisedPrompt: (result.data.revisedPrompt || resolvedPrompt) as string,
           size: (result.data.size || size) as RenderSize,
-          aspectRatio: (result.data.aspectRatio || aspectRatio) as AspectRatio,
           status: 'SUCCEEDED',
           charged: true,
         }
@@ -464,7 +450,6 @@ export default function ReversePromptPageClient({ initialPointsBalance }: { init
       <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
         <section className="panel mb-6 px-6 py-7 sm:px-8">
           <div className="max-w-3xl">
-            <span className="inline-flex rounded-full bg-amazon-blue/10 px-3 py-1 text-xs font-semibold text-amazon-blue">新工作流</span>
             <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950">先拆提示词，再做同款图片</h2>
             <p className="mt-3 text-sm leading-6 text-slate-600 sm:text-base">
               先上传一张目标图，让 AI 拆解出一段可直接生图的提示词；确认后，再展开同款生成选项继续做图。再生图每次扣 {formatPoints(generationCost)} 积分。
@@ -585,26 +570,9 @@ export default function ReversePromptPageClient({ initialPointsBalance }: { init
               />
 
               <div>
-                <label className="mb-3 block text-sm font-medium text-slate-800">宽高比</label>
-                <div className="grid gap-3 sm:grid-cols-3">
-                  {ASPECT_RATIO_OPTIONS.map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => setAspectRatio(option.value)}
-                      className={`rounded-2xl border p-4 text-left transition ${aspectRatio === option.value ? 'border-amazon-orange bg-orange-50 shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300'}`}
-                    >
-                      <div className="text-sm font-medium text-slate-800">{option.label}</div>
-                      <div className="mt-1 text-xs text-slate-500">{option.description}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
                 <label className="mb-3 block text-sm font-medium text-slate-800">图片尺寸</label>
                 <div className="grid gap-3 sm:grid-cols-3">
-                  {availableSizes.map((option) => (
+                  {SIZE_OPTIONS.map((option) => (
                     <button
                       key={option.value}
                       type="button"
@@ -612,7 +580,6 @@ export default function ReversePromptPageClient({ initialPointsBalance }: { init
                       className={`rounded-2xl border p-4 text-left transition ${size === option.value ? 'border-amazon-orange bg-orange-50 shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300'}`}
                     >
                       <div className="text-sm font-medium text-slate-800">{option.label}</div>
-                      <div className="mt-1 text-xs text-slate-500">{option.note}</div>
                     </button>
                   ))}
                 </div>
@@ -718,7 +685,6 @@ export default function ReversePromptPageClient({ initialPointsBalance }: { init
                       )}
                       <div className="space-y-3 p-4">
                         <div className="flex flex-wrap gap-2 text-xs text-slate-500">
-                          <span className="rounded-full bg-slate-100 px-2.5 py-1">{image.aspectRatio}</span>
                           <span className="rounded-full bg-slate-100 px-2.5 py-1">{image.size}</span>
                           <span className="rounded-full bg-slate-100 px-2.5 py-1">{image.status}</span>
                         </div>

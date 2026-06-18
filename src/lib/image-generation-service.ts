@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client'
 import { completeAiOperation, getAiOperationExpiryDate, startAiOperation } from '@/lib/ai-operations'
 import { StoredReferenceImage } from '@/lib/amazon-workflow'
-import { AspectRatio, RenderSize } from '@/lib/image-options'
+import { RenderSize, ImageModel } from '@/lib/image-options'
 import { PersistedImageGenerationPayload, RouteSummary, type ImageGenerationRequestStatus } from '@/lib/image-generation'
 import { fetchRemoteImageTask, submitRemoteImageTask } from '@/lib/image-worker-client'
 import { debitPointForGeneration, ensureSufficientPointsForGenerationByScene } from '@/lib/points'
@@ -64,7 +64,7 @@ export async function buildPersistedImageGenerationPayload(params: {
   sourcePage: 'amazon' | 'playground'
   billingScene: GenerationBillingScene
   imageType?: string | null
-  aspectRatio?: AspectRatio | null
+  model?: ImageModel | null
   size: RenderSize
   referenceImages: StoredReferenceImage[]
 }): Promise<PersistedImageGenerationPayload> {
@@ -74,7 +74,7 @@ export async function buildPersistedImageGenerationPayload(params: {
     sourcePage: params.sourcePage,
     billingScene: params.billingScene,
     imageType: params.imageType ?? null,
-    aspectRatio: params.aspectRatio ?? null,
+    model: params.model ?? null,
     size: params.size,
     referenceImages: params.referenceImages,
   }
@@ -88,7 +88,7 @@ export async function createQueuedImageGenerationRequest(params: {
   billingScene: GenerationBillingScene
   entryApi: string
   imageType?: string | null
-  aspectRatio?: AspectRatio | null
+  model?: ImageModel | null
   size: RenderSize
   referenceImages: StoredReferenceImage[]
 }) {
@@ -104,7 +104,7 @@ export async function createQueuedImageGenerationRequest(params: {
       sourcePage: params.sourcePage,
       billingScene: params.billingScene,
       imageType: params.imageType ?? null,
-      aspectRatio: params.aspectRatio ?? null,
+      model: params.model ?? null,
       size: params.size,
       referenceImageCount: params.referenceImages.length,
       referenceMediaTypes: params.referenceImages.map((image) => image.mimeType),
@@ -115,7 +115,7 @@ export async function createQueuedImageGenerationRequest(params: {
       sourcePage: params.sourcePage,
       billingScene: params.billingScene,
       imageType: params.imageType ?? null,
-      aspectRatio: params.aspectRatio ?? null,
+      model: params.model ?? null,
       size: params.size,
       referenceImages: params.referenceImages.map((image, index) => ({
         index,
@@ -133,7 +133,7 @@ export async function createQueuedImageGenerationRequest(params: {
     sourcePage: params.sourcePage,
     billingScene: params.billingScene,
     imageType: params.imageType ?? null,
-    aspectRatio: params.aspectRatio ?? null,
+    model: params.model ?? null,
     size: params.size,
     referenceImages: params.referenceImages,
   })
@@ -148,7 +148,6 @@ export async function createQueuedImageGenerationRequest(params: {
       prompt: params.originalPrompt,
       finalPrompt: params.prompt,
       imageType: params.imageType ?? null,
-      aspectRatio: params.aspectRatio ?? null,
       size: params.size,
       referenceImageCount: params.referenceImages.length,
       referenceImagesJson: params.referenceImages as unknown as Prisma.InputJsonValue,
@@ -196,6 +195,7 @@ export async function submitQueuedImageGenerationRequest(requestId: string) {
     const remoteTask = await submitRemoteImageTask({
       prompt: payload.prompt,
       size: payload.size,
+      model: payload.model,
       referenceImageUrls,
     })
 
@@ -245,7 +245,7 @@ export async function syncImageGenerationRequestFromWorker(requestId: string) {
 
   const remoteTask = await fetchRemoteImageTask(request.workerJobId)
   const nextStatus = parseStatus(remoteTask.status)
-  const imageOutput = remoteTask.data[0] || null
+  const imageOutput = remoteTask.data?.[0] || null
   const startedAt = request.startedAt ?? (nextStatus === 'PROCESSING' || nextStatus === 'SUCCEEDED' || nextStatus === 'FAILED' ? new Date() : null)
   const completedAt = nextStatus === 'SUCCEEDED' || nextStatus === 'FAILED' ? new Date() : request.completedAt
   const durationMs = completedAt

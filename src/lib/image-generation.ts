@@ -1,4 +1,4 @@
-import { AspectRatio, RenderSize } from '@/lib/image-options'
+import { ImageModel, RenderSize } from '@/lib/image-options'
 import { GenerationBillingScene } from '@/lib/points-config'
 import { StoredReferenceImage } from '@/lib/amazon-workflow'
 
@@ -25,7 +25,7 @@ export interface PersistedImageGenerationPayload {
   sourcePage: 'amazon' | 'playground'
   billingScene: GenerationBillingScene
   imageType?: string | null
-  aspectRatio?: AspectRatio | null
+  model?: ImageModel | null
   size: RenderSize
   referenceImages: StoredReferenceImage[]
 }
@@ -48,7 +48,6 @@ export interface ImageGenerationStatusResult {
   imageUrl: string | null
   imageType: string | null
   size: string | null
-  aspectRatio: string | null
   routeSummary: RouteSummary | null
 }
 

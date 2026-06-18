@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import ReferenceImageUploader from '@/components/ReferenceImageUploader'
-import { ASPECT_RATIO_OPTIONS, AspectRatio, getDefaultSizeForAspectRatio, getSizesForAspectRatio, RenderSize, SIZE_OPTIONS } from '@/lib/image-options'
+import { DEFAULT_IMAGE_MODEL, IMAGE_MODEL_OPTIONS, ImageModel, RenderSize, SIZE_OPTIONS } from '@/lib/image-options'
 import { formatPoints, getGenerationCostDisplay } from '@/lib/points-config'
 
 interface GeneratedImage {
@@ -13,7 +13,6 @@ interface GeneratedImage {
   prompt: string
   revisedPrompt: string
   size: RenderSize
-  aspectRatio: AspectRatio
   status: 'QUEUED' | 'PROCESSING' | 'SUCCEEDED' | 'FAILED'
   statusMessage?: string | null
   errorMessage?: string | null
@@ -35,7 +34,7 @@ interface RouteSummary {
 
 type GenerateStreamEvent =
   | { type: 'status'; message: string }
-  | { type: 'result'; data: { requestId: string; imageUrl: string; revisedPrompt: string; size: RenderSize; aspectRatio?: AspectRatio; routeSummary: RouteSummary | null } }
+  | { type: 'result'; data: { requestId: string; imageUrl: string; revisedPrompt: string; size: RenderSize; routeSummary: RouteSummary | null } }
   | { type: 'error'; message: string }
   | { type: 'queued'; data: { requestId: string; operationId: string; status: string; statusMessage: string } }
 
@@ -48,7 +47,6 @@ interface GenerationStatusPayload {
   revisedPrompt: string | null
   imageUrl: string | null
   size: string | null
-  aspectRatio: string | null
   active: boolean
 }
 
@@ -59,23 +57,16 @@ function createImageId() {
 export default function PlaygroundPage({ initialPointsBalance }: { initialPointsBalance: number }) {
   const [prompt, setPrompt] = useState('')
   const [referenceImages, setReferenceImages] = useState<File[]>([])
-  const [aspectRatio, setAspectRatio] = useState<AspectRatio>('1:1')
-  const [size, setSize] = useState<RenderSize>(getDefaultSizeForAspectRatio('1:1'))
+  const [model, setModel] = useState<ImageModel>(DEFAULT_IMAGE_MODEL)
+  const [size, setSize] = useState<RenderSize>('1024x1024')
   const [isGenerating, setIsGenerating] = useState(false)
   const [pointsBalance, setPointsBalance] = useState(initialPointsBalance)
   const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([])
   const [routeNotice, setRouteNotice] = useState('')
   const pollingTimersRef = useRef<Map<string, number>>(new Map())
 
-  const availableSizes = useMemo(() => getSizesForAspectRatio(aspectRatio), [aspectRatio])
   const generationCost = getGenerationCostDisplay('playground')
   const hasEnoughPointsToGenerate = pointsBalance >= generationCost
-
-  useEffect(() => {
-    if (!availableSizes.some((option) => option.value === size)) {
-      setSize(getDefaultSizeForAspectRatio(aspectRatio))
-    }
-  }, [aspectRatio, availableSizes, size])
 
   useEffect(() => {
     return () => {
@@ -182,7 +173,6 @@ export default function PlaygroundPage({ initialPointsBalance }: { initialPoints
             prompt: payload.prompt || image.prompt,
             revisedPrompt: payload.revisedPrompt || image.revisedPrompt,
             size: (payload.size as RenderSize) || image.size,
-            aspectRatio: (payload.aspectRatio as AspectRatio) || image.aspectRatio,
             status: nextStatus,
             statusMessage: payload.statusMessage,
             errorMessage: payload.errorMessage,
@@ -239,7 +229,7 @@ export default function PlaygroundPage({ initialPointsBalance }: { initialPoints
     try {
       const formData = new FormData()
       formData.append('prompt', prompt.trim())
-      formData.append('aspectRatio', aspectRatio)
+      formData.append('model', model)
       formData.append('size', size)
       formData.append('sourcePage', 'playground')
       formData.append('billingScene', 'playground')
@@ -258,7 +248,6 @@ export default function PlaygroundPage({ initialPointsBalance }: { initialPoints
           prompt: prompt.trim(),
           revisedPrompt: prompt.trim(),
           size,
-          aspectRatio,
           status: 'QUEUED',
           statusMessage: result.data.statusMessage,
           errorMessage: null,
@@ -273,7 +262,6 @@ export default function PlaygroundPage({ initialPointsBalance }: { initialPoints
           prompt,
           revisedPrompt: (result.data.revisedPrompt || prompt.trim()) as string,
           size: (result.data.size || size) as RenderSize,
-          aspectRatio: (result.data.aspectRatio || aspectRatio) as AspectRatio,
           status: 'SUCCEEDED',
           charged: true,
         }
@@ -323,10 +311,9 @@ export default function PlaygroundPage({ initialPointsBalance }: { initialPoints
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <section className="panel mb-6 px-6 py-7 sm:px-8">
           <div className="max-w-3xl">
-            <span className="inline-flex rounded-full bg-amazon-blue/10 px-3 py-1 text-xs font-semibold text-amazon-blue">独立测试流程</span>
-            <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950">提示词 + 参考图 + 比例 + 尺寸</h2>
+            <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950">提示词 + 参考图 + 尺寸</h2>
             <p className="mt-3 text-sm leading-6 text-slate-600 sm:text-base">
-              不经过商品分析，直接组合提示词、参考图、宽高比与尺寸来测试单张图片效果。当前单张自由生成每次扣 {formatPoints(generationCost)} 积分。
+              不经过商品分析，直接组合提示词、参考图与尺寸来测试单张图片效果。当前单张自由生成每次扣 {formatPoints(generationCost)} 积分。
             </p>
           </div>
         </section>
@@ -353,14 +340,14 @@ export default function PlaygroundPage({ initialPointsBalance }: { initialPoints
             />
 
             <div>
-              <label className="mb-3 block text-sm font-medium text-slate-800">宽高比</label>
-              <div className="grid gap-3 sm:grid-cols-3">
-                {ASPECT_RATIO_OPTIONS.map((option) => (
+              <label className="mb-3 block text-sm font-medium text-slate-800">生成模型</label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {IMAGE_MODEL_OPTIONS.map((option) => (
                   <button
                     key={option.value}
                     type="button"
-                    onClick={() => setAspectRatio(option.value)}
-                    className={`rounded-2xl border p-4 text-left transition ${aspectRatio === option.value ? 'border-amazon-orange bg-orange-50 shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+                    onClick={() => setModel(option.value)}
+                    className={`rounded-2xl border p-4 text-left transition ${model === option.value ? 'border-amazon-orange bg-orange-50 shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300'}`}
                   >
                     <div className="text-sm font-medium text-slate-800">{option.label}</div>
                     <div className="mt-1 text-xs text-slate-500">{option.description}</div>
@@ -372,7 +359,7 @@ export default function PlaygroundPage({ initialPointsBalance }: { initialPoints
             <div>
               <label className="mb-3 block text-sm font-medium text-slate-800">图片尺寸</label>
               <div className="grid gap-3 sm:grid-cols-3">
-                {availableSizes.map((option) => (
+                {SIZE_OPTIONS.map((option) => (
                   <button
                     key={option.value}
                     type="button"
@@ -380,12 +367,11 @@ export default function PlaygroundPage({ initialPointsBalance }: { initialPoints
                     className={`rounded-2xl border p-4 text-left transition ${size === option.value ? 'border-amazon-orange bg-orange-50 shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300'}`}
                   >
                     <div className="text-sm font-medium text-slate-800">{option.label}</div>
-                    <div className="mt-1 text-xs text-slate-500">{option.note}</div>
                   </button>
                 ))}
               </div>
               <p className="mt-3 text-xs text-slate-500">
-                当前比例只展示可用尺寸；现在支持更多 2K 档位，方便做清晰度和构图测试。
+                支持方图、横版和竖版多种尺寸，方便做清晰度和构图测试。
               </p>
             </div>
 
@@ -416,8 +402,8 @@ export default function PlaygroundPage({ initialPointsBalance }: { initialPoints
               <h3 className="text-lg font-semibold text-slate-900">当前设置</h3>
               <div className="mt-4 grid gap-3 sm:grid-cols-3">
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">比例</div>
-                  <div className="mt-1 text-sm font-medium text-slate-800">{aspectRatio}</div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">模型</div>
+                  <div className="mt-1 text-sm font-medium text-slate-800">{IMAGE_MODEL_OPTIONS.find((option) => option.value === model)?.label || model}</div>
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">尺寸</div>
@@ -453,7 +439,6 @@ export default function PlaygroundPage({ initialPointsBalance }: { initialPoints
                     )}
                     <div className="space-y-3 p-4">
                       <div className="flex flex-wrap gap-2 text-xs text-slate-500">
-                        <span className="rounded-full bg-slate-100 px-2.5 py-1">{image.aspectRatio}</span>
                         <span className="rounded-full bg-slate-100 px-2.5 py-1">{image.size}</span>
                         <span className="rounded-full bg-slate-100 px-2.5 py-1">{image.status}</span>
                       </div>

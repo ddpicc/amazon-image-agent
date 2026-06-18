@@ -24,13 +24,14 @@ export interface RemoteTaskRecord {
     cost_status?: string | null
     currency?: string | null
   } | null
-  data: RemoteTaskOutput[]
+  data?: RemoteTaskOutput[] | null
   error: RemoteTaskError | null
 }
 
 export interface SubmitRemoteTaskInput {
   prompt: string
   size?: string | null
+  model?: string | null
   referenceImageUrls: string[]
 }
 
@@ -75,16 +76,17 @@ async function parseJson(response: Response) {
 export async function submitRemoteImageTask(input: SubmitRemoteTaskInput): Promise<SubmitRemoteTaskResult> {
   const isEditRequest = input.referenceImageUrls.length > 0
   const endpoint = isEditRequest ? '/v1/images/edits' : '/v1/images/generations'
+  const model = input.model || 'gpt-image-2'
   const body = isEditRequest
     ? {
-        model: 'gpt-image-2',
+        model,
         prompt: input.prompt,
         image: input.referenceImageUrls,
         size: input.size ?? '1024x1024',
         n: 1,
       }
     : {
-        model: 'gpt-image-2',
+        model,
         prompt: input.prompt,
         size: input.size ?? '1024x1024',
         quality: 'medium',

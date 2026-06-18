@@ -43,7 +43,6 @@ export async function GET(
     imageUrl: record.imageUrl,
     imageType: record.imageType,
     size: record.size,
-    aspectRatio: record.aspectRatio,
     active,
     routeSummary,
     pointsLedgerEntry: record.pointsLedgerEntry

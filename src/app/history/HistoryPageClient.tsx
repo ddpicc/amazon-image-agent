@@ -32,7 +32,6 @@ interface HistoryImageRequest {
   status: 'STARTED' | 'QUEUED' | 'PROCESSING' | 'SUCCEEDED' | 'FAILED'
   statusMessage: string | null
   size: string | null
-  aspectRatio: string | null
   durationMs: number | null
   errorMessage: string | null
   createdAt: string

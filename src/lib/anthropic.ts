@@ -74,7 +74,6 @@ export interface GeneratePromptsOutput {
 export interface GenerateAPlusPromptOutput extends GeneratePromptsOutput {
   imageSpec: {
     size: '1536x960'
-    aspectRatio: '8:5'
   }
 }
 
@@ -670,7 +669,6 @@ ${aplusSummary}
       },
       imageSpec: {
         size: '1536x960',
-        aspectRatio: '8:5',
       },
     }
   } catch {
@@ -684,7 +682,6 @@ ${aplusSummary}
       },
       imageSpec: {
         size: '1536x960',
-        aspectRatio: '8:5',
       },
     }
   }

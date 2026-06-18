@@ -3,35 +3,26 @@ import { requireApiUser } from '@/lib/auth'
 import { createQueuedImageGenerationRequest, submitQueuedImageGenerationRequest } from '@/lib/image-generation-service'
 import {
   appendHiddenAPlusSizeRequirement,
-  AspectRatio,
   HIDDEN_APLUS_RENDER_SIZE,
   RenderSize,
-  SIZE_OPTIONS,
   stripHiddenAPlusSizeRequirement,
-  getDefaultSizeForAspectRatio,
-  getSizesForAspectRatio,
+  isRenderSize,
+  ImageModel,
+  DEFAULT_IMAGE_MODEL,
 } from '@/lib/image-options'
 import { GenerationBillingScene } from '@/lib/points-config'
 import { uploadReferenceImagesForGeneration } from '@/lib/reference-images'
 
-function isRenderSize(value: string | null): value is RenderSize {
-  return SIZE_OPTIONS.some((option) => option.value === value)
-}
-
-function getValidSize(size: string | null, aspectRatio: AspectRatio): RenderSize {
+function getValidSize(size: string | null): RenderSize {
   if (size === HIDDEN_APLUS_RENDER_SIZE) {
     return HIDDEN_APLUS_RENDER_SIZE
   }
 
-  if (size === '1024x640') {
-    return '1024x640'
-  }
-
-  if (isRenderSize(size) && getSizesForAspectRatio(aspectRatio).some((option) => option.value === size)) {
+  if (isRenderSize(size)) {
     return size
   }
 
-  return getDefaultSizeForAspectRatio(aspectRatio)
+  return '1024x1024'
 }
 
 function createRequestId(): string {
@@ -61,8 +52,8 @@ export async function POST(request: NextRequest) {
     const imageType = (formData.get('imageType') as string | null) || ''
     const sourcePage = (formData.get('sourcePage') as string) || 'playground'
     const billingScene = resolveBillingScene(sourcePage, formData.get('billingScene') as string | null)
-    const aspectRatio = (formData.get('aspectRatio') as AspectRatio | null) || '1:1'
     const size = formData.get('size') as string | null
+    const model = (formData.get('model') as ImageModel | null) || DEFAULT_IMAGE_MODEL
     const referenceImageUrlsRaw = formData.get('referenceImageUrls') as string | null
     const referenceImages = [
       ...formData.getAll('referenceImages'),
@@ -85,7 +76,7 @@ export async function POST(request: NextRequest) {
     }
 
     const trimmedPrompt = prompt.trim()
-    const validSize = isAPlus ? HIDDEN_APLUS_RENDER_SIZE : getValidSize(size, aspectRatio)
+    const validSize = isAPlus ? HIDDEN_APLUS_RENDER_SIZE : getValidSize(size)
     const upstreamPrompt = isAPlus ? appendHiddenAPlusSizeRequirement(trimmedPrompt) : trimmedPrompt
 
     console.info('[api/generate] upstream dispatch', {
@@ -123,7 +114,7 @@ export async function POST(request: NextRequest) {
       billingScene,
       entryApi: '/api/generate',
       imageType: imageType || null,
-      aspectRatio,
+      model,
       size: validSize,
       referenceImages: persistedRefImages,
     })
@@ -136,7 +127,6 @@ export async function POST(request: NextRequest) {
       status: queued.status,
       statusMessage: queued.statusMessage,
       imageType,
-      aspectRatio,
       size: validSize,
       revisedPrompt: isAPlus ? trimmedPrompt : stripHiddenAPlusSizeRequirement(trimmedPrompt),
     }, { status: 202 })

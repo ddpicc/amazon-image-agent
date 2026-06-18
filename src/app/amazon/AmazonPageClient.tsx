@@ -46,7 +46,6 @@ interface GeneratedImage {
   imageType: string
   revisedPrompt?: string
   size?: RenderSize
-  aspectRatio?: string
   status: 'QUEUED' | 'PROCESSING' | 'SUCCEEDED' | 'FAILED'
   statusMessage?: string | null
   errorMessage?: string | null
@@ -82,7 +81,6 @@ interface GenerationStatusPayload {
   imageUrl: string | null
   imageType: string | null
   size: string | null
-  aspectRatio: string | null
   active: boolean
   routeSummary: RouteSummary | null
 }
@@ -606,9 +604,6 @@ export default function AmazonPage({
     formData.append('size', size)
     formData.append('sourcePage', 'amazon')
     formData.append('billingScene', getBillingSceneForPromptType(type))
-    if (type.startsWith('aplus-')) {
-      formData.append('aspectRatio', '8:5')
-    }
     if (referenceImages.length > 0) {
       referenceImages.slice(0, 3).forEach((image) => {
         formData.append('referenceImages', image)
@@ -736,7 +731,6 @@ export default function AmazonPage({
             revisedPrompt: payload.revisedPrompt || payload.prompt || image.revisedPrompt || params.fallbackPrompt,
             imageType: payload.imageType || image.imageType || params.fallbackImageType,
             size: (payload.size as RenderSize) || image.size,
-            aspectRatio: payload.aspectRatio || image.aspectRatio,
             status: payload.status,
             statusMessage: payload.statusMessage,
             errorMessage: payload.errorMessage,
@@ -1042,7 +1036,6 @@ export default function AmazonPage({
           revisedPrompt: result.prompt,
           imageType: result.imageType,
           size: result.size,
-          aspectRatio: selectedImageType.startsWith('aplus-') ? '8:5' : '1:1',
           status: 'QUEUED',
           statusMessage: result.data.statusMessage,
           errorMessage: null,
@@ -1063,7 +1056,6 @@ export default function AmazonPage({
           revisedPrompt: result.data.prompt,
           imageType: selectedImageType,
           size: result.data.size,
-          aspectRatio: selectedImageType.startsWith('aplus-') ? '8:5' : '1:1',
           status: 'SUCCEEDED',
           charged: true,
         }
@@ -1190,9 +1182,6 @@ export default function AmazonPage({
         <section className="panel mb-8 overflow-hidden px-6 py-7 sm:px-8">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-3xl">
-              <span className="inline-flex rounded-full bg-amazon-orange/10 px-3 py-1 text-xs font-semibold text-amazon-orange">
-                生产流程
-              </span>
               <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950">
                 先分析商品，再生成适合 Amazon 的图片。
               </h2>
@@ -1583,7 +1572,6 @@ export default function AmazonPage({
                             }`}
                           >
                             <div className="text-sm font-medium text-slate-800">{option.label}</div>
-                            <div className="mt-1 text-xs text-slate-500">{option.note}</div>
                           </button>
                         ))}
                       </div>
