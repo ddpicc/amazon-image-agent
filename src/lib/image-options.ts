@@ -6,7 +6,7 @@ export const IMAGE_MODEL_OPTIONS: Array<{
   description: string
 }> = [
   { value: 'gpt-image-2', label: 'GPT Image 2', description: '默认模型，高质量' },
-  { value: 'agnes-image-2.1-flash', label: 'Agnes Image 2.1 Flash', description: '快速生成' },
+  { value: 'agnes-image-2.1-flash', label: 'Agnes Image 2.1 Flash', description: '免费生成' },
 ]
 
 export const DEFAULT_IMAGE_MODEL: ImageModel = 'gpt-image-2'
