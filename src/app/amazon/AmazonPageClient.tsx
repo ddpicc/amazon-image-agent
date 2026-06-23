@@ -85,6 +85,10 @@ interface GenerationStatusPayload {
   routeSummary: RouteSummary | null
 }
 
+interface AnalysisStatusPayload extends AmazonResumeState {
+  active: boolean
+}
+
 type AnalysisStage = 'idle' | 'preparing' | 'analyzing' | 'completed' | 'error'
 type TaskStatus = 'idle' | 'preparing' | 'analyzing' | 'saving' | 'completed' | 'error'
 
@@ -147,6 +151,11 @@ const aplusFallbackPrompts: Record<APlusPromptImageType, string> = {
   'aplus-lifestyle': '为亚马逊普通 A+ 页面生成第四张横版模块图，作为整页底部的场景与信息收束切片。延续前面的色调与品牌感，自然呈现适用场景、安心感、参数或材质信息，让整套 A+ 页面完整收束。画面可包含简洁英文信息区，但不应重新变成新的主视觉图。',
   'aplus-feature': '为亚马逊普通 A+ 页面生成一张横版卖点模块图，延续整页语境，自然表现核心卖点、结构亮点或使用收益。',
   'aplus-detail': '为亚马逊普通 A+ 页面生成一张横版细节模块图，延续整页语境，重点表现材质、做工、局部结构或补充场景。',
+}
+
+const EMPTY_PROMPT_RESULTS: PromptResults = {
+  amazonSet: null,
+  aplus: null,
 }
 
 function getAPlusOptionSet(result: PromptGenerationResult | APlusPromptGenerationResult | null): ImageTypeOption[] {
@@ -435,10 +444,6 @@ export default function AmazonPage({
   initialResumeState: AmazonResumeState | null
   initialPointsBalance: number
 }) {
-  const emptyPromptResults: PromptResults = {
-    amazonSet: null,
-    aplus: null,
-  }
   const [referenceImages, setReferenceImages] = useState<File[]>([])
   const [storedReferenceImages, setStoredReferenceImages] = useState<StoredReferenceImage[]>(initialResumeState?.referenceImages || [])
   const [analysisId, setAnalysisId] = useState(initialResumeState?.analysisId || '')
@@ -451,7 +456,7 @@ export default function AmazonPage({
   const [streamError, setStreamError] = useState('')
   const [isStreamCompleted, setIsStreamCompleted] = useState(false)
   const [basicAnalysisResult, setBasicAnalysisResult] = useState<BasicAnalysisResult | null>(null)
-  const [promptResults, setPromptResults] = useState<PromptResults>(initialResumeState?.promptResults || emptyPromptResults)
+  const [promptResults, setPromptResults] = useState<PromptResults>(initialResumeState?.promptResults || EMPTY_PROMPT_RESULTS)
   const [selectedBranch, setSelectedBranch] = useState<AmazonBranch | null>(initialResumeState?.currentBranch || null)
   const [branchPromptStatus, setBranchPromptStatus] = useState<TaskStatus>('idle')
   const [branchPromptLabel, setBranchPromptLabel] = useState('')
@@ -470,6 +475,7 @@ export default function AmazonPage({
   const analyzeRequestIdRef = useRef(0)
   const analyzeAbortControllerRef = useRef<AbortController | null>(null)
   const generationPollingRef = useRef<Map<string, number>>(new Map())
+  const analysisPollingRef = useRef<number | null>(null)
   const appliedResumeIdRef = useRef<string | null>(null)
   const currentPromptResult = useMemo(
     () => (selectedBranch ? getPromptResultForBranch(promptResults, selectedBranch) : null),
@@ -487,88 +493,12 @@ export default function AmazonPage({
     return () => {
       generationPollingRef.current.forEach((timerId) => window.clearInterval(timerId))
       generationPollingRef.current.clear()
+      if (analysisPollingRef.current) {
+        window.clearInterval(analysisPollingRef.current)
+        analysisPollingRef.current = null
+      }
     }
   }, [])
-
-  useEffect(() => {
-    if (!initialResumeState || appliedResumeIdRef.current === initialResumeState.analysisId) {
-      return
-    }
-
-    appliedResumeIdRef.current = initialResumeState.analysisId
-    setReferenceImages([])
-    setAnalysisId(initialResumeState.analysisId)
-    setStoredReferenceImages(initialResumeState.referenceImages || [])
-    setGeneratedImages([])
-    setEditingImage(null)
-    setUserGuidance('')
-    setBasicAnalysisResult(initialResumeState.basicAnalysisResult)
-    setPromptResults(initialResumeState.promptResults || emptyPromptResults)
-    setPromptGenerationError(initialResumeState.status === 'FAILED' ? (initialResumeState.errorMessage || '这次分析没有成功完成。') : '')
-    setStreamError(initialResumeState.status === 'FAILED' ? (initialResumeState.errorMessage || '这次分析没有成功完成。') : '')
-    setAnalysisWarnings([])
-    setIsAnalyzing(false)
-    setBranchPromptStatus('idle')
-    setBranchPromptLabel('')
-    setBranchPromptProgress(0)
-    setSelectedImageType('main-white')
-    setSelectedSize('1024x1024')
-
-    const resumeAmazonSet = initialResumeState.promptResults.amazonSet
-    const resumeAplus = initialResumeState.promptResults.aplus
-    const resolvedBranch = initialResumeState.currentBranch
-      || (resumeAmazonSet ? 'amazon-set' : null)
-      || (resumeAplus ? 'aplus' : null)
-
-    setSelectedBranch(resolvedBranch)
-    setEditedPrompt(
-      resolvedBranch
-        ? getSuggestedPrompt(
-          getPromptResultForBranch(initialResumeState.promptResults, resolvedBranch),
-          resolvedBranch === 'amazon-set'
-            ? 'main-white'
-            : getDefaultAPlusPromptKey(getPromptResultForBranch(initialResumeState.promptResults, resolvedBranch)),
-        )
-        : '',
-    )
-    setSelectedImageType(
-      resolvedBranch === 'aplus'
-        ? getDefaultAPlusPromptKey(getPromptResultForBranch(initialResumeState.promptResults, resolvedBranch))
-        : 'main-white',
-    )
-    setSelectedSize(resolvedBranch === 'aplus' ? HIDDEN_APLUS_RENDER_SIZE : '1024x1024')
-
-    if (initialResumeState.status === 'SUCCEEDED' && initialResumeState.basicAnalysisResult) {
-      setIsStreamCompleted(true)
-      setAnalysisStage('completed')
-      setAnalysisStageLabel('已从历史记录恢复分析结果，可以继续选择提示词分支或生成图片')
-      setAnalysisProgress(100)
-      if (resolvedBranch && isPromptGenerationComplete(getPromptResultForBranch(initialResumeState.promptResults, resolvedBranch))) {
-        setCurrentStep('generate')
-      } else {
-        setCurrentStep('branch-select')
-      }
-      setResumeNotice(`已从 ${formatDateTimeInBeijing(initialResumeState.createdAt)} 的分析记录恢复，当前继续使用已保存的参考图。`)
-      return
-    }
-
-    if (initialResumeState.status === 'STARTED') {
-      setIsStreamCompleted(false)
-      setAnalysisStage('preparing')
-      setAnalysisStageLabel('这次分析仍在服务端执行，请前往 /history 等待完成后再继续生图')
-      setAnalysisProgress(10)
-      setCurrentStep('analysis')
-      setResumeNotice('这次分析还在后台执行。你可以在 /history 里持续查看状态，完成后再继续生图。')
-      return
-    }
-
-    setIsStreamCompleted(false)
-    setAnalysisStage('error')
-    setAnalysisStageLabel(initialResumeState.errorMessage || '历史分析记录未完成，暂时无法继续生图')
-    setAnalysisProgress(0)
-    setCurrentStep('analysis')
-    setResumeNotice('这次历史分析没有完成，先查看错误信息后再决定是否重新分析。')
-  }, [initialResumeState])
 
   const buildPrompt = useCallback((type: PromptKey, promptBody?: string) => {
     if (!basicAnalysisResult) return ''
@@ -700,6 +630,174 @@ export default function AmazonPage({
     }
   }, [buildPrompt, currentPromptResult, referenceImages, storedReferenceImages])
 
+  const applyRecoveredAnalysisState = useCallback((resumeState: AmazonResumeState, options?: {
+    stageLabel?: string
+    resumeMessage?: string
+  }) => {
+    setAnalysisId(resumeState.analysisId)
+    setStoredReferenceImages(resumeState.referenceImages || [])
+    setBasicAnalysisResult(resumeState.basicAnalysisResult)
+    setPromptResults(resumeState.promptResults || EMPTY_PROMPT_RESULTS)
+    setPromptGenerationError(resumeState.status === 'FAILED' ? (resumeState.errorMessage || '这次分析没有成功完成。') : '')
+    setStreamError(resumeState.status === 'FAILED' ? (resumeState.errorMessage || '这次分析没有成功完成。') : '')
+    setAnalysisWarnings([])
+    setIsAnalyzing(false)
+    setBranchPromptStatus('idle')
+    setBranchPromptLabel('')
+    setBranchPromptProgress(0)
+
+    const resolvedBranch = resumeState.currentBranch
+      || (resumeState.promptResults.amazonSet ? 'amazon-set' : null)
+      || (resumeState.promptResults.aplus ? 'aplus' : null)
+
+    setSelectedBranch(resolvedBranch)
+    setEditedPrompt(
+      resolvedBranch
+        ? getSuggestedPrompt(
+          getPromptResultForBranch(resumeState.promptResults, resolvedBranch),
+          resolvedBranch === 'amazon-set'
+            ? 'main-white'
+            : getDefaultAPlusPromptKey(getPromptResultForBranch(resumeState.promptResults, resolvedBranch)),
+        )
+        : '',
+    )
+    setSelectedImageType(
+      resolvedBranch === 'aplus'
+        ? getDefaultAPlusPromptKey(getPromptResultForBranch(resumeState.promptResults, resolvedBranch))
+        : 'main-white',
+    )
+    setSelectedSize(resolvedBranch === 'aplus' ? HIDDEN_APLUS_RENDER_SIZE : '1024x1024')
+
+    if (resumeState.status === 'SUCCEEDED' && resumeState.basicAnalysisResult) {
+      setIsStreamCompleted(true)
+      setAnalysisStage('completed')
+      setAnalysisStageLabel(options?.stageLabel || '已从服务端恢复分析结果，可以继续选择提示词分支或生成图片')
+      setAnalysisProgress(100)
+      if (resolvedBranch && isPromptGenerationComplete(getPromptResultForBranch(resumeState.promptResults, resolvedBranch))) {
+        setCurrentStep('generate')
+      } else {
+        setCurrentStep('branch-select')
+      }
+      if (options?.resumeMessage) {
+        setResumeNotice(options.resumeMessage)
+      }
+      return
+    }
+
+    if (resumeState.status === 'STARTED') {
+      setIsStreamCompleted(false)
+      setAnalysisStage('analyzing')
+      setAnalysisStageLabel(options?.stageLabel || '分析仍在服务端执行，正在尝试自动恢复结果')
+      setAnalysisProgress(65)
+      setCurrentStep('analysis')
+      if (options?.resumeMessage) {
+        setResumeNotice(options.resumeMessage)
+      }
+      return
+    }
+
+    setIsStreamCompleted(false)
+    setAnalysisStage('error')
+    setAnalysisStageLabel(options?.stageLabel || resumeState.errorMessage || '分析未成功完成')
+    setAnalysisProgress(0)
+    setCurrentStep('analysis')
+    if (options?.resumeMessage) {
+      setResumeNotice(options.resumeMessage)
+    }
+  }, [])
+
+  const fetchAnalysisStatus = useCallback(async (targetAnalysisId: string) => {
+    const response = await fetch(`/api/analyze/${targetAnalysisId}`, { cache: 'no-store' })
+    if (!response.ok) {
+      throw new Error(response.status === 404 ? '分析记录不存在' : `HTTP ${response.status}`)
+    }
+
+    return await response.json() as AnalysisStatusPayload
+  }, [])
+
+  const stopAnalysisPolling = useCallback(() => {
+    if (analysisPollingRef.current) {
+      window.clearInterval(analysisPollingRef.current)
+      analysisPollingRef.current = null
+    }
+  }, [])
+
+  const startPollingAnalysis = useCallback((targetAnalysisId: string) => {
+    if (analysisPollingRef.current) {
+      return
+    }
+
+    const pollOnce = async () => {
+      try {
+        const payload = await fetchAnalysisStatus(targetAnalysisId)
+        if (payload.analysisId !== targetAnalysisId || analyzeAbortControllerRef.current?.signal.aborted) {
+          return
+        }
+
+        applyRecoveredAnalysisState(payload, {
+          stageLabel: payload.status === 'STARTED'
+            ? '分析仍在服务端执行，正在自动恢复结果'
+            : payload.status === 'SUCCEEDED'
+              ? '分析已在服务端完成，结果已自动恢复'
+              : payload.errorMessage || '分析未成功完成',
+          resumeMessage: payload.status === 'STARTED'
+            ? '流式连接已中断，但服务端任务仍在继续。系统会自动轮询恢复结果。'
+            : payload.status === 'SUCCEEDED'
+              ? '流式连接中断后，系统已从服务端自动恢复这次分析结果。'
+              : '流式连接中断后，系统已同步到服务端的失败状态。',
+        })
+
+        if (!payload.active) {
+          stopAnalysisPolling()
+        }
+      } catch (error) {
+        console.error('Failed to poll analysis status:', error)
+        const message = error instanceof Error ? error.message : '同步分析结果失败'
+        setStreamError(message)
+        setAnalysisStage('error')
+        setAnalysisStageLabel(message)
+        stopAnalysisPolling()
+      }
+    }
+
+    void pollOnce()
+    analysisPollingRef.current = window.setInterval(() => {
+      void pollOnce()
+    }, 5000)
+  }, [applyRecoveredAnalysisState, fetchAnalysisStatus, stopAnalysisPolling])
+
+  useEffect(() => {
+    if (!initialResumeState || appliedResumeIdRef.current === initialResumeState.analysisId) {
+      return
+    }
+
+    appliedResumeIdRef.current = initialResumeState.analysisId
+    stopAnalysisPolling()
+    setReferenceImages([])
+    setGeneratedImages([])
+    setEditingImage(null)
+    setUserGuidance('')
+    setSelectedImageType('main-white')
+    setSelectedSize('1024x1024')
+
+    applyRecoveredAnalysisState(initialResumeState, {
+      stageLabel: initialResumeState.status === 'SUCCEEDED'
+        ? '已从历史记录恢复分析结果，可以继续选择提示词分支或生成图片'
+        : initialResumeState.status === 'STARTED'
+          ? '这次分析仍在服务端执行，正在尝试自动恢复结果'
+          : initialResumeState.errorMessage || '历史分析记录未完成，暂时无法继续生图',
+      resumeMessage: initialResumeState.status === 'SUCCEEDED'
+        ? `已从 ${formatDateTimeInBeijing(initialResumeState.createdAt)} 的分析记录恢复，当前继续使用已保存的参考图。`
+        : initialResumeState.status === 'STARTED'
+          ? '这次分析还在后台执行。系统会在当前页面自动轮询恢复结果。'
+          : '这次历史分析没有完成，先查看错误信息后再决定是否重新分析。',
+    })
+
+    if (initialResumeState.status === 'STARTED') {
+      startPollingAnalysis(initialResumeState.analysisId)
+    }
+  }, [applyRecoveredAnalysisState, initialResumeState, startPollingAnalysis, stopAnalysisPolling])
+
   const startPollingGenerationRequest = useCallback((params: {
     requestId: string
     imageId: string
@@ -785,6 +883,7 @@ export default function AmazonPage({
     analyzeAbortControllerRef.current?.abort()
     const abortController = new AbortController()
     analyzeAbortControllerRef.current = abortController
+    stopAnalysisPolling()
 
     setIsAnalyzing(true)
     setPromptGenerationError('')
@@ -794,6 +893,7 @@ export default function AmazonPage({
     setAnalysisStage('preparing')
     setAnalysisStageLabel('正在读取商品信息与参考图')
     setAnalysisProgress(10)
+    let analysisId = ''
     setAnalysisId('')
     setReferenceImages(data.referenceImages)
     setStoredReferenceImages([])
@@ -802,7 +902,7 @@ export default function AmazonPage({
     setUserGuidance('')
     setResumeNotice('')
     setBasicAnalysisResult(null)
-    setPromptResults(emptyPromptResults)
+    setPromptResults(EMPTY_PROMPT_RESULTS)
     setSelectedBranch(null)
     setBranchPromptStatus('idle')
     setBranchPromptLabel('')
@@ -854,6 +954,7 @@ export default function AmazonPage({
           }
 
           if (event.type === 'analysis-created' && event.analysisId) {
+            analysisId = event.analysisId
             setAnalysisId(event.analysisId)
             continue
           }
@@ -920,18 +1021,44 @@ export default function AmazonPage({
       }
       console.error('Error analyzing product:', error)
       const message = error instanceof Error ? error.message : 'Failed to analyze product. Please check your API keys.'
+
+      if (!receivedBasicAnalysis && analysisId) {
+        try {
+          const payload = await fetchAnalysisStatus(analysisId)
+          applyRecoveredAnalysisState(payload, {
+            stageLabel: payload.status === 'STARTED'
+              ? '流式连接已中断，分析仍在服务端执行'
+              : payload.status === 'SUCCEEDED'
+                ? '分析已在服务端完成，结果已自动恢复'
+                : payload.errorMessage || '分析未成功完成',
+            resumeMessage: payload.status === 'STARTED'
+              ? '流式连接已中断，但服务端任务仍在继续。系统会自动轮询恢复结果。'
+              : payload.status === 'SUCCEEDED'
+                ? '流式连接中断后，系统已从服务端自动恢复这次分析结果。'
+                : '流式连接中断后，系统已同步到服务端的失败状态。',
+          })
+
+          if (payload.active) {
+            startPollingAnalysis(analysisId)
+          }
+          return
+        } catch (recoveryError) {
+          console.error('Failed to recover analysis after stream interruption:', recoveryError)
+        }
+      }
+
       setStreamError(message)
       setAnalysisStage('error')
       setAnalysisStageLabel(message)
       if (!receivedBasicAnalysis) {
         setCurrentStep('input')
         setBasicAnalysisResult(null)
-        setPromptResults(emptyPromptResults)
+        setPromptResults(EMPTY_PROMPT_RESULTS)
         setPromptGenerationError('')
       }
       setIsAnalyzing(false)
     }
-  }, [])
+  }, [applyRecoveredAnalysisState, fetchAnalysisStatus, startPollingAnalysis, stopAnalysisPolling])
 
   const handleProceedToBranchSelect = useCallback(() => {
     if (!canProceedToBranchSelection) return

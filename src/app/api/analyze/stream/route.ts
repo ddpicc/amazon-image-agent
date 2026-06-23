@@ -33,13 +33,40 @@ export async function POST(request: NextRequest) {
 
   const stream = new ReadableStream({
     async start(controller) {
+      let streamClosed = false
       const push = (event: StreamEvent) => {
-        controller.enqueue(encoder.encode(formatEvent(event)))
+        if (streamClosed) {
+          return false
+        }
+
+        try {
+          controller.enqueue(encoder.encode(formatEvent(event)))
+          return true
+        } catch (error) {
+          streamClosed = true
+          console.warn('Analyze stream enqueue skipped after close:', error)
+          return false
+        }
+      }
+      const closeStream = () => {
+        if (streamClosed) {
+          return
+        }
+
+        try {
+          controller.close()
+        } catch (error) {
+          console.warn('Analyze stream close skipped:', error)
+        } finally {
+          streamClosed = true
+        }
       }
       let analysisRecordId: string | null = null
       let operationId: string | null = null
       let storedReferenceImages: StoredReferenceImage[] = []
       let analysisStartedAt: Date | null = null
+      let analysisPersistedSuccessfully = false
+      let operationCompletedSuccessfully = false
 
       try {
         push({
@@ -102,7 +129,7 @@ export async function POST(request: NextRequest) {
             message: 'Product name and description are required',
             recoverable: false,
           })
-          controller.close()
+          closeStream()
           return
         }
 
@@ -172,6 +199,7 @@ export async function POST(request: NextRequest) {
             durationMs: analysisStartedAt ? Date.now() - analysisStartedAt.getTime() : undefined,
           },
         })
+        analysisPersistedSuccessfully = true
 
         push({
           type: 'partial-analysis',
@@ -195,16 +223,17 @@ export async function POST(request: NextRequest) {
             },
             responseSnapshot: basicResult,
           }).catch(() => undefined)
+          operationCompletedSuccessfully = true
         }
         push({ type: 'done' })
-        controller.close()
+        closeStream()
       } catch (error) {
         const errorMessage = error instanceof Error && error.message === '网站暂不可用，请稍后再试。'
           ? '网站暂不可用，请稍后再试。'
           : error instanceof Error
             ? error.message
             : 'Failed to analyze product'
-        if (analysisRecordId) {
+        if (analysisRecordId && !analysisPersistedSuccessfully) {
           await prisma.analysisRecord.update({
             where: { id: analysisRecordId },
             data: {
@@ -215,7 +244,7 @@ export async function POST(request: NextRequest) {
             },
           }).catch(() => undefined)
         }
-        if (operationId) {
+        if (operationId && !operationCompletedSuccessfully) {
           await completeAiOperation({
             operationId,
             status: 'FAILED',
@@ -226,12 +255,14 @@ export async function POST(request: NextRequest) {
           }).catch(() => undefined)
         }
         console.error('Analyze stream error:', error)
-        push({
-          type: 'error',
-          message: errorMessage,
-          recoverable: false,
-        })
-        controller.close()
+        if (!analysisPersistedSuccessfully) {
+          push({
+            type: 'error',
+            message: errorMessage,
+            recoverable: false,
+          })
+        }
+        closeStream()
       }
     },
   })

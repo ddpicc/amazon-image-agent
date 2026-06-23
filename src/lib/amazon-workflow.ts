@@ -104,6 +104,20 @@ export interface AmazonResumeState {
   currentBranch?: AmazonBranch | null
 }
 
+interface AmazonResumeRecordLike {
+  id: string
+  productName: string
+  description: string
+  category: string
+  targetAudience: string
+  status: 'STARTED' | 'SUCCEEDED' | 'FAILED'
+  createdAt: Date | string
+  errorMessage?: string | null
+  referenceImagesJson?: unknown
+  analysisJson?: unknown
+  promptPlanJson?: unknown
+}
+
 interface LegacyPromptGenerationResult {
   recommendedImagePlan: RecommendedImagePlanItem[]
   suggestedPrompts: Record<string, string>
@@ -188,6 +202,23 @@ function isStoredReferenceImage(value: unknown): value is StoredReferenceImage {
 
 export function parseStoredReferenceImages(value: unknown): StoredReferenceImage[] {
   return Array.isArray(value) ? value.filter(isStoredReferenceImage) : []
+}
+
+export function buildAmazonResumeState(record: AmazonResumeRecordLike): AmazonResumeState {
+  return {
+    analysisId: record.id,
+    productName: record.productName,
+    description: record.description,
+    category: record.category,
+    targetAudience: record.targetAudience,
+    status: record.status,
+    createdAt: typeof record.createdAt === 'string' ? record.createdAt : record.createdAt.toISOString(),
+    errorMessage: record.errorMessage ?? null,
+    referenceImages: parseStoredReferenceImages(record.referenceImagesJson),
+    basicAnalysisResult: isBasicAnalysisResult(record.analysisJson) ? record.analysisJson : null,
+    promptResults: normalizePromptResults(record.promptPlanJson),
+    currentBranch: null,
+  }
 }
 
 function isLegacyPromptGenerationResult(value: unknown): value is LegacyPromptGenerationResult {
