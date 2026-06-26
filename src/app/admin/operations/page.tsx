@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { requireAdmin } from '@/lib/auth'
-import { formatDateTimeInBeijing, formatNullableDateTimeInBeijing } from '@/lib/date'
+import { formatDateTimeInBeijing } from '@/lib/date'
 import { prisma } from '@/lib/prisma'
 
 function formatOperationKind(kind: string) {
@@ -165,7 +165,6 @@ export default async function AdminOperationsPage({
                 <th className="pb-3 pr-4">尝试数</th>
                 <th className="pb-3 pr-4">耗时</th>
                 <th className="pb-3 pr-4">输出图</th>
-                <th className="pb-3 pr-4">过期时间</th>
                 <th className="pb-3">详情</th>
               </tr>
             </thead>
@@ -179,7 +178,6 @@ export default async function AdminOperationsPage({
                   <td className="py-4 pr-4 text-slate-700">{operation.attempts.length}</td>
                   <td className="py-4 pr-4 text-slate-700">{operation.durationMs ? `${operation.durationMs}ms` : '-'}</td>
                   <td className="py-4 pr-4 text-slate-700">{operation.imageGenerationRequest?.imageUrl ? 1 : 0}</td>
-                  <td className="py-4 pr-4 text-slate-700">{formatNullableDateTimeInBeijing(operation.expiresAt)}</td>
                   <td className="py-4 text-slate-700">
                     <Link href={`/admin/operations/${operation.id}`} className="font-medium text-amazon-blue hover:text-blue-600">
                       查看

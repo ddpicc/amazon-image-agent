@@ -25,7 +25,6 @@ export default async function AdminWorkbenchPage() {
     recentAnalysisFailures,
     textProviderIssues,
     recentPayments,
-    slowImageRequests,
   ] = await Promise.all([
     prisma.user.count(),
     prisma.user.count({
@@ -121,23 +120,6 @@ export default async function AdminWorkbenchPage() {
       include: {
         user: { select: { email: true } },
         paymentPackage: { select: { name: true, points: true } },
-      },
-    }),
-    prisma.imageGenerationRequest.findMany({
-      where: {
-        durationMs: { not: null },
-      },
-      orderBy: { durationMs: 'desc' },
-      take: 5,
-      select: {
-        id: true,
-        createdAt: true,
-        durationMs: true,
-        status: true,
-        entryApi: true,
-        user: {
-          select: { email: true },
-        },
       },
     }),
   ])
@@ -322,40 +304,6 @@ export default async function AdminWorkbenchPage() {
                 </div>
               ))}
             </div>
-          </div>
-        </section>
-
-        <section className="panel p-6">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <h2 className="text-lg font-semibold text-slate-950">高耗时生图请求</h2>
-              <p className="mt-1 text-sm text-slate-500">按耗时倒序，帮助排查慢请求与线路质量问题。</p>
-            </div>
-            <Link href="/admin/image-records" className="text-sm font-medium text-amazon-blue hover:text-blue-600">
-              查看生图记录
-            </Link>
-          </div>
-          <div className="mt-4 overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
-              <thead className="text-slate-500">
-                <tr>
-                  <th className="pb-3 pr-4">用户</th>
-                  <th className="pb-3 pr-4">时间</th>
-                  <th className="pb-3 pr-4">状态</th>
-                  <th className="pb-3">耗时</th>
-                </tr>
-              </thead>
-              <tbody>
-                {slowImageRequests.map((record) => (
-                  <tr key={record.id} className="border-t border-slate-200">
-                    <td className="py-4 pr-4 text-slate-700">{record.user.email}</td>
-                    <td className="py-4 pr-4 text-slate-700">{formatDateTimeInBeijing(record.createdAt)}</td>
-                    <td className="py-4 pr-4 text-slate-700">{record.status}</td>
-                    <td className="py-4 text-slate-700">{record.durationMs ? `${record.durationMs}ms` : '-'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           </div>
         </section>
       </div>

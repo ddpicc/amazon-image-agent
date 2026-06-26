@@ -21,6 +21,7 @@ function normalizePage(value?: string) {
 export default async function AdminUsersPage({ searchParams }: AdminUsersPageProps) {
   await requireAdmin()
 
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
   const requestedUsersPage = normalizePage(searchParams?.usersPage)
   const requestedLedgerPage = normalizePage(searchParams?.ledgerPage)
 
@@ -29,11 +30,52 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
   const usersTotalPages = Math.max(1, Math.ceil(usersTotal / USERS_PAGE_SIZE))
   const currentUsersPage = Math.min(requestedUsersPage, usersTotalPages)
   const usersSkip = (currentUsersPage - 1) * USERS_PAGE_SIZE
+  const activeUserRows = await prisma.$queryRaw<Array<{ id: string; lastActiveAt: Date }>>`
+    SELECT
+      u.id,
+      GREATEST(
+        u."createdAt",
+        COALESCE(s."lastSessionAt", u."createdAt"),
+        COALESCE(po."lastPaidAt", u."createdAt"),
+        COALESCE(ple."lastLedgerAt", u."createdAt"),
+        COALESCE(igr."lastImageAt", u."createdAt"),
+        COALESCE(ar."lastAnalysisAt", u."createdAt")
+      ) AS "lastActiveAt"
+    FROM "User" u
+    LEFT JOIN LATERAL (
+      SELECT MAX("updatedAt") AS "lastSessionAt"
+      FROM "Session"
+      WHERE "userId" = u.id
+    ) s ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT MAX("paidAt") AS "lastPaidAt"
+      FROM "PaymentOrder"
+      WHERE "userId" = u.id
+    ) po ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT MAX("createdAt") AS "lastLedgerAt"
+      FROM "PointsLedgerEntry"
+      WHERE "userId" = u.id
+    ) ple ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT MAX("createdAt") AS "lastImageAt"
+      FROM "ImageGenerationRequest"
+      WHERE "userId" = u.id
+    ) igr ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT MAX("createdAt") AS "lastAnalysisAt"
+      FROM "AnalysisRecord"
+      WHERE "userId" = u.id
+    ) ar ON TRUE
+    ORDER BY "lastActiveAt" DESC, u."createdAt" DESC
+    LIMIT ${USERS_PAGE_SIZE}
+    OFFSET ${usersSkip}
+  `
+  const activeUserIds = activeUserRows.map((row) => row.id)
+  const lastActiveAtByUser = new Map(activeUserRows.map((row) => [row.id, row.lastActiveAt]))
 
   const users = await prisma.user.findMany({
-    orderBy: { createdAt: 'desc' },
-    skip: usersSkip,
-    take: USERS_PAGE_SIZE,
+    where: { id: { in: activeUserIds } },
     select: {
       id: true,
       email: true,
@@ -51,6 +93,8 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
       },
     },
   })
+  const userOrder = new Map(activeUserIds.map((id, index) => [id, index]))
+  users.sort((a, b) => (userOrder.get(a.id) ?? 0) - (userOrder.get(b.id) ?? 0))
 
   // Fetch related data for current page users only
   const userIds = users.map((u) => u.id)
@@ -63,6 +107,10 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
         paidAt: true,
         paymentPackage: { select: { points: true } },
       },
+      orderBy: [
+        { paidAt: 'desc' },
+        { createdAt: 'desc' },
+      ],
     }),
     prisma.pointsLedgerEntry.findMany({
       where: { userId: { in: userIds }, type: 'GENERATION_DEBIT' },
@@ -71,6 +119,7 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
         pointsDelta: true,
         createdAt: true,
       },
+      orderBy: { createdAt: 'desc' },
     }),
   ])
 
@@ -91,12 +140,16 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
   }
 
   // --- Ledger entries section ---
-  const ledgerTotal = await prisma.pointsLedgerEntry.count()
+  const ledgerWhere = { createdAt: { gte: sevenDaysAgo } }
+  const ledgerTotal = await prisma.pointsLedgerEntry.count({
+    where: ledgerWhere,
+  })
   const ledgerTotalPages = Math.max(1, Math.ceil(ledgerTotal / LEDGER_PAGE_SIZE))
   const currentLedgerPage = Math.min(requestedLedgerPage, ledgerTotalPages)
   const ledgerSkip = (currentLedgerPage - 1) * LEDGER_PAGE_SIZE
 
   const ledgerEntries = await prisma.pointsLedgerEntry.findMany({
+    where: ledgerWhere,
     orderBy: { createdAt: 'desc' },
     skip: ledgerSkip,
     take: LEDGER_PAGE_SIZE,
@@ -121,11 +174,7 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
         const totalRechargePoints = orders.reduce((sum: number, o: PaymentOrderAgg) => sum + o.paymentPackage.points, 0)
         const totalSpentPoints = Math.abs(debits.reduce((sum: number, e: LedgerDebitAgg) => sum + e.pointsDelta, 0))
 
-        const lastRechargeAt = orders[0]?.paidAt ?? null
-        const lastSpendAt = debits[0]?.createdAt ?? null
-        const lastActiveAt = [lastRechargeAt, lastSpendAt, user.createdAt]
-          .filter((value): value is Date => value instanceof Date)
-          .sort((a, b) => b.getTime() - a.getTime())[0]
+        const lastActiveAt = lastActiveAtByUser.get(user.id) ?? user.createdAt
 
         return {
           id: user.id,

@@ -103,10 +103,6 @@ export default async function AdminOperationDetailPage({
                 <dd className="mt-1">{formatNullableDateTimeInBeijing(operation.completedAt)}</dd>
               </div>
               <div>
-                <dt className="font-medium text-slate-500">数据过期时间</dt>
-                <dd className="mt-1">{formatNullableDateTimeInBeijing(operation.expiresAt)}</dd>
-              </div>
-              <div>
                 <dt className="font-medium text-slate-500">最终 Prompt</dt>
                 <dd className="mt-1 whitespace-pre-wrap break-words rounded-2xl bg-slate-50 p-3">{operation.finalPrompt || operation.imageGenerationRequest?.finalPrompt || operation.imageGenerationRequest?.revisedPrompt || '-'}</dd>
               </div>
