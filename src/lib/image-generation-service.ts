@@ -3,10 +3,11 @@ import { completeAiOperation, getAiOperationExpiryDate, startAiOperation } from 
 import { StoredReferenceImage } from '@/lib/amazon-workflow'
 import { RenderSize, ImageModel } from '@/lib/image-options'
 import { PersistedImageGenerationPayload, RouteSummary, type ImageGenerationRequestStatus } from '@/lib/image-generation'
-import { fetchRemoteImageTask, submitRemoteImageTask } from '@/lib/image-worker-client'
+import { fetchRemoteImageTask, RemoteTaskRecord, submitRemoteImageTask } from '@/lib/image-worker-client'
 import { debitPointForGeneration, ensureSufficientPointsForGenerationByScene } from '@/lib/points'
 import { GenerationBillingScene } from '@/lib/points-config'
 import { prisma } from '@/lib/prisma'
+import { signImageWorkerCallback } from '@/lib/crypto'
 
 function sourcePageToEnum(sourcePage: 'amazon' | 'playground'): 'AMAZON' | 'PLAYGROUND' {
   return sourcePage === 'amazon' ? 'AMAZON' : 'PLAYGROUND'
@@ -28,6 +29,30 @@ async function loadReferenceImageUrlsForRemote(referenceImages: StoredReferenceI
     .slice(0, 3)
     .map((image) => image.url)
     .filter((url) => /^https?:\/\//i.test(url))
+}
+
+function getAppBaseUrl() {
+  const value = process.env.APP_BASE_URL?.trim().replace(/\/+$/, '')
+  if (!value) {
+    return null
+  }
+
+  try {
+    const url = new URL(value)
+    return url.protocol === 'https:' ? url.toString().replace(/\/+$/, '') : null
+  } catch {
+    return null
+  }
+}
+
+function buildImageWorkerCallbackUrl(requestId: string) {
+  const appBaseUrl = getAppBaseUrl()
+  if (!appBaseUrl) {
+    return null
+  }
+
+  const signature = signImageWorkerCallback(requestId)
+  return `${appBaseUrl}/api/image-worker/callback/${requestId}?signature=${signature}`
 }
 
 async function failLocalRequest(params: {
@@ -197,6 +222,7 @@ export async function submitQueuedImageGenerationRequest(requestId: string) {
       size: payload.size,
       model: payload.model,
       referenceImageUrls,
+      callbackUrl: buildImageWorkerCallbackUrl(request.id),
     })
 
     await prisma.imageGenerationRequest.update({
@@ -244,6 +270,26 @@ export async function syncImageGenerationRequestFromWorker(requestId: string) {
   }
 
   const remoteTask = await fetchRemoteImageTask(request.workerJobId)
+  return applyRemoteImageTaskToRequest(request.id, remoteTask)
+}
+
+export async function applyRemoteImageTaskToRequest(requestId: string, remoteTask: RemoteTaskRecord) {
+  const request = await prisma.imageGenerationRequest.findUnique({
+    where: { id: requestId },
+  })
+
+  if (!request || !request.workerJobId) {
+    return null
+  }
+
+  if (remoteTask.id !== request.workerJobId) {
+    throw new Error('Remote task id does not match local workerJobId')
+  }
+
+  if (request.status === 'SUCCEEDED' || request.status === 'FAILED') {
+    return getImageGenerationStatusRecord(request.id)
+  }
+
   const nextStatus = parseStatus(remoteTask.status)
   const imageOutput = remoteTask.data?.[0] || null
   const startedAt = request.startedAt ?? (nextStatus === 'PROCESSING' || nextStatus === 'SUCCEEDED' || nextStatus === 'FAILED' ? new Date() : null)

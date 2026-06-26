@@ -58,6 +58,25 @@ export function hashEmailVerificationCode(email: string, code: string): string {
     .digest('hex')
 }
 
+export function signImageWorkerCallback(requestId: string): string {
+  const appSecret = requireEnv('APP_SECRET')
+  return crypto
+    .createHmac('sha256', appSecret)
+    .update(`image-worker-callback:${requestId}`)
+    .digest('hex')
+}
+
+export function verifyImageWorkerCallbackSignature(requestId: string, signature: string) {
+  const expected = signImageWorkerCallback(requestId)
+  const expectedBuffer = Buffer.from(expected, 'hex')
+  const signatureBuffer = Buffer.from(signature, 'hex')
+
+  return (
+    expectedBuffer.length === signatureBuffer.length &&
+    crypto.timingSafeEqual(expectedBuffer, signatureBuffer)
+  )
+}
+
 export function generateOpaqueToken(): string {
   return crypto.randomBytes(32).toString('hex')
 }

@@ -47,6 +47,7 @@ DATABASE_URL=postgresql://user:password@host:5432/amazon_image_agent
 # App secrets
 APP_SECRET=replace_with_a_long_random_secret
 PROVIDER_KEY_ENCRYPTION_KEY=replace_with_a_second_long_random_secret
+APP_BASE_URL=https://your-agent.example.com
 
 # Remote image worker bridge
 IMAGE_WORKER_BASE_URL=https://your-image-worker.example.com
@@ -195,6 +196,7 @@ DATABASE_URL=...
 - `DATABASE_URL`
 - `APP_SECRET`
 - `PROVIDER_KEY_ENCRYPTION_KEY`
+- `APP_BASE_URL`
 - `IMAGE_WORKER_BASE_URL`
 - `IMAGE_WORKER_API_KEY`
 - `IMAGE_WORKER_TIMEOUT_MS`
@@ -211,6 +213,7 @@ DATABASE_URL=...
 建议：
 
 - `APP_SECRET` 和 `PROVIDER_KEY_ENCRYPTION_KEY` 都使用高强度随机字符串
+- `APP_BASE_URL` 使用当前 agent 服务的 HTTPS 公网地址，用于接收远端 worker 回调
 - `COS_PUBLIC_BASE_URL` 使用你 bucket 的公网访问域名
 
 ### 3. 首次部署后初始化数据库
@@ -231,6 +234,7 @@ npm run db:seed
 IMAGE_WORKER_BASE_URL=https://your-image-worker.example.com
 IMAGE_WORKER_API_KEY=worker_api_key_for_agent
 IMAGE_WORKER_TIMEOUT_MS=15000
+APP_BASE_URL=https://your-agent.example.com
 ```
 
 ### 5. 写入文本 provider

@@ -33,6 +33,7 @@ export interface SubmitRemoteTaskInput {
   size?: string | null
   model?: string | null
   referenceImageUrls: string[]
+  callbackUrl?: string | null
 }
 
 export interface SubmitRemoteTaskResult {
@@ -84,6 +85,7 @@ export async function submitRemoteImageTask(input: SubmitRemoteTaskInput): Promi
         image: input.referenceImageUrls,
         size: input.size ?? '1024x1024',
         n: 1,
+        ...(input.callbackUrl ? { callback_url: input.callbackUrl } : {}),
       }
     : {
         model,
@@ -91,6 +93,7 @@ export async function submitRemoteImageTask(input: SubmitRemoteTaskInput): Promi
         size: input.size ?? '1024x1024',
         quality: 'medium',
         n: 1,
+        ...(input.callbackUrl ? { callback_url: input.callbackUrl } : {}),
       }
 
   const response = await fetch(`${getWorkerBaseUrl()}${endpoint}`, {
