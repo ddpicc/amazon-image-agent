@@ -5,6 +5,7 @@ import Link from 'next/link'
 import ReferenceImageUploader from '@/components/ReferenceImageUploader'
 import { DEFAULT_IMAGE_MODEL, IMAGE_MODEL_OPTIONS, ImageModel, RenderSize, SIZE_OPTIONS } from '@/lib/image-options'
 import { formatPoints, getGenerationCostDisplay } from '@/lib/points-config'
+import { usePoints } from '@/components/PointsProvider'
 
 interface GeneratedImage {
   id: string
@@ -61,6 +62,7 @@ export default function PlaygroundPage({ initialPointsBalance }: { initialPoints
   const [size, setSize] = useState<RenderSize>('1024x1024')
   const [isGenerating, setIsGenerating] = useState(false)
   const [pointsBalance, setPointsBalance] = useState(initialPointsBalance)
+  const { refreshPoints } = usePoints()
   const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([])
   const [routeNotice, setRouteNotice] = useState('')
   const pollingTimersRef = useRef<Map<string, number>>(new Map())
@@ -180,6 +182,7 @@ export default function PlaygroundPage({ initialPointsBalance }: { initialPoints
 
           if (nextStatus === 'SUCCEEDED' && !image.charged) {
             setPointsBalance((current) => Math.max(0, Number((current - generationCost).toFixed(1))))
+            void refreshPoints()
             nextImage.charged = true
           }
 
@@ -268,6 +271,7 @@ export default function PlaygroundPage({ initialPointsBalance }: { initialPoints
 
         setGeneratedImages((prev) => [nextImage, ...prev])
         setPointsBalance((prev) => Math.max(0, Number((prev - generationCost).toFixed(1))))
+        void refreshPoints()
       }
     } catch (error) {
       console.error('Failed to generate playground image:', error)
@@ -313,7 +317,7 @@ export default function PlaygroundPage({ initialPointsBalance }: { initialPoints
           <div className="max-w-3xl">
             <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950">提示词 + 参考图 + 尺寸</h2>
             <p className="mt-3 text-sm leading-6 text-slate-600 sm:text-base">
-              不经过商品分析，直接组合提示词、参考图与尺寸来测试单张图片效果。当前单张自由生成每次扣 {formatPoints(generationCost)} 积分。
+              不经过商品分析，直接组合提示词、参考图与尺寸来测试单张图片效果。当前单张自由生成按最新标准每次扣 {formatPoints(generationCost)} 积分。
             </p>
           </div>
         </section>

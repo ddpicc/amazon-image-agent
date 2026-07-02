@@ -3,10 +3,10 @@ export const POINTS_SCALE = 10
 export type GenerationBillingScene = 'amazon' | 'aplus' | 'reverse-prompt' | 'playground'
 
 const GENERATION_COSTS: Record<GenerationBillingScene, number> = {
-  amazon: 10,
-  aplus: 16,
-  'reverse-prompt': 10,
-  playground: 8,
+  amazon: 8,
+  aplus: 13,
+  'reverse-prompt': 8,
+  playground: 6,
 }
 
 export function toInternalPoints(displayPoints: number) {

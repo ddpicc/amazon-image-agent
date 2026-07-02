@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { formatDateTimeInBeijing } from '@/lib/date'
 import { formatPoints, getGenerationCostDisplay } from '@/lib/points-config'
+import { usePoints } from '@/components/PointsProvider'
 
 interface PointsUser {
   id: string
@@ -95,6 +96,7 @@ function formatLedgerType(entry: PointsLedgerEntryItem) {
 }
 
 export default function PointsPageClient({ initialData }: { initialData: PointsPageData }) {
+  const { refreshPoints } = usePoints()
   const [data, setData] = useState(initialData)
   const [code, setCode] = useState('')
   const [isRedeeming, setIsRedeeming] = useState(false)
@@ -107,8 +109,8 @@ export default function PointsPageClient({ initialData }: { initialData: PointsP
     [data.packages],
   )
   const generationPricing = useMemo(() => ([
-    { label: 'Amazon 图组', cost: getGenerationCostDisplay('amazon') },
-    { label: 'A+ 图片', cost: getGenerationCostDisplay('aplus') },
+    { label: 'Amazon 单张生成', cost: getGenerationCostDisplay('amazon') },
+    { label: 'A+ 单张生成', cost: getGenerationCostDisplay('aplus') },
     { label: '同款生成 / 以图生图', cost: getGenerationCostDisplay('reverse-prompt') },
     { label: '自由生成', cost: getGenerationCostDisplay('playground') },
   ]), [])
@@ -161,6 +163,7 @@ export default function PointsPageClient({ initialData }: { initialData: PointsP
       }))
       setCode('')
       setMessage('兑换成功，积分已到账。')
+      void refreshPoints()
     } catch (err) {
       setError(err instanceof Error ? err.message : '兑换失败')
     } finally {
@@ -189,7 +192,7 @@ export default function PointsPageClient({ initialData }: { initialData: PointsP
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-slate-950">积分包</h2>
-              <p className="mt-1 text-sm text-slate-500">选择套餐后可直接进入 ZPAY 支付入口，支付成功后系统自动入账积分。</p>
+              <p className="mt-1 text-sm text-slate-500">选择套餐后可直接进入 ZPAY 支付入口，支付成功后系统自动入账积分；本次图片生成扣费已同步下调，新老用户立即生效。</p>
             </div>
           </div>
           <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -234,7 +237,7 @@ export default function PointsPageClient({ initialData }: { initialData: PointsP
       <section className="space-y-6">
         <div className="panel p-6">
           <h2 className="text-lg font-semibold text-slate-950">生图扣费说明</h2>
-          <p className="mt-1 text-sm text-slate-500">这里显示当前线上生效的单张扣费标准，页面文案和实际扣费共用同一套配置。</p>
+          <p className="mt-1 text-sm text-slate-500">这里显示当前线上生效的最新单张扣费标准；页面文案、余额校验和实际扣费共用同一套配置。</p>
           <div className="mt-4 space-y-3">
             {generationPricing.map((item) => (
               <div key={item.label} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">

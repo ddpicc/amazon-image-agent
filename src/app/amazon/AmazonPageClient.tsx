@@ -20,6 +20,7 @@ import {
 import { formatDateTimeInBeijing } from '@/lib/date'
 import { HIDDEN_APLUS_RENDER_SIZE, RenderSize } from '@/lib/image-options'
 import { formatPoints, GenerationBillingScene, getGenerationCostDisplay } from '@/lib/points-config'
+import { usePoints } from '@/components/PointsProvider'
 
 type AmazonImageType = 'main-white' | 'lifestyle' | 'infographic' | 'detail' | 'size'
 type PromptImageType = AmazonPromptKey
@@ -50,6 +51,7 @@ interface GeneratedImage {
   statusMessage?: string | null
   errorMessage?: string | null
   charged?: boolean
+  billedCost?: number
 }
 
 interface RouteSummary {
@@ -468,6 +470,7 @@ export default function AmazonPage({
   const [editedPrompt, setEditedPrompt] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [pointsBalance, setPointsBalance] = useState(initialPointsBalance)
+  const { refreshPoints } = usePoints()
   const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([])
   const [editingImage, setEditingImage] = useState<GeneratedImage | null>(null)
   const [routeNotice, setRouteNotice] = useState('')
@@ -486,6 +489,7 @@ export default function AmazonPage({
     () => getGenerationCostDisplay(selectedBranch === 'aplus' ? 'aplus' : 'amazon'),
     [selectedBranch],
   )
+  const generationCostText = useMemo(() => formatPoints(generationCost), [generationCost])
   const hasEnoughPointsToGenerate = pointsBalance >= generationCost
   const activeReferenceImageCount = referenceImages.length || storedReferenceImages.length
 
@@ -835,8 +839,11 @@ export default function AmazonPage({
           }
 
           if (payload.status === 'SUCCEEDED' && !image.charged) {
-            setPointsBalance((current) => Math.max(0, Number((current - generationCost).toFixed(1))))
+            const billedCost = image.billedCost ?? generationCost
+            setPointsBalance((current) => Math.max(0, Number((current - billedCost).toFixed(1))))
+            void refreshPoints()
             nextImage.charged = true
+            nextImage.billedCost = billedCost
           }
 
           return nextImage
@@ -1167,6 +1174,7 @@ export default function AmazonPage({
           statusMessage: result.data.statusMessage,
           errorMessage: null,
           charged: false,
+          billedCost: generationCost,
         }, ...prev])
         startPollingGenerationRequest({
           requestId: result.data.requestId,
@@ -1185,9 +1193,11 @@ export default function AmazonPage({
           size: result.data.size,
           status: 'SUCCEEDED',
           charged: true,
+          billedCost: generationCost,
         }
         setGeneratedImages((prev) => [newImage, ...prev])
-        setPointsBalance((prev) => Math.max(0, Number((prev - generationCost).toFixed(1))))
+        setPointsBalance((prev) => Math.max(0, Number((prev - newImage.billedCost!).toFixed(1))))
+        void refreshPoints()
       }
     } catch (error) {
       console.error('Error generating image:', error)
@@ -1225,6 +1235,7 @@ export default function AmazonPage({
                 statusMessage: result.data.statusMessage,
                 errorMessage: null,
                 charged: false,
+                billedCost: generationCost,
               }
             : image
         )))
@@ -1245,13 +1256,15 @@ export default function AmazonPage({
           revisedPrompt: result.data.prompt,
           status: 'SUCCEEDED',
           charged: true,
+          billedCost: generationCost,
         }
 
         setGeneratedImages((prev) =>
           prev.map((image) => (image.id === editingImage.id ? updatedImage : image)),
         )
         setEditingImage(updatedImage)
-        setPointsBalance((prev) => Math.max(0, Number((prev - generationCost).toFixed(1))))
+        setPointsBalance((prev) => Math.max(0, Number((prev - updatedImage.billedCost!).toFixed(1))))
+        void refreshPoints()
       }
     } catch (error) {
       console.error('Error regenerating image:', error)
@@ -1634,8 +1647,8 @@ export default function AmazonPage({
                       <h3 className="mt-3 text-lg font-semibold text-slate-900">生成方式</h3>
                       <p className="mt-1 text-sm text-slate-500">
                         {selectedBranch === 'amazon-set'
-                          ? '可以单张精修，也可以按亚马逊常见图组顺序整套生成。'
-                          : '当前分支生成 4 张连续的 A+ 横版模块图，按一整页 A+ 页面从上到下的区段来组织。'}
+                          ? `当前 Amazon 单张生成按最新标准每张扣 ${generationCostText} 积分，也可以按亚马逊常见图组顺序整套生成。`
+                          : `当前 A+ 单张生成按最新标准每张扣 ${generationCostText} 积分，默认生成 4 张连续的 A+ 横版模块图。`}
                       </p>
                       {storedReferenceImages.length > 0 && referenceImages.length === 0 && (
                         <p className="mt-2 text-sm text-sky-700">当前正在复用历史分析里保存的 {storedReferenceImages.length} 张参考图。</p>

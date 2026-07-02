@@ -152,8 +152,8 @@ npm run dev
 1. 校验登录态
 2. 写入生图请求记录
 3. 按请求内容把任务提交到 `amazon-image-worker`
-   - 无参考图：`POST /v1/images/generations`
-   - 有参考图：`POST /v1/images/edits`
+   - 无参考图：`POST /v1/async/images/generations`
+   - 有参考图：`POST /v1/async/images/edits`
 4. 当前页和 `/history` 轮询本地记录，本地再同步远端状态
 5. 远端 worker 自己完成 provider fallback、出图和 COS 上传
 6. agent 只保存本地历史、状态和积分

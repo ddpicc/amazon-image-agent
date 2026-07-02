@@ -76,7 +76,7 @@ async function parseJson(response: Response) {
 
 export async function submitRemoteImageTask(input: SubmitRemoteTaskInput): Promise<SubmitRemoteTaskResult> {
   const isEditRequest = input.referenceImageUrls.length > 0
-  const endpoint = isEditRequest ? '/v1/images/edits' : '/v1/images/generations'
+  const endpoint = isEditRequest ? '/v1/async/images/edits' : '/v1/async/images/generations'
   const model = input.model || 'gpt-image-2'
   const body = isEditRequest
     ? {
@@ -124,7 +124,7 @@ export async function submitRemoteImageTask(input: SubmitRemoteTaskInput): Promi
 }
 
 export async function fetchRemoteImageTask(remoteRequestId: string): Promise<RemoteTaskRecord> {
-  const response = await fetch(`${getWorkerBaseUrl()}/v1/images/tasks/${remoteRequestId}`, {
+  const response = await fetch(`${getWorkerBaseUrl()}/v1/async/images/tasks/${remoteRequestId}`, {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${getWorkerApiKey()}`,

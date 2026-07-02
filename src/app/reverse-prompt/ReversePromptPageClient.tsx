@@ -5,6 +5,7 @@ import Link from 'next/link'
 import ReferenceImageUploader from '@/components/ReferenceImageUploader'
 import { RenderSize, SIZE_OPTIONS } from '@/lib/image-options'
 import { formatPoints, getGenerationCostDisplay } from '@/lib/points-config'
+import { usePoints } from '@/components/PointsProvider'
 
 interface GeneratedImage {
   id: string
@@ -63,6 +64,7 @@ export default function ReversePromptPageClient({ initialPointsBalance }: { init
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
   const [pointsBalance, setPointsBalance] = useState(initialPointsBalance)
+  const { refreshPoints } = usePoints()
   const [isRefiningPrompt, setIsRefiningPrompt] = useState(false)
   const [analyzeError, setAnalyzeError] = useState('')
   const [promptRefineError, setPromptRefineError] = useState('')
@@ -218,6 +220,7 @@ export default function ReversePromptPageClient({ initialPointsBalance }: { init
 
           if (payload.status === 'SUCCEEDED' && !image.charged) {
             setPointsBalance((current) => Math.max(0, Number((current - generationCost).toFixed(1))))
+            void refreshPoints()
             nextImage.charged = true
           }
 
@@ -398,6 +401,7 @@ export default function ReversePromptPageClient({ initialPointsBalance }: { init
 
         setGeneratedImages((prev) => [nextImage, ...prev])
         setPointsBalance((prev) => Math.max(0, Number((prev - generationCost).toFixed(1))))
+        void refreshPoints()
       }
     } catch (error) {
       console.error('Failed to generate reverse prompt image:', error)
@@ -452,7 +456,7 @@ export default function ReversePromptPageClient({ initialPointsBalance }: { init
           <div className="max-w-3xl">
             <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950">先拆提示词，再做同款图片</h2>
             <p className="mt-3 text-sm leading-6 text-slate-600 sm:text-base">
-              先上传一张目标图，让 AI 拆解出一段可直接生图的提示词；确认后，再展开同款生成选项继续做图。再生图每次扣 {formatPoints(generationCost)} 积分。
+              先上传一张目标图，让 AI 拆解出一段可直接生图的提示词；确认后，再展开同款生成选项继续做图。当前同款生成按最新标准每次扣 {formatPoints(generationCost)} 积分。
             </p>
           </div>
         </section>

@@ -183,6 +183,23 @@ model TextProvider {
   @@index([enabled, priority])
 }
 
+model Announcement {
+  id        String    @id @default(cuid())
+  title     String
+  body      String
+  isActive  Boolean   @default(false)
+  startsAt  DateTime?
+  endsAt    DateTime?
+  ctaLabel  String?
+  ctaHref   String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([isActive, updatedAt])
+  @@index([startsAt])
+  @@index([endsAt])
+}
+
 model ImageGenerationRequest {
   id                      String                   @id @default(cuid())
   userId                  String

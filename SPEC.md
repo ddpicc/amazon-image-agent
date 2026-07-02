@@ -47,8 +47,8 @@
 
 5. **Image Generation**
    - Generate images using GPT-Image 2 through the remote `amazon-image-worker`
-   - Requests without reference images use `/v1/images/generations`
-   - Requests with reference images use `/v1/images/edits`
+   - Requests without reference images use `/v1/async/images/generations`
+   - Requests with reference images use `/v1/async/images/edits`
    - Reference image is sent along with prompt when present
    - Support multiple image types and variations
 
