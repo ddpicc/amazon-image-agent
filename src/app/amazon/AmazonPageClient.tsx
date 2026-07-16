@@ -8,6 +8,7 @@ import {
   APlusPromptGenerationResult,
   AmazonBranch,
   AmazonPromptKey,
+  AmazonResumeImage,
   AmazonResumeState,
   BasicAnalysisResult,
   PromptGenerationResult,
@@ -492,6 +493,10 @@ export default function AmazonPage({
   const generationCostText = useMemo(() => formatPoints(generationCost), [generationCost])
   const hasEnoughPointsToGenerate = pointsBalance >= generationCost
   const activeReferenceImageCount = referenceImages.length || storedReferenceImages.length
+  // 再次编辑：用已生成的图作为参考图走 edits 接口，按 playground 标准（0.6 积分）计费
+  const editImageCost = useMemo(() => getGenerationCostDisplay('playground'), [])
+  const editImageCostText = useMemo(() => formatPoints(editImageCost), [editImageCost])
+  const hasEnoughPointsToEdit = pointsBalance >= editImageCost
 
   useEffect(() => {
     return () => {
@@ -538,6 +543,9 @@ export default function AmazonPage({
     formData.append('size', size)
     formData.append('sourcePage', 'amazon')
     formData.append('billingScene', getBillingSceneForPromptType(type))
+    if (analysisId) {
+      formData.append('analysisId', analysisId)
+    }
     if (referenceImages.length > 0) {
       referenceImages.slice(0, 3).forEach((image) => {
         formData.append('referenceImages', image)
@@ -632,7 +640,115 @@ export default function AmazonPage({
         imageType: type,
       },
     }
-  }, [buildPrompt, currentPromptResult, referenceImages, storedReferenceImages])
+  }, [analysisId, buildPrompt, currentPromptResult, referenceImages, storedReferenceImages])
+
+  // 再次编辑：把已生成的图作为参考图，走 edits 接口，按 playground 标准计费
+  const requestEditImage = useCallback(async (
+    sourceImageUrl: string,
+    promptOverride: string,
+    imageType: string,
+    sizeOverride?: RenderSize,
+  ) => {
+    const prompt = promptOverride
+    const size = sizeOverride || '1024x1024'
+    const formData = new FormData()
+    formData.append('prompt', prompt)
+    formData.append('imageType', imageType)
+    formData.append('size', size)
+    formData.append('sourcePage', 'playground')
+    formData.append('billingScene', 'playground')
+    if (analysisId) {
+      formData.append('analysisId', analysisId)
+    }
+    formData.append('referenceImageUrls', JSON.stringify([sourceImageUrl]))
+
+    const response = await fetch('/api/generate/stream', {
+      method: 'POST',
+      body: formData,
+    })
+
+    if (!response.ok || !response.body) {
+      throw new Error('Failed to start image edit stream')
+    }
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let resultEvent: GenerateStreamEvent | null = null
+    let queuedEvent: Extract<GenerateStreamEvent, { type: 'queued' }> | null = null
+
+    while (true) {
+      const { value, done } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        if (!line.trim()) continue
+        const event = JSON.parse(line) as GenerateStreamEvent
+
+        if (event.type === 'status') {
+          setRouteNotice(event.message)
+          continue
+        }
+
+        if (event.type === 'result') {
+          resultEvent = event
+          continue
+        }
+
+        if (event.type === 'queued') {
+          queuedEvent = event
+          continue
+        }
+
+        if (event.type === 'error') {
+          throw new Error(event.message)
+        }
+      }
+    }
+
+    if (buffer.trim()) {
+      const event = JSON.parse(buffer) as GenerateStreamEvent
+      if (event.type === 'status') {
+        setRouteNotice(event.message)
+      } else if (event.type === 'result') {
+        resultEvent = event
+      } else if (event.type === 'queued') {
+        queuedEvent = event
+      } else if (event.type === 'error') {
+        throw new Error(event.message)
+      }
+    }
+
+    if (queuedEvent) {
+      return {
+        kind: 'queued' as const,
+        data: queuedEvent.data,
+        prompt,
+        size,
+        imageType,
+      }
+    }
+
+    if (!resultEvent || resultEvent.type !== 'result') {
+      throw new Error('Image edit stream ended without a result')
+    }
+
+    return {
+      kind: 'result' as const,
+      data: {
+        requestId: resultEvent.data.requestId,
+        imageUrl: resultEvent.data.imageUrl as string,
+        prompt: (resultEvent.data.revisedPrompt || prompt) as string,
+        routeSummary: (resultEvent.data.routeSummary || null) as RouteSummary | null,
+        size,
+        imageType,
+      },
+    }
+  }, [analysisId])
 
   const applyRecoveredAnalysisState = useCallback((resumeState: AmazonResumeState, options?: {
     stageLabel?: string
@@ -770,38 +886,6 @@ export default function AmazonPage({
     }, 5000)
   }, [applyRecoveredAnalysisState, fetchAnalysisStatus, stopAnalysisPolling])
 
-  useEffect(() => {
-    if (!initialResumeState || appliedResumeIdRef.current === initialResumeState.analysisId) {
-      return
-    }
-
-    appliedResumeIdRef.current = initialResumeState.analysisId
-    stopAnalysisPolling()
-    setReferenceImages([])
-    setGeneratedImages([])
-    setEditingImage(null)
-    setUserGuidance('')
-    setSelectedImageType('main-white')
-    setSelectedSize('1024x1024')
-
-    applyRecoveredAnalysisState(initialResumeState, {
-      stageLabel: initialResumeState.status === 'SUCCEEDED'
-        ? '已从历史记录恢复分析结果，可以继续选择提示词分支或生成图片'
-        : initialResumeState.status === 'STARTED'
-          ? '这次分析仍在服务端执行，正在尝试自动恢复结果'
-          : initialResumeState.errorMessage || '历史分析记录未完成，暂时无法继续生图',
-      resumeMessage: initialResumeState.status === 'SUCCEEDED'
-        ? `已从 ${formatDateTimeInBeijing(initialResumeState.createdAt)} 的分析记录恢复，当前继续使用已保存的参考图。`
-        : initialResumeState.status === 'STARTED'
-          ? '这次分析还在后台执行。系统会在当前页面自动轮询恢复结果。'
-          : '这次历史分析没有完成，先查看错误信息后再决定是否重新分析。',
-    })
-
-    if (initialResumeState.status === 'STARTED') {
-      startPollingAnalysis(initialResumeState.analysisId)
-    }
-  }, [applyRecoveredAnalysisState, initialResumeState, startPollingAnalysis, stopAnalysisPolling])
-
   const startPollingGenerationRequest = useCallback((params: {
     requestId: string
     imageId: string
@@ -883,6 +967,66 @@ export default function AmazonPage({
     }, 5000)
     generationPollingRef.current.set(params.requestId, timerId)
   }, [generationCost])
+
+  useEffect(() => {
+    if (!initialResumeState || appliedResumeIdRef.current === initialResumeState.analysisId) {
+      return
+    }
+
+    appliedResumeIdRef.current = initialResumeState.analysisId
+    stopAnalysisPolling()
+    setReferenceImages([])
+    setEditingImage(null)
+    setUserGuidance('')
+    setSelectedImageType('main-white')
+    setSelectedSize('1024x1024')
+
+    // 恢复这次分析记录下已绑定保存的图片，并对仍在进行中的图重新轮询。
+    // 编辑/再次生成会向前追加，这里只负责把历史快照载入，不覆盖后续新加的图。
+    const resumedImages: GeneratedImage[] = (initialResumeState.generatedImages || []).map((image: AmazonResumeImage) => ({
+      id: image.id,
+      requestId: image.requestId ?? image.id,
+      imageUrl: image.imageUrl,
+      prompt: image.prompt,
+      revisedPrompt: image.revisedPrompt ?? image.prompt,
+      imageType: image.imageType ?? '',
+      size: (image.size as RenderSize | null) ?? undefined,
+      status: image.status,
+      statusMessage: image.statusMessage,
+      errorMessage: image.errorMessage,
+      // 已成功的图在服务端已扣过积分，标记 charged 避免本地重复扣减；进行中的图在轮询成功时再扣。
+      charged: image.status === 'SUCCEEDED',
+      billedCost: undefined,
+    }))
+    setGeneratedImages(resumedImages)
+    resumedImages.forEach((image) => {
+      if (image.status === 'QUEUED' || image.status === 'PROCESSING') {
+        startPollingGenerationRequest({
+          requestId: image.requestId || image.id,
+          imageId: image.id,
+          fallbackPrompt: image.prompt,
+          fallbackImageType: image.imageType,
+        })
+      }
+    })
+
+    applyRecoveredAnalysisState(initialResumeState, {
+      stageLabel: initialResumeState.status === 'SUCCEEDED'
+        ? '已从历史记录恢复分析结果，可以继续选择提示词分支或生成图片'
+        : initialResumeState.status === 'STARTED'
+          ? '这次分析仍在服务端执行，正在尝试自动恢复结果'
+          : initialResumeState.errorMessage || '历史分析记录未完成，暂时无法继续生图',
+      resumeMessage: initialResumeState.status === 'SUCCEEDED'
+        ? `已从 ${formatDateTimeInBeijing(initialResumeState.createdAt)} 的分析记录恢复，当前继续使用已保存的参考图。`
+        : initialResumeState.status === 'STARTED'
+          ? '这次分析还在后台执行。系统会在当前页面自动轮询恢复结果。'
+          : '这次历史分析没有完成，先查看错误信息后再决定是否重新分析。',
+    })
+
+    if (initialResumeState.status === 'STARTED') {
+      startPollingAnalysis(initialResumeState.analysisId)
+    }
+  }, [applyRecoveredAnalysisState, initialResumeState, startPollingAnalysis, startPollingGenerationRequest, stopAnalysisPolling])
 
   const handleAnalyze = useCallback(async (data: AnalyzeFormInput) => {
     const requestId = analyzeRequestIdRef.current + 1
@@ -1209,72 +1353,79 @@ export default function AmazonPage({
     }
   }, [activeReferenceImageCount, basicAnalysisResult, editedPrompt, generationCost, hasEnoughPointsToGenerate, isGenerating, requestGenerate, selectedBranch, selectedImageType, selectedSize, startPollingGenerationRequest])
 
-  const handleRegenerate = useCallback(async () => {
-    if (!editingImage || !activeReferenceImageCount || isGenerating) return
-    if (!hasEnoughPointsToGenerate) {
-      alert('积分不足，请先充值后再生成图片。')
+  const handleEditImage = useCallback(async () => {
+    if (!editingImage || !editingImage.imageUrl || isGenerating) return
+    if (!editingImage.prompt.trim()) {
+      alert('请先填写这次编辑想做的修改。')
+      return
+    }
+    if (!hasEnoughPointsToEdit) {
+      alert(`积分不足，再次编辑需要 ${editImageCostText} 积分/张，请先充值。`)
       return
     }
 
     setIsGenerating(true)
-    setRouteNotice('正在提交任务到图片服务')
+    setRouteNotice('正在提交编辑任务到图片服务')
 
     try {
-      const result = await requestGenerate(editingImage.imageType as PromptKey, editingImage.prompt, undefined, false)
+      const result = await requestEditImage(
+        editingImage.imageUrl,
+        editingImage.prompt,
+        editingImage.imageType,
+        editingImage.size,
+      )
 
       if (result.kind === 'queued') {
-        setGeneratedImages((prev) => prev.map((image) => (
-          image.id === editingImage.id
-            ? {
-                ...image,
-                requestId: result.data.requestId,
-                imageUrl: image.imageUrl,
-                prompt: editingImage.prompt,
-                revisedPrompt: editingImage.prompt,
-                status: 'QUEUED',
-                statusMessage: result.data.statusMessage,
-                errorMessage: null,
-                charged: false,
-                billedCost: generationCost,
-              }
-            : image
-        )))
+        const imageId = result.data.requestId
+        // 编辑结果作为新卡片追加到网格头部，原图保留
+        setGeneratedImages((prev) => [{
+          id: imageId,
+          requestId: result.data.requestId,
+          imageUrl: null,
+          prompt: result.prompt,
+          revisedPrompt: result.prompt,
+          imageType: result.imageType,
+          size: result.size,
+          status: 'QUEUED',
+          statusMessage: result.data.statusMessage,
+          errorMessage: null,
+          charged: false,
+          billedCost: editImageCost,
+        }, ...prev])
         setEditingImage(null)
         startPollingGenerationRequest({
           requestId: result.data.requestId,
-          imageId: editingImage.id,
-          fallbackPrompt: editingImage.prompt,
-          fallbackImageType: editingImage.imageType,
+          imageId,
+          fallbackPrompt: result.prompt,
+          fallbackImageType: result.imageType,
         })
       } else {
-        const updatedImage: GeneratedImage = {
-          ...editingImage,
+        const newImage: GeneratedImage = {
           id: createImageId(),
           requestId: result.data.requestId,
           imageUrl: result.data.imageUrl,
           prompt: result.data.prompt,
           revisedPrompt: result.data.prompt,
+          imageType: editingImage.imageType,
+          size: result.data.size,
           status: 'SUCCEEDED',
           charged: true,
-          billedCost: generationCost,
+          billedCost: editImageCost,
         }
-
-        setGeneratedImages((prev) =>
-          prev.map((image) => (image.id === editingImage.id ? updatedImage : image)),
-        )
-        setEditingImage(updatedImage)
-        setPointsBalance((prev) => Math.max(0, Number((prev - updatedImage.billedCost!).toFixed(1))))
+        setGeneratedImages((prev) => [newImage, ...prev])
+        setEditingImage(null)
+        setPointsBalance((prev) => Math.max(0, Number((prev - newImage.billedCost!).toFixed(1))))
         void refreshPoints()
       }
     } catch (error) {
-      console.error('Error regenerating image:', error)
-      const message = error instanceof Error ? error.message : 'Failed to regenerate image. Please check your API keys.'
+      console.error('Error editing image:', error)
+      const message = error instanceof Error ? error.message : 'Failed to edit image. Please check your API keys.'
       setRouteNotice(message)
       alert(message)
     } finally {
       setIsGenerating(false)
     }
-  }, [activeReferenceImageCount, editingImage, generationCost, hasEnoughPointsToGenerate, isGenerating, requestGenerate, startPollingGenerationRequest])
+  }, [editImageCost, editImageCostText, editingImage, hasEnoughPointsToEdit, isGenerating, requestEditImage, startPollingGenerationRequest])
 
   const handleDownload = async (image: GeneratedImage) => {
     try {
@@ -1288,15 +1439,6 @@ export default function AmazonPage({
       document.body.removeChild(link)
     } catch (err) {
       console.error('Failed to download:', err)
-    }
-  }
-
-  const handleCopyPrompt = async (prompt: string) => {
-    try {
-      await navigator.clipboard.writeText(prompt)
-      alert('提示词已复制')
-    } catch (err) {
-      console.error('Failed to copy:', err)
     }
   }
 
@@ -1833,10 +1975,10 @@ export default function AmazonPage({
                               {image.imageUrl && image.status === 'SUCCEEDED' && (
                                 <>
                                   <button
-                                    onClick={() => setEditingImage(image)}
+                                    onClick={() => setEditingImage({ ...image, prompt: '' })}
                                     className="flex-1 rounded-xl bg-slate-100 px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-200"
                                   >
-                                    Edit
+                                    再次编辑
                                   </button>
                                   <button
                                     onClick={() => handleDownload(image)}
@@ -1860,7 +2002,7 @@ export default function AmazonPage({
               <div className="panel p-6">
                 <div className="mb-4 flex items-center justify-between gap-4">
                   <h3 className="text-lg font-semibold text-slate-900">
-                    Edit Image - {[...imageTypeOptions, ...aplusImageTypeOptions].find((type) => type.value === editingImage.imageType)?.label}
+                    再次编辑 - {[...imageTypeOptions, ...aplusImageTypeOptions].find((type) => type.value === editingImage.imageType)?.label}
                   </h3>
                   <button
                     onClick={() => setEditingImage(null)}
@@ -1869,6 +2011,10 @@ export default function AmazonPage({
                     ×
                   </button>
                 </div>
+
+                <p className="mb-5 rounded-xl bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-700">
+                  将以上图作为参考图进行再次编辑，按自由生成标准计费，每张扣 <span className="font-semibold">{editImageCostText}</span> 积分。编辑结果会作为一张新图追加到上方网格。
+                </p>
 
                 <div className="mb-5">
                   <img
@@ -1880,29 +2026,24 @@ export default function AmazonPage({
 
                 <div className="mb-5">
                   <label className="mb-2 block text-sm font-medium text-slate-800">
-                    编辑提示词并重新生成
+                    编辑提示词
                   </label>
                   <textarea
                     value={editingImage.prompt}
                     onChange={(e) => setEditingImage({ ...editingImage, prompt: e.target.value })}
                     rows={6}
                     className="input-field min-h-[148px] resize-none"
+                    placeholder="描述这次想在原图基础上做的修改，比如：把背景换成纯白、放大某个细节、去掉画面里的文字……"
                   />
                 </div>
 
                 <div className="flex flex-col gap-3 sm:flex-row">
                   <button
-                    onClick={handleRegenerate}
-                    disabled={isGenerating}
+                    onClick={handleEditImage}
+                    disabled={isGenerating || !editingImage.prompt.trim()}
                     className="flex-1 rounded-2xl bg-amazon-orange px-4 py-3 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-slate-400"
                   >
-                    {isGenerating ? 'Generating...' : 'Regenerate'}
-                  </button>
-                  <button
-                    onClick={() => handleCopyPrompt(editingImage.prompt)}
-                    className="flex-1 rounded-2xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-200"
-                  >
-                    复制提示词
+                    {isGenerating ? '编辑中...' : `再次编辑（${editImageCostText} 积分/张）`}
                   </button>
                 </div>
               </div>

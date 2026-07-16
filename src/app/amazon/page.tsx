@@ -18,15 +18,27 @@ export default async function AmazonPage({ searchParams }: AmazonPageProps) {
   let initialResumeState: AmazonResumeState | null = null
 
   if (analysisId) {
-    const record = await prisma.analysisRecord.findFirst({
-      where: {
-        id: analysisId,
-        userId: user.id,
-      },
-    })
+    const [record, imageRequests] = await Promise.all([
+      prisma.analysisRecord.findFirst({
+        where: {
+          id: analysisId,
+          userId: user.id,
+        },
+      }),
+      prisma.imageGenerationRequest.findMany({
+        where: {
+          analysisRecordId: analysisId,
+          userId: user.id,
+        },
+        orderBy: [
+          { createdAt: 'desc' },
+          { id: 'desc' },
+        ],
+      }),
+    ])
 
     if (record) {
-      initialResumeState = buildAmazonResumeState(record)
+      initialResumeState = buildAmazonResumeState(record, { imageRequests })
     }
   }
 

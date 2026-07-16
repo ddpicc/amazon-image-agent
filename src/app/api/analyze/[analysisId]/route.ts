@@ -14,18 +14,30 @@ export async function GET(
 
   const { analysisId } = params
 
-  const record = await prisma.analysisRecord.findFirst({
-    where: {
-      id: analysisId,
-      userId: user.id,
-    },
-  })
+  const [record, imageRequests] = await Promise.all([
+    prisma.analysisRecord.findFirst({
+      where: {
+        id: analysisId,
+        userId: user.id,
+      },
+    }),
+    prisma.imageGenerationRequest.findMany({
+      where: {
+        analysisRecordId: analysisId,
+        userId: user.id,
+      },
+      orderBy: [
+        { createdAt: 'desc' },
+        { id: 'desc' },
+      ],
+    }),
+  ])
 
   if (!record) {
     return NextResponse.json({ error: 'Analysis not found' }, { status: 404 })
   }
 
-  const resumeState = buildAmazonResumeState(record)
+  const resumeState = buildAmazonResumeState(record, { imageRequests })
 
   return NextResponse.json({
     ...resumeState,

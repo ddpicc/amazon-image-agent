@@ -116,6 +116,7 @@ export async function createQueuedImageGenerationRequest(params: {
   model?: ImageModel | null
   size: RenderSize
   referenceImages: StoredReferenceImage[]
+  analysisRecordId?: string | null
 }) {
   await ensureSufficientPointsForGenerationByScene(params.userId, params.billingScene)
 
@@ -167,6 +168,7 @@ export async function createQueuedImageGenerationRequest(params: {
     data: {
       userId: params.userId,
       operationId: operation.id,
+      analysisRecordId: params.analysisRecordId ?? null,
       sourcePage: sourcePageToEnum(params.sourcePage),
       entryApi: params.entryApi,
       billingScene: params.billingScene,

@@ -12,6 +12,7 @@ import {
   DEFAULT_IMAGE_MODEL,
 } from '@/lib/image-options'
 import { GenerationBillingScene } from '@/lib/points-config'
+import { prisma } from '@/lib/prisma'
 import { uploadReferenceImagesForGeneration } from '@/lib/reference-images'
 
 type StreamEvent =
@@ -53,6 +54,15 @@ function resolveBillingScene(sourcePage: string, rawBillingScene: string | null)
   return sourcePage === 'amazon' ? 'amazon' : 'playground'
 }
 
+async function resolveOwnedAnalysisRecordId(userId: string, rawAnalysisId: string | null): Promise<string | null> {
+  if (!rawAnalysisId) return null
+  const owned = await prisma.analysisRecord.findUnique({
+    where: { id: rawAnalysisId },
+    select: { userId: true },
+  })
+  return owned && owned.userId === userId ? rawAnalysisId : null
+}
+
 function createRequestId(): string {
   return `img_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 }
@@ -82,6 +92,8 @@ export async function POST(request: NextRequest) {
         const billingScene = resolveBillingScene(sourcePage, formData.get('billingScene') as string | null)
         const size = formData.get('size') as string | null
         const model = (formData.get('model') as ImageModel | null) || DEFAULT_IMAGE_MODEL
+        const analysisIdRaw = (formData.get('analysisId') as string | null) || null
+        const analysisRecordId = await resolveOwnedAnalysisRecordId(user.id, analysisIdRaw)
         const referenceImageUrlsRaw = formData.get('referenceImageUrls') as string | null
         const referenceImages = [
           ...formData.getAll('referenceImages'),
@@ -133,6 +145,7 @@ export async function POST(request: NextRequest) {
           model,
           size: validSize,
           referenceImages: persistedRefImages,
+          analysisRecordId,
         })
 
         await submitQueuedImageGenerationRequest(queued.requestId)

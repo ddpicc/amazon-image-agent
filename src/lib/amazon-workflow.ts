@@ -89,6 +89,20 @@ export interface StoredReferenceImage {
   name: string
 }
 
+export interface AmazonResumeImage {
+  id: string
+  requestId: string | null
+  imageUrl: string | null
+  prompt: string
+  revisedPrompt: string | null
+  imageType: string | null
+  size: string | null
+  status: 'QUEUED' | 'PROCESSING' | 'SUCCEEDED' | 'FAILED'
+  statusMessage: string | null
+  errorMessage: string | null
+  createdAt: string
+}
+
 export interface AmazonResumeState {
   analysisId: string
   productName: string
@@ -102,6 +116,46 @@ export interface AmazonResumeState {
   basicAnalysisResult: BasicAnalysisResult | null
   promptResults: PromptResults
   currentBranch?: AmazonBranch | null
+  generatedImages: AmazonResumeImage[]
+}
+
+interface AmazonResumeImageRequestRow {
+  id: string
+  status: string
+  statusMessage: string | null
+  errorMessage: string | null
+  prompt: string
+  revisedPrompt: string | null
+  imageUrl: string | null
+  imageType: string | null
+  size: string | null
+  createdAt: Date | string
+}
+
+type AmazonResumeGenerationStatus = AmazonResumeImage['status']
+
+function toResumeGenerationStatus(value: string): AmazonResumeGenerationStatus {
+  if (value === 'QUEUED' || value === 'PROCESSING' || value === 'SUCCEEDED' || value === 'FAILED') {
+    return value
+  }
+  // STARTED 是历史/遗留状态，统一当作 PROCESSING 展示
+  return 'PROCESSING'
+}
+
+export function toAmazonResumeImages(rows: AmazonResumeImageRequestRow[]): AmazonResumeImage[] {
+  return rows.map((row) => ({
+    id: row.id,
+    requestId: row.id,
+    imageUrl: row.imageUrl,
+    prompt: row.prompt,
+    revisedPrompt: row.revisedPrompt,
+    imageType: row.imageType,
+    size: row.size,
+    status: toResumeGenerationStatus(row.status),
+    statusMessage: row.statusMessage,
+    errorMessage: row.errorMessage,
+    createdAt: typeof row.createdAt === 'string' ? row.createdAt : row.createdAt.toISOString(),
+  }))
 }
 
 interface AmazonResumeRecordLike {
@@ -204,7 +258,10 @@ export function parseStoredReferenceImages(value: unknown): StoredReferenceImage
   return Array.isArray(value) ? value.filter(isStoredReferenceImage) : []
 }
 
-export function buildAmazonResumeState(record: AmazonResumeRecordLike): AmazonResumeState {
+export function buildAmazonResumeState(
+  record: AmazonResumeRecordLike,
+  options?: { imageRequests?: AmazonResumeImageRequestRow[] },
+): AmazonResumeState {
   return {
     analysisId: record.id,
     productName: record.productName,
@@ -218,6 +275,7 @@ export function buildAmazonResumeState(record: AmazonResumeRecordLike): AmazonRe
     basicAnalysisResult: isBasicAnalysisResult(record.analysisJson) ? record.analysisJson : null,
     promptResults: normalizePromptResults(record.promptPlanJson),
     currentBranch: null,
+    generatedImages: toAmazonResumeImages(options?.imageRequests ?? []),
   }
 }
 

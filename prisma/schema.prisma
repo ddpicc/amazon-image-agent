@@ -138,28 +138,29 @@ model EmailVerificationCode {
 }
 
 model AnalysisRecord {
-  id                  String         @id @default(cuid())
-  userId              String
-  operationId         String?        @unique
-  productName         String
-  description         String
-  category            String
-  targetAudience      String
-  referenceImageCount Int            @default(0)
-  referenceImagesJson Json?
-  status              AnalysisStatus @default(STARTED)
-  productSummary      String?
-  analysisJson        Json?
-  promptPlanJson      Json?
-  requestSnapshotJson Json?
-  responseSnapshotJson Json?
-  completedAt         DateTime?
-  durationMs          Int?
-  errorMessage        String?
-  createdAt           DateTime       @default(now())
-  updatedAt           DateTime       @updatedAt
-  user                User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  operation           AiOperation?   @relation(fields: [operationId], references: [id], onDelete: SetNull)
+  id                     String                  @id @default(cuid())
+  userId                 String
+  operationId            String?                 @unique
+  productName            String
+  description            String
+  category               String
+  targetAudience         String
+  referenceImageCount    Int                     @default(0)
+  referenceImagesJson    Json?
+  status                 AnalysisStatus          @default(STARTED)
+  productSummary         String?
+  analysisJson           Json?
+  promptPlanJson         Json?
+  requestSnapshotJson    Json?
+  responseSnapshotJson   Json?
+  completedAt            DateTime?
+  durationMs             Int?
+  errorMessage           String?
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  user                   User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  operation              AiOperation?            @relation(fields: [operationId], references: [id], onDelete: SetNull)
+  imageGenerationRequests ImageGenerationRequest[]
 
   @@index([userId, createdAt(sort: Desc)])
 }
@@ -204,6 +205,7 @@ model ImageGenerationRequest {
   id                      String                   @id @default(cuid())
   userId                  String
   operationId             String?                  @unique
+  analysisRecordId        String?
   sourcePage              SourcePage
   entryApi                String
   billingScene            String?
@@ -231,10 +233,12 @@ model ImageGenerationRequest {
   updatedAt               DateTime                 @updatedAt
   user                    User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
   operation               AiOperation?             @relation(fields: [operationId], references: [id], onDelete: SetNull)
+  analysisRecord          AnalysisRecord?          @relation(fields: [analysisRecordId], references: [id], onDelete: SetNull)
   pointsLedgerEntry       PointsLedgerEntry?       @relation(fields: [pointsLedgerEntryId], references: [id], onDelete: SetNull)
 
   @@index([userId, createdAt(sort: Desc)])
   @@index([status, createdAt(sort: Desc)])
+  @@index([analysisRecordId])
 }
 
 model AiOperation {
