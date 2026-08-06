@@ -25,6 +25,7 @@ export interface PersistedImageGenerationPayload {
   sourcePage: 'amazon' | 'playground'
   billingScene: GenerationBillingScene
   imageType?: string | null
+  containsSyntheticPerformer: boolean
   model?: ImageModel | null
   size: RenderSize
   referenceImages: StoredReferenceImage[]

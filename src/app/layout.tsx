@@ -22,8 +22,8 @@ const adminNavLinks = [
 ]
 
 export const metadata: Metadata = {
-  title: 'PageMint | Amazon Listing & A+ Image Workflow',
-  description: 'Generate professional Amazon listing and A+ images using AI',
+  title: 'PageMint | Amazon 商品图片工作台',
+  description: '用 AI 高效完成 Amazon Listing 与 A+ 商品图片生产。',
 }
 
 export default async function RootLayout({
@@ -41,7 +41,7 @@ export default async function RootLayout({
   const navLinks = isAdmin ? adminNavLinks : userNavLinks
 
   return (
-    <html lang="en">
+    <html lang="zh-CN">
       <body className="min-h-screen bg-gray-100">
         <AppShell
           initialBalance={account?.pointsBalance ?? 0}

@@ -468,6 +468,7 @@ export default function AmazonPage({
   const [userGuidance, setUserGuidance] = useState('')
   const [selectedImageType, setSelectedImageType] = useState<PromptKey>('main-white')
   const [selectedSize, setSelectedSize] = useState<RenderSize>('1024x1024')
+  const [containsSyntheticPerformer, setContainsSyntheticPerformer] = useState(false)
   const [editedPrompt, setEditedPrompt] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [pointsBalance, setPointsBalance] = useState(initialPointsBalance)
@@ -546,6 +547,7 @@ export default function AmazonPage({
     if (analysisId) {
       formData.append('analysisId', analysisId)
     }
+    formData.append('containsSyntheticPerformer', String(containsSyntheticPerformer))
     if (referenceImages.length > 0) {
       referenceImages.slice(0, 3).forEach((image) => {
         formData.append('referenceImages', image)
@@ -640,7 +642,7 @@ export default function AmazonPage({
         imageType: type,
       },
     }
-  }, [analysisId, buildPrompt, currentPromptResult, referenceImages, storedReferenceImages])
+  }, [analysisId, buildPrompt, containsSyntheticPerformer, currentPromptResult, referenceImages, storedReferenceImages])
 
   // 再次编辑：把已生成的图作为参考图，走 edits 接口，按 playground 标准计费
   const requestEditImage = useCallback(async (
@@ -1431,7 +1433,7 @@ export default function AmazonPage({
     try {
       if (!image.imageUrl) return
       const link = document.createElement('a')
-      link.href = `/api/download?url=${encodeURIComponent(image.imageUrl)}&filename=${encodeURIComponent(`amazon-product-${image.id}.png`)}`
+      link.href = `/api/download?requestId=${encodeURIComponent(image.requestId || '')}&url=${encodeURIComponent(image.imageUrl)}&filename=${encodeURIComponent(`amazon-product-${image.id}.png`)}`
       link.download = `amazon-product-${image.id}.png`
       link.rel = 'noopener noreferrer'
       document.body.appendChild(link)
@@ -1862,6 +1864,19 @@ export default function AmazonPage({
                       </p>
                     </div>
                   )}
+
+                  <label className="mt-6 flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 transition-colors hover:border-slate-300">
+                    <input
+                      type="checkbox"
+                      checked={containsSyntheticPerformer}
+                      onChange={(event) => setContainsSyntheticPerformer(event.target.checked)}
+                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-amazon-blue focus:ring-amazon-blue"
+                    />
+                    <span>
+                      <span className="block text-sm font-semibold text-slate-800">图片含逼真 AI 生成人物</span>
+                      <span className="mt-1 block text-xs leading-5 text-slate-500">勾选后，本次生成图片下载时会自动写入 Amazon 合规元数据：contains-synthetic-performer。</span>
+                    </span>
+                  </label>
 
                   <div className="mt-6">
                     <label className="mb-3 block text-sm font-medium text-slate-800">

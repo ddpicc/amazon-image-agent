@@ -89,6 +89,7 @@ export async function buildPersistedImageGenerationPayload(params: {
   sourcePage: 'amazon' | 'playground'
   billingScene: GenerationBillingScene
   imageType?: string | null
+  containsSyntheticPerformer?: boolean
   model?: ImageModel | null
   size: RenderSize
   referenceImages: StoredReferenceImage[]
@@ -99,6 +100,7 @@ export async function buildPersistedImageGenerationPayload(params: {
     sourcePage: params.sourcePage,
     billingScene: params.billingScene,
     imageType: params.imageType ?? null,
+    containsSyntheticPerformer: Boolean(params.containsSyntheticPerformer),
     model: params.model ?? null,
     size: params.size,
     referenceImages: params.referenceImages,
@@ -113,6 +115,7 @@ export async function createQueuedImageGenerationRequest(params: {
   billingScene: GenerationBillingScene
   entryApi: string
   imageType?: string | null
+  containsSyntheticPerformer?: boolean
   model?: ImageModel | null
   size: RenderSize
   referenceImages: StoredReferenceImage[]
@@ -130,6 +133,7 @@ export async function createQueuedImageGenerationRequest(params: {
       sourcePage: params.sourcePage,
       billingScene: params.billingScene,
       imageType: params.imageType ?? null,
+      containsSyntheticPerformer: Boolean(params.containsSyntheticPerformer),
       model: params.model ?? null,
       size: params.size,
       referenceImageCount: params.referenceImages.length,
@@ -141,6 +145,7 @@ export async function createQueuedImageGenerationRequest(params: {
       sourcePage: params.sourcePage,
       billingScene: params.billingScene,
       imageType: params.imageType ?? null,
+      containsSyntheticPerformer: Boolean(params.containsSyntheticPerformer),
       model: params.model ?? null,
       size: params.size,
       referenceImages: params.referenceImages.map((image, index) => ({
@@ -159,6 +164,7 @@ export async function createQueuedImageGenerationRequest(params: {
     sourcePage: params.sourcePage,
     billingScene: params.billingScene,
     imageType: params.imageType ?? null,
+    containsSyntheticPerformer: Boolean(params.containsSyntheticPerformer),
     model: params.model ?? null,
     size: params.size,
     referenceImages: params.referenceImages,
@@ -175,6 +181,7 @@ export async function createQueuedImageGenerationRequest(params: {
       prompt: params.originalPrompt,
       finalPrompt: params.prompt,
       imageType: params.imageType ?? null,
+      containsSyntheticPerformer: Boolean(params.containsSyntheticPerformer),
       size: params.size,
       referenceImageCount: params.referenceImages.length,
       referenceImagesJson: params.referenceImages as unknown as Prisma.InputJsonValue,

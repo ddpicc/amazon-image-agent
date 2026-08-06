@@ -75,6 +75,7 @@ export async function POST(request: NextRequest) {
       ? JSON.parse(referenceImageUrlsRaw).filter((item: unknown): item is string => typeof item === 'string' && item.length > 0)
       : []
     const isAPlus = sourcePage === 'amazon' && imageType.startsWith('aplus-')
+    const containsSyntheticPerformer = sourcePage === 'amazon' && formData.get('containsSyntheticPerformer') === 'true'
 
     if (!prompt?.trim()) {
       console.warn('[api/generate] rejected request', {
@@ -126,6 +127,7 @@ export async function POST(request: NextRequest) {
       billingScene,
       entryApi: '/api/generate',
       imageType: imageType || null,
+      containsSyntheticPerformer,
       model,
       size: validSize,
       referenceImages: persistedRefImages,

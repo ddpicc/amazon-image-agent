@@ -217,6 +217,7 @@ model ImageGenerationRequest {
   revisedPrompt           String?
   imageUrl                String?
   imageType               String?
+  containsSyntheticPerformer Boolean                @default(false)
   aspectRatio             String?
   size                    String?
   referenceImageCount     Int                      @default(0)
