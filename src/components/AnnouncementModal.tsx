@@ -16,24 +16,36 @@ interface AnnouncementModalProps {
 
 export default function AnnouncementModal({ announcement, isLoggedIn }: AnnouncementModalProps) {
   const [isOpen, setIsOpen] = useState(false)
+  const [hideForToday, setHideForToday] = useState(false)
 
-  const dismissedKey = useMemo(() => {
-    return announcement ? `announcement:dismissed:${announcement.id}` : ''
+  const hideForTodayKey = useMemo(() => {
+    return announcement ? `announcement:hidden-on:${announcement.id}` : ''
   }, [announcement])
 
+  const today = () => {
+    const date = new Date()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${date.getFullYear()}-${month}-${day}`
+  }
+
   useEffect(() => {
-    if (!announcement || !isLoggedIn || !dismissedKey) {
+    if (!announcement || !isLoggedIn || !hideForTodayKey) {
       setIsOpen(false)
       return
     }
 
-    const dismissed = window.localStorage.getItem(dismissedKey)
-    setIsOpen(!dismissed)
-  }, [announcement, dismissedKey, isLoggedIn])
+    setHideForToday(false)
+    setIsOpen(window.localStorage.getItem(hideForTodayKey) !== today())
+  }, [announcement, hideForTodayKey, isLoggedIn])
 
   const handleClose = () => {
-    if (dismissedKey) {
-      window.localStorage.setItem(dismissedKey, '1')
+    if (hideForTodayKey) {
+      if (hideForToday) {
+        window.localStorage.setItem(hideForTodayKey, today())
+      } else {
+        window.localStorage.removeItem(hideForTodayKey)
+      }
     }
     setIsOpen(false)
   }
@@ -69,6 +81,15 @@ export default function AnnouncementModal({ announcement, isLoggedIn }: Announce
             我知道了
           </button>
         </div>
+        <label className="mt-5 flex w-fit cursor-pointer items-center gap-2 text-sm text-slate-500">
+          <input
+            type="checkbox"
+            checked={hideForToday}
+            onChange={(event) => setHideForToday(event.target.checked)}
+            className="h-4 w-4 rounded border-slate-300"
+          />
+          今日不再显示
+        </label>
       </div>
     </div>
   )

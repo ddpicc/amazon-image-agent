@@ -94,7 +94,7 @@ export default function AdminAnnouncementForm({ initialAnnouncement }: Announcem
       <div className="flex items-start justify-between gap-4">
         <div>
           <h3 className="text-base font-semibold text-slate-900">公告配置</h3>
-          <p className="mt-1 text-sm text-slate-500">普通用户登录后会在首页看到当前启用的公告；同一条公告关闭后不会在同一浏览器重复弹出。</p>
+          <p className="mt-1 text-sm text-slate-500">普通用户每次进入首页都会看到当前启用的公告；用户可勾选“今日不再显示”暂时隐藏。</p>
         </div>
         <span className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white">{isActive ? '启用中' : '未启用'}</span>
       </div>
