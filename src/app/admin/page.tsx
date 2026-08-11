@@ -4,6 +4,18 @@ import { formatDateTimeInBeijing, formatNullableDateTimeInBeijing } from '@/lib/
 import { formatPoints, toDisplayPoints } from '@/lib/points-config'
 import { prisma } from '@/lib/prisma'
 
+function getStartOfTodayInBeijing() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date())
+  const partValue = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value
+
+  return new Date(`${partValue('year')}-${partValue('month')}-${partValue('day')}T00:00:00+08:00`)
+}
+
 function formatMoney(amountCents: number) {
   return `¥${(amountCents / 100).toFixed(2)}`
 }
@@ -12,6 +24,7 @@ export default async function AdminWorkbenchPage() {
   await requireAdmin()
 
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+  const startOfTodayInBeijing = getStartOfTodayInBeijing()
 
   const [
     totalUsers,
@@ -19,8 +32,7 @@ export default async function AdminWorkbenchPage() {
     userBalanceAggregate,
     paidOrders,
     paidOrders7d,
-    generationDebits,
-    generationDebits7d,
+    generationDebitsToday,
     recentImageFailures,
     recentAnalysisFailures,
     textProviderIssues,
@@ -49,14 +61,9 @@ export default async function AdminWorkbenchPage() {
       _count: { _all: true },
     }),
     prisma.pointsLedgerEntry.aggregate({
-      where: { type: 'GENERATION_DEBIT' },
-      _sum: { pointsDelta: true },
-      _count: { _all: true },
-    }),
-    prisma.pointsLedgerEntry.aggregate({
       where: {
         type: 'GENERATION_DEBIT',
-        createdAt: { gte: sevenDaysAgo },
+        createdAt: { gte: startOfTodayInBeijing },
       },
       _sum: { pointsDelta: true },
       _count: { _all: true },
@@ -126,8 +133,7 @@ export default async function AdminWorkbenchPage() {
 
   const totalRechargeAmountCents = paidOrders._sum.amountCents ?? 0
   const recentRechargeAmountCents = paidOrders7d._sum.amountCents ?? 0
-  const totalSpentPoints = Math.abs(generationDebits._sum.pointsDelta ?? 0)
-  const recentSpentPoints = Math.abs(generationDebits7d._sum.pointsDelta ?? 0)
+  const spentPointsToday = Math.abs(generationDebitsToday._sum.pointsDelta ?? 0)
   const totalBalancePoints = toDisplayPoints(userBalanceAggregate._sum.pointsBalance ?? 0)
 
   const cards = [
@@ -147,9 +153,9 @@ export default async function AdminWorkbenchPage() {
       hint: `近 7 天 ${formatMoney(recentRechargeAmountCents)} / ${paidOrders7d._count._all} 笔`,
     },
     {
-      label: '累计消耗',
-      value: `${formatPoints(toDisplayPoints(totalSpentPoints))} 积分`,
-      hint: `近 7 天 ${formatPoints(toDisplayPoints(recentSpentPoints))} / ${generationDebits7d._count._all} 次`,
+      label: '今日消耗',
+      value: `${formatPoints(toDisplayPoints(spentPointsToday))} 积分`,
+      hint: `今日已扣除 ${generationDebitsToday._count._all} 次`,
     },
   ]
 
