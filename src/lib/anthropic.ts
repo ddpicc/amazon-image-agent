@@ -687,67 +687,7 @@ ${aplusSummary}
   }
 }
 
-export async function refineReversePrompt(
-  extractedPrompt: string,
-  userIntent = '',
-  operationId?: string,
-): Promise<{ finalPrompt: string }> {
-  const trimmedPrompt = extractedPrompt.trim()
-  const trimmedIntent = userIntent.trim()
-
-  if (!trimmedPrompt) {
-    throw new Error('Extracted prompt is required')
-  }
-
-  const content: OpenAI.Chat.Completions.ChatCompletionContentPart[] = [
-    {
-      type: 'text',
-      text: `你是一名擅长整理中文生图提示词的视觉提示词专家。
-
-现在有两段信息：
-1. 一段已经拆解好的基础提示词
-2. 用户本轮想补充的一句话意图
-
-你的任务是把它们整合成一段最终用于生图的中文提示词。
-
-要求：
-- 优先保留基础提示词里已经明确的主体、构图、背景、光线和气质。
-- 正确吸收用户意图，让最终提示词更贴合用户这次要做的方向。
-- 输出仍然是 1 到 2 句自然中文，不写分析，不拆点。
-- 不要堆砌过细参数，不要写成长段落。
-- 如果用户意图为空，就仅对基础提示词做轻微整理，不要大改。
-
-基础提示词：${trimmedPrompt}
-用户意图：${trimmedIntent || '无'}
-
-请严格输出 JSON：
-- finalPrompt: 最终用于生图的提示词`,
-    },
-  ]
-
-  const responseText = await requestJsonChatCompletion(content, 500, {
-    operationId,
-    sourcePage: 'reverse-prompt',
-    entryPoint: '/api/reverse-prompt/refine',
-  })
-
-  try {
-    const parsed = JSON.parse(responseText)
-    const finalPrompt = typeof parsed.finalPrompt === 'string' && parsed.finalPrompt.trim()
-      ? parsed.finalPrompt.trim()
-      : trimmedIntent
-        ? `${trimmedPrompt} ${trimmedIntent}`
-        : trimmedPrompt
-
-    return { finalPrompt }
-  } catch {
-    return {
-      finalPrompt: trimmedIntent ? `${trimmedPrompt} ${trimmedIntent}` : trimmedPrompt,
-    }
-  }
-}
-
-export async function generatePromptsWithProgress(
+async function generatePromptsWithProgress(
   productName: string,
   description: string,
   category: string,

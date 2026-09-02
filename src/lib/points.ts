@@ -39,43 +39,6 @@ export async function getUserPointsBalance(userId: string) {
   return toDisplayPoints(user.pointsBalance)
 }
 
-export async function grantSignupBonus(userId: string) {
-  return prisma.$transaction(async (tx) => {
-    const idempotencyKey = `signup:${userId}:bonus`
-    const existingEntry = await tx.pointsLedgerEntry.findUnique({
-      where: { idempotencyKey },
-    })
-
-    if (existingEntry) {
-      return existingEntry
-    }
-
-    const user = await tx.user.findUniqueOrThrow({
-      where: { id: userId },
-      select: { pointsBalance: true },
-    })
-
-    const nextBalance = user.pointsBalance + SIGNUP_BONUS_POINTS
-
-    await tx.user.update({
-      where: { id: userId },
-      data: { pointsBalance: nextBalance },
-    })
-
-    return tx.pointsLedgerEntry.create({
-      data: {
-        userId,
-        type: PointsLedgerType.SIGNUP_BONUS,
-        pointsDelta: SIGNUP_BONUS_POINTS,
-        balanceAfter: nextBalance,
-        idempotencyKey,
-        referenceType: 'user',
-        referenceId: userId,
-      },
-    })
-  })
-}
-
 export async function grantRegistrationRewards(params: { userId: string; inviterUserId?: string | null }) {
   return prisma.$transaction(async (tx) => {
     const user = await tx.user.findUniqueOrThrow({
@@ -207,7 +170,7 @@ async function grantReferralInviterRewardOnFirstRecharge(tx: Prisma.TransactionC
   })
 }
 
-export async function listActivePointsPackages() {
+async function listActivePointsPackages() {
   const packages = await prisma.pointsPackage.findMany({
     where: { status: PointsPackageStatus.ACTIVE },
     orderBy: [
@@ -274,36 +237,6 @@ export async function getPointsSummary(userId: string) {
       },
     })),
   }
-}
-
-export async function createPaymentOrder(params: { userId: string; packageId: string }) {
-  const pkg = await prisma.pointsPackage.findFirst({
-    where: {
-      id: params.packageId,
-      status: PointsPackageStatus.ACTIVE,
-    },
-  })
-
-  if (!pkg) {
-    throw new Error('积分包不存在或已下架')
-  }
-
-  return prisma.paymentOrder.create({
-    data: {
-      userId: params.userId,
-      packageId: pkg.id,
-      amountCents: pkg.priceCents,
-      currency: pkg.currency,
-      status: PaymentOrderStatus.PENDING,
-      metadata: {
-        packageName: pkg.name,
-        points: toDisplayPoints(pkg.points),
-      },
-    },
-    include: {
-      paymentPackage: true,
-    },
-  })
 }
 
 export async function createPendingPaymentOrder(params: {
@@ -615,10 +548,6 @@ export async function redeemCode(params: { userId: string; code: string }) {
       pointsBalance: nextBalance,
     }
   })
-}
-
-export async function ensureSufficientPointsForGeneration(userId: string) {
-  return ensureSufficientPointsForGenerationByScene(userId, 'amazon')
 }
 
 export async function ensureSufficientPointsForGenerationByScene(userId: string, scene: GenerationBillingScene) {

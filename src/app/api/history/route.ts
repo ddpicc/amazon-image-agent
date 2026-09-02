@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireApiUser } from '@/lib/auth'
 import { syncActiveImageGenerationRequests } from '@/lib/image-generation-service'
+import { areReferenceImagesExpired } from '@/lib/reference-images'
 import { toDisplayPoints } from '@/lib/points-config'
 import { prisma } from '@/lib/prisma'
 
@@ -91,7 +92,10 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     analysisRecords: {
-      items: analysisRecords,
+      items: analysisRecords.map((record) => ({
+        ...record,
+        referencesExpired: areReferenceImagesExpired(record.createdAt),
+      })),
       page: analysisPage,
       pageSize: analysisPageSize,
       total: analysisTotal,

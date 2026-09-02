@@ -28,7 +28,7 @@ export function normalizeMoneyFromCents(amountCents: number) {
   return (amountCents / 100).toFixed(2)
 }
 
-export function buildZPaySignSource(params: ZPaySignInput) {
+function buildZPaySignSource(params: ZPaySignInput) {
   return Object.entries(params)
     .filter(([key, raw]) => key !== 'sign' && key !== 'sign_type' && raw !== null && raw !== undefined && String(raw) !== '')
     .sort(([a], [b]) => a.localeCompare(b))

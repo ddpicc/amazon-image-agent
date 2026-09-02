@@ -47,7 +47,7 @@ function formatEvent(event: StreamEvent) {
 }
 
 function resolveBillingScene(sourcePage: string, rawBillingScene: string | null): GenerationBillingScene {
-  if (rawBillingScene === 'amazon' || rawBillingScene === 'aplus' || rawBillingScene === 'reverse-prompt' || rawBillingScene === 'playground') {
+  if (rawBillingScene === 'amazon' || rawBillingScene === 'aplus' || rawBillingScene === 'playground') {
     return rawBillingScene
   }
 

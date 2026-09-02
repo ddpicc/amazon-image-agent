@@ -15,7 +15,7 @@ import {
   parseStoredReferenceImages,
 } from '@/lib/amazon-workflow'
 import { prisma } from '@/lib/prisma'
-import { createReferenceImagePayloadsFromUrls } from '@/lib/reference-images'
+import { createReferenceImagePayloadsFromUrls, areReferenceImagesExpired } from '@/lib/reference-images'
 
 function mergePromptResults(
   previous: PromptResults,
@@ -76,6 +76,7 @@ export async function POST(request: NextRequest) {
       select: {
         id: true,
         status: true,
+        createdAt: true,
         productName: true,
         description: true,
         category: true,
@@ -110,6 +111,13 @@ export async function POST(request: NextRequest) {
     const basicAnalysisResult = record.analysisJson
     const storedReferenceImages = parseStoredReferenceImages(record.referenceImagesJson)
       .filter((item) => item.url.length > 0)
+
+    if (storedReferenceImages.length > 0 && areReferenceImagesExpired(record.createdAt)) {
+      return NextResponse.json({
+        error: '这条记录的参考图已按 30 天保存策略自动清理，无法带原图重新生成。请重新上传参考图，或直接新建分析。',
+      }, { status: 410 })
+    }
+
     const imagePayloads = await createReferenceImagePayloadsFromUrls(
       storedReferenceImages.slice(0, 3).map((item) => item.url),
     )

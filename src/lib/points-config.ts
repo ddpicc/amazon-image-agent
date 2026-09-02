@@ -1,11 +1,10 @@
 export const POINTS_SCALE = 10
 
-export type GenerationBillingScene = 'amazon' | 'aplus' | 'reverse-prompt' | 'playground'
+export type GenerationBillingScene = 'amazon' | 'aplus' | 'playground'
 
 const GENERATION_COSTS: Record<GenerationBillingScene, number> = {
   amazon: 8,
   aplus: 13,
-  'reverse-prompt': 8,
   playground: 6,
 }
 

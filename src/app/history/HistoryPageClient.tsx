@@ -13,6 +13,7 @@ interface HistoryAnalysisRecord {
   targetAudience: string
   referenceImageCount: number
   referenceImagesJson: unknown
+  referencesExpired?: boolean
   status: 'STARTED' | 'SUCCEEDED' | 'FAILED'
   productSummary: string | null
   analysisJson: unknown
@@ -291,10 +292,20 @@ export default function HistoryPageClient({ initialData }: { initialData: Histor
                     <span>{formatStatus(record.status)}</span>
                     <span>{record.category}</span>
                     <span>{record.targetAudience}</span>
-                    <span>{record.referenceImageCount} 张参考图</span>
+                    {record.referencesExpired && record.referenceImageCount > 0 ? (
+                      <span className="text-amber-600">{record.referenceImageCount} 张参考图已过期清理</span>
+                    ) : (
+                      <span>{record.referenceImageCount} 张参考图</span>
+                    )}
                   </div>
                   <h3 className="mt-2 text-base font-semibold text-slate-900">{record.productName}</h3>
                   <p className="mt-2 text-sm leading-6 text-slate-600">{record.productSummary || record.description}</p>
+
+                  {record.referencesExpired && record.referenceImageCount > 0 && (
+                    <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                      参考图已按 30 天保存策略自动清理。仍可查看分析结果与已生成的 Prompt；如需带原图重新生成，请重新上传参考图。
+                    </div>
+                  )}
 
                   {record.status === 'STARTED' && (
                     <div className="mt-3 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">

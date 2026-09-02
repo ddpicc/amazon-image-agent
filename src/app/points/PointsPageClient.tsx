@@ -84,7 +84,6 @@ function formatLedgerType(entry: PointsLedgerEntryItem) {
   if (type === 'GENERATION_DEBIT') {
     if (scene === 'amazon') return 'Amazon 生图扣减'
     if (scene === 'aplus') return 'A+ 生图扣减'
-    if (scene === 'reverse-prompt') return '同款生成扣减'
     if (scene === 'playground') return '自由生成扣减'
     return '生图扣减'
   }
@@ -111,7 +110,6 @@ export default function PointsPageClient({ initialData }: { initialData: PointsP
   const generationPricing = useMemo(() => ([
     { label: 'Amazon 单张生成', cost: getGenerationCostDisplay('amazon') },
     { label: 'A+ 单张生成', cost: getGenerationCostDisplay('aplus') },
-    { label: '同款生成 / 以图生图', cost: getGenerationCostDisplay('reverse-prompt') },
     { label: '自由生成', cost: getGenerationCostDisplay('playground') },
   ]), [])
   const inviteLink = `https://amazon-image.zeabur.app/register?aff=${data.user.referralCode}`

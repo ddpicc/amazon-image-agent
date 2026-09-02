@@ -62,7 +62,7 @@ export default function AdminCreateTextProviderForm() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h3 className="text-base font-semibold text-slate-900">新增 Text Provider</h3>
-          <p className="mt-1 text-sm text-slate-500">文本分析、Prompt 生成、反推提示词都走这里的 provider 池。</p>
+          <p className="mt-1 text-sm text-slate-500">文本分析、Prompt 生成走这里的 provider 池。</p>
         </div>
         <span className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white">Write-only key</span>
       </div>

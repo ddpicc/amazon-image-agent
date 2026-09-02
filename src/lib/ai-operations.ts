@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 
 type JsonValue = Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput | undefined
 
-type OperationKind = 'ANALYSIS' | 'IMAGE_GENERATION' | 'REVERSE_PROMPT_ANALYZE' | 'REVERSE_PROMPT_REFINE'
+type OperationKind = 'ANALYSIS' | 'IMAGE_GENERATION'
 type ProviderType = 'TEXT' | 'IMAGE'
 
 type OperationStatus = AttemptStatus

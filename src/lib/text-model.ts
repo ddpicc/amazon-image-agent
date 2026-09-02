@@ -10,7 +10,7 @@ import { completeAiOperationAttempt, startAiOperationAttempt } from '@/lib/ai-op
 const TEXT_PROVIDER_TOTAL_TIMEOUT_MS = 5 * 60 * 1000
 const TEXT_PROVIDER_MIN_ATTEMPT_TIMEOUT_MS = 15 * 1000
 
-export const TEXT_SERVICE_UNAVAILABLE_MESSAGE = '网站暂不可用，请稍后再试。'
+const TEXT_SERVICE_UNAVAILABLE_MESSAGE = '网站暂不可用，请稍后再试。'
 
 interface TextProviderConfig {
   id?: string
@@ -26,7 +26,7 @@ interface TextOperationContext {
   entryPoint?: string
 }
 
-export class TextServiceUnavailableError extends Error {
+class TextServiceUnavailableError extends Error {
   constructor(message = TEXT_SERVICE_UNAVAILABLE_MESSAGE) {
     super(message)
     this.name = 'TextServiceUnavailableError'

@@ -1,6 +1,18 @@
 import { uploadBufferToCos } from '@/lib/cos'
 import { StoredReferenceImage } from '@/lib/amazon-workflow'
 
+// 与 COS 桶的生命周期规则保持一致：参考图上传 30 天后会被自动清理。
+export const REFERENCE_IMAGE_RETENTION_DAYS = 30
+
+export function areReferenceImagesExpired(createdAt: Date | string, now = new Date()): boolean {
+  const created = typeof createdAt === 'string' ? new Date(createdAt) : createdAt
+  if (Number.isNaN(created.getTime())) {
+    return false
+  }
+
+  return now.getTime() - created.getTime() >= REFERENCE_IMAGE_RETENTION_DAYS * 24 * 60 * 60 * 1000
+}
+
 function getExtensionFromMediaType(mediaType: string): string {
   if (mediaType === 'image/png') return 'png'
   if (mediaType === 'image/webp') return 'webp'

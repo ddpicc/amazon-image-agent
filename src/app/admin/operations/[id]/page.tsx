@@ -11,8 +11,6 @@ function prettyJson(value: unknown) {
 function formatOperationKind(kind: string) {
   if (kind === 'IMAGE_GENERATION') return '生图'
   if (kind === 'ANALYSIS') return '商品分析 / Prompt'
-  if (kind === 'REVERSE_PROMPT_ANALYZE') return '反推提示词'
-  if (kind === 'REVERSE_PROMPT_REFINE') return '反推提示词润色'
   return kind
 }
 

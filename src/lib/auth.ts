@@ -14,7 +14,7 @@ export interface AuthUser {
   role: 'ADMIN' | 'USER'
 }
 
-export function getDefaultAppPathForRole(role: AuthUser['role']) {
+function getDefaultAppPathForRole(role: AuthUser['role']) {
   return role === 'ADMIN' ? '/admin' : '/'
 }
 
@@ -57,7 +57,7 @@ export async function invalidateSession(token: string): Promise<void> {
   })
 }
 
-export async function getCurrentUserFromSessionToken(token?: string | null): Promise<AuthUser | null> {
+async function getCurrentUserFromSessionToken(token?: string | null): Promise<AuthUser | null> {
   if (!token) return null
 
   let session
@@ -95,7 +95,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
   return getCurrentUserFromSessionToken(token)
 }
 
-export async function requireUser(): Promise<AuthUser> {
+async function requireUser(): Promise<AuthUser> {
   const user = await getCurrentUser()
   if (!user) {
     redirect('/login')

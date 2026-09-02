@@ -6,8 +6,6 @@ import { prisma } from '@/lib/prisma'
 function formatOperationKind(kind: string) {
   if (kind === 'IMAGE_GENERATION') return '生图'
   if (kind === 'ANALYSIS') return '商品分析 / Prompt'
-  if (kind === 'REVERSE_PROMPT_ANALYZE') return '反推提示词'
-  if (kind === 'REVERSE_PROMPT_REFINE') return '反推提示词润色'
   return kind
 }
 
@@ -27,8 +25,6 @@ function parseDateInput(value: string | undefined, endOfDay = false) {
 const KIND_OPTIONS = [
   { value: 'IMAGE_GENERATION', label: '生图' },
   { value: 'ANALYSIS', label: '商品分析 / Prompt' },
-  { value: 'REVERSE_PROMPT_ANALYZE', label: '反推提示词' },
-  { value: 'REVERSE_PROMPT_REFINE', label: '反推提示词润色' },
 ]
 
 const STATUS_OPTIONS = [
@@ -102,7 +98,7 @@ export default async function AdminOperationsPage({
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">管理员</div>
             <h1 className="mt-2 text-3xl font-semibold text-slate-950">AI 操作记录</h1>
-            <p className="mt-2 text-sm text-slate-500">统一查看商品分析、反推提示词和图片生成操作，支持按类型、状态、用户和时间筛选后下钻详情。</p>
+            <p className="mt-2 text-sm text-slate-500">统一查看商品分析和图片生成操作，支持按类型、状态、用户和时间筛选后下钻详情。</p>
           </div>
           <Link href="/admin" className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900">
             返回工作台

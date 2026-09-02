@@ -34,7 +34,7 @@ function getPublicBaseUrl(): string {
   return `https://${bucket}.cos.${region}.myqcloud.com`
 }
 
-export function buildCosPublicUrl(key: string): string {
+function buildCosPublicUrl(key: string): string {
   return `${getPublicBaseUrl()}/${key.replace(/^\//, '')}`
 }
 

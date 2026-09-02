@@ -1,142 +1,97 @@
-# Amazon Image Generation Agent
+# PageMint — 跨境电商图片工作台
 
-## 1. Project Overview
+## 1. 项目定位
 
-- **Project Name**: Amazon Image Generation Agent
-- **Type**: Web-based AI Agent Application (Internal Tool)
-- **Core Functionality**: An intelligent agent that helps internal team generate product marketing images by analyzing product descriptions, keywords and reference images, then generating professional images using AI models.
-- **Target Users**: Internal marketing team, Amazon product managers
+- **产品名**: PageMint（原 Amazon Image Generation Agent）
+- **类型**: Web 端 AI 商品图片生产与处理工作台（内部工具）
+- **目标用户**: 跨境 / 电商平台卖家（Amazon 为主，逐步扩展 Temu 等平台）
+- **核心能力**: 商品分析 → 提示词生成 → AI 生图，外加积分计费、历史回看与后台运营
 
-## 2. Technology Stack
+## 2. 技术栈
 
-- **Frontend**: Next.js 14 + React + TailwindCSS
-- **Backend**: Next.js API Routes
-- **AI Text Model**: Database-managed OpenAI-compatible text provider pool - for understanding product context and generating image prompts
-- **Image Generation Model**: GPT-Image 2 (OpenAI) - for generating product images
-- **State Management**: React hooks + Context API
-- **HTTP Client**: Axios
+- **框架**: Next.js 14（App Router）+ React 18 + TailwindCSS
+- **后端**: Next.js API Routes（Server Components 直连 DB）
+- **数据库**: PostgreSQL + Prisma ORM
+- **文本 AI**: 数据库管理的 OpenAI 兼容 provider 池（按优先级 fallback），API Key 加密存储
+- **图片 AI**: 远端 `amazon-image-worker` 服务，异步提交 + 回调 + 前端轮询
+- **对象存储**: 腾讯云 COS（参考图与成品图）
+- **邮件**: Resend（注册验证码）
+- **支付**: ZPay（支付宝 / 微信扫码）
 
-## 3. Feature List
+## 3. 用户侧工作流
 
-### Core Features
-1. **Product Input Module**
-   - Text input for product name
-   - Textarea for product description/keywords
-   - Product category selection
-   - Target audience selection
-   - **Product reference image upload** (for AI to understand product style/appearance)
-   - Support drag-and-drop or click to upload
+| 路由 | 说明 | 计费场景 |
+| --- | --- | --- |
+| `/` | 工作流入口页 | - |
+| `/amazon` | 商品分析 → 提示词 → 整套 listing 图 / 单张图 / A+ 模块图 | `amazon` 8/张、`aplus` 13/张 |
+| `/playground` | 单张自由生成（提示词 + 参考图 + 尺寸） | `playground` 6/张 |
+| `/history` | 生成历史与分析记录回看 | - |
+| `/points` | 积分中心：余额、账单、兑换码、充值、邀请返励 | - |
+| `/login` `/register` | 登录注册（邮箱验证码） | - |
 
-2. **AI Analysis Engine**
-   - Analyze product description + reference image using Claude
-   - Output structured analysis including:
-     - Product summary
-     - Key selling points
-     - Image content suggestions (what should appear in images)
-     - Visual style recommendations
-   - Save analysis for later reference
+**首页占位中的规划入口**（`src/app/page.tsx` 的 `upcomingEntries`）：
+平台合规体检、做 Temu 图片、1688 / 拼多多链接生图、图片处理工具箱（抠白底 / 精修 / 多平台尺寸适配 / 图内文案翻译）。
 
-3. **User Guidance Input**
-   - After analysis, user can input additional guidance for image generation
-   - User suggestions are combined with analysis to generate optimized prompts
+## 4. 后台（`/admin`）
 
-4. **Image Prompt Generation**
-   - Combine AI analysis + user suggestions → generate image prompts
-   - User selects image type: 组图/白底图/细节图/尺寸图
-   - User can edit prompt before generation
+工作台、用户管理、积分与充值（订单结算 / 积分包）、登录公告、AI 操作审计、生图记录、Provider 管理（文本线路）、兑换码。
 
-5. **Image Generation**
-   - Generate images using GPT-Image 2 through the remote `amazon-image-worker`
-   - Requests without reference images use `/v1/async/images/generations`
-   - Requests with reference images use `/v1/async/images/edits`
-   - Reference image is sent along with prompt when present
-   - Support multiple image types and variations
+## 5. 核心机制
 
-6. **Image Preview & Edit**
-   - Display generated images in grid
-   - **Edit button** to modify prompt and regenerate
-   - One-click download
-   - Copy prompt functionality
+### 文本 AI provider 池
+- `TextProvider` 表按 `priority` 排序，请求时从上到下 fallback（`src/lib/text-providers.ts` + `text-model.ts`）
+- API Key 使用 `PROVIDER_KEY_ENCRYPTION_KEY` AES 加密落库，接口只回写 key（`src/lib/crypto.ts`）
+- 每次调用写入 `AiOperation` / `AiOperationAttempt` 审计（30 天过期字段，暂无清理任务）
 
-7. **Generation History**
-   - Save generated images locally
-   - View history in sidebar
+### 图片生成链路
+- 提交：`/api/generate`（同步）或 `/api/generate/stream`（SSE），请求落库为 `ImageGenerationRequest`
+- 提交到远端 worker：无参考图走 `/v1/async/images/generations`，带参考图走 `/v1/async/images/edits`（`src/lib/image-worker-client.ts`）
+- 完成回调：`POST /api/image-worker/callback/[requestId]`（签名校验），前端通过 `GET /api/generate/[requestId]` 轮询
+- 参考图先上传 COS（`src/lib/cos.ts` + `reference-images.ts`）
+- 积分在任务成功时扣减（`debitPointForGeneration`），余额不足直接拒绝提交
 
-## 4. UI/UX Design Direction
+### 积分体系
+- 展示积分 = 内部积分 / 10（`POINTS_SCALE`，`src/lib/points-config.ts`）
+- 流水 `PointsLedgerEntry` 带幂等键；支持兑换码、ZPay 充值（`/api/points/payment-orders/*` + 支付回调）、注册 / 邀请奖励
+- 已知缺口：生图失败退款（`refundPointForFailedGeneration`）尚未接入调用方
 
-- **Visual Style**: Modern, professional, e-commerce focused
-- **Color Scheme**:
-  - Primary: #FF9900 (Amazon Orange)
-  - Secondary: #232F3E (Amazon Dark)
-  - Accent: #146EB4 (Amazon Blue)
-  - Background: #F5F5F5 (Light Gray)
-  - Card: #FFFFFF
-- **Layout**:
-  - Single page application with sidebar
-  - Left sidebar: History and settings
-  - Main area: Input form and image results
-- **Typography**: Inter for body, SF Pro Display for headings
+### 认证
+- 邮箱 + 密码（bcrypt），会话为 opaque token cookie，库内只存哈希（`src/lib/auth.ts`）
+- 注册需邮箱验证码（Resend 发送，`email-verification.ts`）
+- 角色：`ADMIN` / `USER`，管理员访问 `/admin/*`（`requireAdmin`）
 
-## 5. Project Structure
+## 6. API 一览
 
-```
-amazon-image-agent/
-├── src/
-│   ├── app/
-│   │   ├── page.tsx           # Main page
-│   │   ├── layout.tsx         # Root layout
-│   │   └── api/
-│   │       ├── analyze/route.ts    # Claude analysis endpoint
-│   │       └── generate/route.ts    # DALL-E generation endpoint
-│   ├── components/
-│   │   ├── ProductInput.tsx
-│   │   ├── ImageGrid.tsx
-│   │   ├── HistorySidebar.tsx
-│   │   └── LoadingSpinner.tsx
-│   ├── lib/
-│   │   ├── anthropic.ts       # Claude API client
-│   │   └── openai.ts          # DALL-E API client
-│   └── styles/
-│       └── globals.css
-├── public/
-├── package.json
-├── tailwind.config.ts
-├── next.config.js
-└── .env.example
+- 分析：`POST /api/analyze/stream`、`POST /api/analyze/prompts`、`GET /api/analyze/[analysisId]`
+- 生图：`POST /api/generate`、`POST /api/generate/stream`、`GET /api/generate/[requestId]`
+- Worker 回调：`POST /api/image-worker/callback/[requestId]`
+- 下载：`GET /api/download`
+- 认证：`/api/auth/login`、`/api/auth/logout`、`/api/auth/register`、`/api/auth/register/send-code`
+- 历史：`GET /api/history`、`GET /api/history/analysis/[id]`、`GET /api/history/images/[id]`
+- 积分：`GET /api/points`、`POST /api/points/redeem`、`GET|POST /api/points/payment-orders`、`POST /api/points/payment-orders/order`、`POST /api/points/payment-orders/notify`
+- 后台：`/api/admin/*`（公告、生图记录、订单结算、积分包、兑换码、text-providers CRUD / 排序 / 启停 / key）
+
+## 7. 数据模型（`prisma/schema.prisma`）
+
+`User`、`AnalysisRecord`、`ImageGenerationRequest`、`PointsLedgerEntry`、`PointsPackage`、`RedemptionCode`、`PaymentOrder`、`TextProvider`、`EmailVerificationCode`、`Announcement`、`AiOperation`、`AiOperationAttempt`
+
+## 8. 环境变量
+
+见 `.env.example`：`DATABASE_URL`、`APP_SECRET`、`PROVIDER_KEY_ENCRYPTION_KEY`、`APP_BASE_URL`、`IMAGE_WORKER_BASE_URL` / `IMAGE_WORKER_API_KEY` / `IMAGE_WORKER_TIMEOUT_MS`、`RESEND_API_KEY` / `RESEND_FROM`、`COS_*`、`ADMIN_EMAIL` / `ADMIN_PASSWORD`（seed 用）。
+
+## 9. 常用脚本
+
+```bash
+npm run dev                  # 本地开发
+npm run build                # prisma generate + next build
+npm run db:migrate:deploy    # 应用迁移（部署时）
+npm run db:push              # 开发期直接推 schema
+npm run db:seed              # 初始化管理员
+npm run text-provider:upsert # 运维：写入文本 provider
 ```
 
-## 6. API Endpoints
+## 10. 约定与历史决定
 
-### POST /api/analyze/stream
-**Input**: product text description + reference image
-**Output**: streamed analysis lifecycle events, final analysis persisted for later prompt generation
-
-### POST /api/generate
-**Input**: image prompt (user-edited) + reference image
-**Output**: generated image
-
-Request body (multipart/form-data):
-```json
-{
-  "prompt": "string (user edited prompt)",
-  "referenceImage": "file (image, same as analyze)",
-  "style": "realistic | illustrated | white-bg | lifestyle"
-}
-```
-
-Response:
-```json
-{
-  "imageUrl": "string",
-  "revisedPrompt": "string"
-}
-```
-
-### PUT /api/generate (regenerate)
-Same as POST /api/generate - allows user to modify prompt and regenerate
-
-## 7. Environment Variables
-
-```
-PROVIDER_KEY_ENCRYPTION_KEY=  # encrypts provider API keys stored in DB
-```
+- 反推提示词（以图生提示词）工作流已下线：页面、API、计费场景、审计类型与数据库记录均已移除（迁移 `20260901090000_remove_reverse_prompt_workflow`）
+- 平台差异化（尺寸、合规规范）的规划方向是做成工作流内的"平台规格层"，而不是每个平台一个入口
+- 新增首页入口：正式入口加进 `entries` 数组，未上线的占位卡放 `upcomingEntries`

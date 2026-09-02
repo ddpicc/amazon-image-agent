@@ -164,7 +164,7 @@ npm run dev
 - `/api/analyze/prompts`
 
 都会要求登录，分析结果会落库，供 `/history` 回看。
-- 文本分析、Prompt 生成和反推提示词都从数据库读取 text provider，按优先级顺序 fallback。
+- 文本分析、Prompt 生成从数据库读取 text provider，按优先级顺序 fallback。
 
 ## 常用脚本
 

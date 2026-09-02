@@ -83,7 +83,7 @@ async function failLocalRequest(params: {
   }
 }
 
-export async function buildPersistedImageGenerationPayload(params: {
+async function buildPersistedImageGenerationPayload(params: {
   prompt: string
   originalPrompt: string
   sourcePage: 'amazon' | 'playground'
@@ -265,7 +265,7 @@ export async function submitQueuedImageGenerationRequest(requestId: string) {
   }
 }
 
-export async function syncImageGenerationRequestFromWorker(requestId: string) {
+async function syncImageGenerationRequestFromWorker(requestId: string) {
   const request = await prisma.imageGenerationRequest.findUnique({
     where: { id: requestId },
   })

@@ -249,14 +249,14 @@ export default async function AdminProvidersPage() {
         <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="text-xl font-semibold text-slate-950">图片线路</h2>
           <p className="mt-2 text-sm text-slate-500">
-            Amazon、Playground 和 Reverse Prompt 的生图任务现在统一提交到远端 `amazon-image-worker`。
+            Amazon、Playground 的生图任务现在统一提交到远端 `amazon-image-worker`。
             该 worker 自己维护图片 provider、队列、fallback 和对象存储，这个仓库不再提供本地图片线路管理入口。
           </p>
         </section>
 
         <ProviderSection
           title="文本线路"
-          description="产品分析、Prompt 生成和反推提示词都走这里的 provider 池。"
+          description="产品分析、Prompt 生成走这里的 provider 池。"
           emptyText="当前还没有文本 provider，请先创建一条线路。"
           providers={textProviderSummaries}
           createForm={<AdminCreateTextProviderForm />}

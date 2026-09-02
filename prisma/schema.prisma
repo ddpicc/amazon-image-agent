@@ -77,8 +77,6 @@ enum PaymentOrderStatus {
 enum AiOperationKind {
   ANALYSIS
   IMAGE_GENERATION
-  REVERSE_PROMPT_ANALYZE
-  REVERSE_PROMPT_REFINE
 }
 
 enum AiProviderType {
