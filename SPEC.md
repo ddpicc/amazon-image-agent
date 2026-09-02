@@ -25,7 +25,7 @@
 | `/` | 工作流入口页 | - |
 | `/amazon` | 商品分析 → 提示词 → 整套 listing 图 / 单张图 / A+ 模块图 | `amazon` 8/张、`aplus` 13/张 |
 | `/playground` | 单张自由生成（提示词 + 参考图 + 尺寸） | `playground` 6/张 |
-| `/compliance` | 上传商品图，按 Amazon / Temu 基础规则做 AI 初步合规体检 | - |
+| `/compliance` | 选择主图 / 辅图后，按 Amazon / Temu 基础规则做 AI 初步合规体检 | - |
 | `/history` | 生成历史与分析记录回看 | - |
 | `/points` | 积分中心：余额、账单、兑换码、充值、邀请返励 | - |
 | `/login` `/register` | 登录注册（邮箱验证码） | - |
@@ -64,7 +64,7 @@
 ## 6. API 一览
 
 - 分析：`POST /api/analyze/stream`、`POST /api/analyze/prompts`、`GET /api/analyze/[analysisId]`
-- 合规：`POST /api/compliance/check`（图片 + 目标平台，返回 AI 初步检查结果）
+- 合规：`POST /api/compliance/check`（图片 + 目标平台 + 图片角色，返回 AI 初步检查结果）
 - 生图：`POST /api/generate`、`POST /api/generate/stream`、`GET /api/generate/[requestId]`
 - Worker 回调：`POST /api/image-worker/callback/[requestId]`
 - 下载：`GET /api/download`

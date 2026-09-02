@@ -165,7 +165,7 @@ npm run dev
 
 都会要求登录，分析结果会落库，供 `/history` 回看。
 - 文本分析、Prompt 生成从数据库读取 text provider，按优先级顺序 fallback。
-- `/compliance` 提供 Amazon / Temu 图片基础合规初步检查，结果会写入 AI 操作审计；Temu 细则仍需以 Seller Center 当前规则为准。
+- `/compliance` 提供 Amazon / Temu 主图或辅图的基础合规初步检查，结果会写入 AI 操作审计；Temu 细则仍需以 Seller Center 当前规则为准。
 
 ## 常用脚本
 

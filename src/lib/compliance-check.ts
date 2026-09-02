@@ -1,6 +1,7 @@
 import { requestTextJsonCompletion } from '@/lib/text-model'
 
 export type CompliancePlatform = 'amazon' | 'temu'
+export type ComplianceImageRole = 'main' | 'secondary'
 export type ComplianceStatus = 'pass' | 'warning' | 'fail' | 'unknown'
 
 export interface ComplianceTechnicalInfo {
@@ -21,6 +22,8 @@ export interface ComplianceCheckItem {
 export interface ComplianceResult {
   platform: CompliancePlatform
   platformLabel: string
+  imageRole: ComplianceImageRole
+  imageRoleLabel: string
   overallStatus: ComplianceStatus
   summary: string
   items: ComplianceCheckItem[]
@@ -35,24 +38,45 @@ const PLATFORM_LABELS: Record<CompliancePlatform, string> = {
   temu: 'Temu',
 }
 
-const PLATFORM_RULES: Record<CompliancePlatform, string[]> = {
-  amazon: [
-    '主图应使用纯白背景（RGB 255,255,255），并且只展示实际售卖的商品。',
-    '主图商品应完整、清晰，通常应占画面约 85% 或以上；不能被裁切。',
-    '主图不应出现后加文字、Logo、水印、边框、色块或无关道具。',
-    '图片应准确表达实际售卖商品，避免夸大、误导或展示未随商品售卖的配件。',
-    '图片应清晰、对焦稳定，建议最长边至少 1000 像素以保留缩放空间；低于 500 像素属于明显风险。',
-  ],
-  temu: [
-    'Temu 的具体要求会按站点、类目和卖家后台规则变化，不能把通用建议当作平台最终审核结论。',
-    '商品主体应清晰、完整、真实，并且与实际售卖内容一致。',
-    '避免水印、促销标签、无关文字、边框和会干扰商品识别的装饰元素。',
-    '画面应有足够清晰度、合理构图和稳定的商品主体呈现，避免模糊、严重压缩或裁切。',
-  ],
+const IMAGE_ROLE_LABELS: Record<ComplianceImageRole, string> = {
+  main: '主图',
+  secondary: '辅图 / 详情图',
+}
+
+const PLATFORM_RULES: Record<CompliancePlatform, Record<ComplianceImageRole, string[]>> = {
+  amazon: {
+    main: [
+      '主图应使用纯白背景（RGB 255,255,255），并且只展示实际售卖的商品。',
+      '主图商品应完整、清晰，通常应占画面约 85% 或以上；不能被裁切。',
+      '主图不应出现后加文字、Logo、水印、边框、色块或无关道具。',
+      '图片应准确表达实际售卖商品，避免夸大、误导或展示未随商品售卖的配件。',
+    ],
+    secondary: [
+      '辅图不自动套用主图的纯白背景要求，可以展示商品不同角度、使用场景和看不见的细节。',
+      '图片仍应准确表达实际售卖商品，商品及其关键特征应清晰可见，并与商品标题和实际内容一致。',
+      '说明性文字、版式元素或场景道具不自动判为违规，但不能遮挡商品、制造虚假承诺或误导购买者。',
+    ],
+  },
+  temu: {
+    main: [
+      'Temu 的具体要求会按站点、类目和卖家后台规则变化，不能把通用建议当作平台最终审核结论。',
+      '主图应让实际售卖商品清晰、完整、真实地成为视觉主体，避免严重裁切或主体缺失。',
+      '检查水印、促销标签、无关文字和装饰元素是否干扰商品识别或造成误导，不预设统一的纯白背景规则。',
+    ],
+    secondary: [
+      'Temu 的具体要求会按站点、类目和卖家后台规则变化，不能把通用建议当作平台最终审核结论。',
+      '辅图可以用于展示不同角度、使用方式、功能细节或场景，但应与实际售卖内容一致。',
+      '检查文字、Logo、水印、版式和道具是否清晰、真实、不遮挡主体且不制造误导，不预设统一的纯白背景规则。',
+    ],
+  },
 }
 
 function isCompliancePlatform(value: string): value is CompliancePlatform {
   return value === 'amazon' || value === 'temu'
+}
+
+function isComplianceImageRole(value: string): value is ComplianceImageRole {
+  return value === 'main' || value === 'secondary'
 }
 
 function normalizeStatus(value: unknown): ComplianceStatus {
@@ -179,20 +203,22 @@ function buildTechnicalItem(platform: CompliancePlatform, technical: ComplianceT
   }
 }
 
-function buildPrompt(platform: CompliancePlatform, technical: ComplianceTechnicalInfo) {
-  return `你是跨境电商商品图片审核顾问。请只根据用户上传的图片和下面给出的${PLATFORM_LABELS[platform]}基础检查依据，输出谨慎、可执行的初步体检结果。
+function buildPrompt(platform: CompliancePlatform, imageRole: ComplianceImageRole, technical: ComplianceTechnicalInfo) {
+  return `你是跨境电商商品图片审核顾问。请只根据用户上传的图片和下面给出的${PLATFORM_LABELS[platform]}${IMAGE_ROLE_LABELS[imageRole]}基础检查依据，输出谨慎、可执行的初步体检结果。
 
 平台：${PLATFORM_LABELS[platform]}
+图片角色：${IMAGE_ROLE_LABELS[imageRole]}
 图片技术信息：${technical.width && technical.height ? `${technical.width} × ${technical.height} px` : '像素尺寸未知'}，格式 ${technical.mimeType}，大小 ${(technical.bytes / 1024 / 1024).toFixed(2)} MB
 
 基础检查依据：
-${PLATFORM_RULES[platform].map((rule) => `- ${rule}`).join('\n')}
+${PLATFORM_RULES[platform][imageRole].map((rule) => `- ${rule}`).join('\n')}
 
 判断原则：
 - 只判断图片中可见的事实，不要臆测图片之外的信息。
 - 看不清或无法确认时使用 unknown，不要为了给出结论而猜测。
 - status 只能是 pass、warning、fail、unknown。
 - fail 表示明确存在较高风险；warning 表示需要人工复核或优化；pass 表示从当前图片可见范围暂未发现明显问题。
+- 只有在规则明确适用于当前图片角色时，才把它判为对应风险。辅图出现说明性文字、版式元素或场景道具本身不等于违规，重点判断是否遮挡、误导或与商品不一致。
 - 不要声称“平台一定通过”，尤其不要虚构 Temu 的登录后、站点或类目专属规则。
 - 重点检查：背景与构图、商品主体是否完整清晰、文字水印 Logo、是否有无关道具或夸大表达、画质与真实性。
 
@@ -216,18 +242,19 @@ ${PLATFORM_RULES[platform].map((rule) => `- ${rule}`).join('\n')}
 
 export async function checkPlatformCompliance(input: {
   platform: CompliancePlatform
+  imageRole: ComplianceImageRole
   buffer: Buffer
   technical: ComplianceTechnicalInfo
   operationId?: string
 }): Promise<ComplianceResult> {
-  if (!isCompliancePlatform(input.platform)) {
-    throw new Error('Unsupported compliance platform')
+  if (!isCompliancePlatform(input.platform) || !isComplianceImageRole(input.imageRole)) {
+    throw new Error('Unsupported compliance platform or image role')
   }
 
   const content: any[] = [
     {
       type: 'text',
-      text: buildPrompt(input.platform, input.technical),
+      text: buildPrompt(input.platform, input.imageRole, input.technical),
     },
     {
       type: 'image_url',
@@ -276,13 +303,15 @@ export async function checkPlatformCompliance(input: {
   return {
     platform: input.platform,
     platformLabel: PLATFORM_LABELS[input.platform],
+    imageRole: input.imageRole,
+    imageRoleLabel: IMAGE_ROLE_LABELS[input.imageRole],
     overallStatus: deriveOverallStatus(allItems),
     summary: typeof parsed.summary === 'string' && parsed.summary.trim()
       ? parsed.summary.trim()
       : '已完成图片初步检查，请优先处理标记为高风险的项目。',
     items: allItems,
     actionPlan: actionPlan.length ? actionPlan : ['优先处理标记为失败或需复核的项目。', '修改后重新上传，并结合平台后台的最终审核结果确认。'],
-    ruleBasis: PLATFORM_RULES[input.platform],
+    ruleBasis: PLATFORM_RULES[input.platform][input.imageRole],
     limitation: input.platform === 'temu'
       ? 'Temu 的细则可能按站点、类目和卖家后台变化；本结果是基于公开基础原则的 AI 初步检查，不能替代 Seller Center 的最终审核。'
       : '本结果是基于图片可见内容的 AI 初步检查；类目特殊规则、账号状态和平台最终审核仍需人工确认。',

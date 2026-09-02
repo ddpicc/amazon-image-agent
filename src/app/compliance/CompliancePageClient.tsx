@@ -3,11 +3,16 @@
 import { FormEvent, useMemo, useState } from 'react'
 import Link from 'next/link'
 import ReferenceImageUploader from '@/components/ReferenceImageUploader'
-import type { ComplianceCheckItem, CompliancePlatform, ComplianceResult, ComplianceStatus } from '@/lib/compliance-check'
+import type { ComplianceCheckItem, ComplianceImageRole, CompliancePlatform, ComplianceResult, ComplianceStatus } from '@/lib/compliance-check'
 
 const PLATFORM_OPTIONS: Array<{ value: CompliancePlatform; label: string; description: string }> = [
-  { value: 'amazon', label: 'Amazon', description: '主图白底、主体完整、文字水印等基础风险' },
-  { value: 'temu', label: 'Temu', description: '主体清晰、真实性、构图和常见素材风险' },
+  { value: 'amazon', label: 'Amazon', description: '根据主图或辅图区分规则，检查背景、主体和叠加元素' },
+  { value: 'temu', label: 'Temu', description: '根据图片角色检查主体清晰度、真实性、构图和素材风险' },
+]
+
+const IMAGE_ROLE_OPTIONS: Array<{ value: ComplianceImageRole; label: string; description: string }> = [
+  { value: 'main', label: '主图', description: '按平台主图要求重点检查背景、主体占比和叠加元素' },
+  { value: 'secondary', label: '辅图 / 详情图', description: '允许场景和说明性设计，重点检查真实性、清晰度与误导风险' },
 ]
 
 const STATUS_META: Record<ComplianceStatus, { label: string; className: string; icon: string }> = {
@@ -47,6 +52,7 @@ function CheckItem({ item }: { item: ComplianceCheckItem }) {
 
 export default function CompliancePageClient() {
   const [platform, setPlatform] = useState<CompliancePlatform>('amazon')
+  const [imageRole, setImageRole] = useState<ComplianceImageRole>('main')
   const [image, setImage] = useState<File[]>([])
   const [result, setResult] = useState<ComplianceResult | null>(null)
   const [error, setError] = useState('')
@@ -72,6 +78,7 @@ export default function CompliancePageClient() {
     try {
       const formData = new FormData()
       formData.append('platform', platform)
+      formData.append('imageRole', imageRole)
       formData.append('image', image[0])
 
       const response = await fetch('/api/compliance/check', {
@@ -114,7 +121,10 @@ export default function CompliancePageClient() {
                   <button
                     key={option.value}
                     type="button"
-                    onClick={() => setPlatform(option.value)}
+                    onClick={() => {
+                      setPlatform(option.value)
+                      setResult(null)
+                    }}
                     className={`cursor-pointer rounded-2xl border p-4 text-left transition-colors duration-200 ${platform === option.value ? 'border-amazon-orange bg-orange-50 shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300'}`}
                   >
                     <div className="flex items-center justify-between gap-3">
@@ -128,7 +138,30 @@ export default function CompliancePageClient() {
             </div>
 
             <div>
-              <div className="text-sm font-semibold text-slate-900">2. 上传商品图片</div>
+              <div className="text-sm font-semibold text-slate-900">2. 选择图片角色</div>
+              <div className="mt-3 grid gap-3">
+                {IMAGE_ROLE_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => {
+                      setImageRole(option.value)
+                      setResult(null)
+                    }}
+                    className={`cursor-pointer rounded-2xl border p-4 text-left transition-colors duration-200 ${imageRole === option.value ? 'border-amazon-orange bg-orange-50 shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-semibold text-slate-900">{option.label}</span>
+                      {imageRole === option.value && <span className="text-sm font-semibold text-amazon-orange">已选择</span>}
+                    </div>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">{option.description}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-sm font-semibold text-slate-900">3. 上传商品图片</div>
               <div className="mt-3">
                 <ReferenceImageUploader
                   label="待检查图片"
@@ -144,7 +177,7 @@ export default function CompliancePageClient() {
             </div>
 
             <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm leading-6 text-sky-800">
-              当前检查：{selectedPlatform.label} 基础图片风险。系统会把看不清的项目标为“无法完全判断”，不会强行给出通过结论。
+              当前检查：{selectedPlatform.label} {IMAGE_ROLE_OPTIONS.find((option) => option.value === imageRole)?.label} 基础图片风险。辅图不会因为不是纯白背景或包含说明性元素就自动判定违规。
             </div>
 
             {error && <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-6 text-rose-700">{error}</div>}
@@ -184,7 +217,7 @@ export default function CompliancePageClient() {
                 <div className="panel p-6 sm:p-8">
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div>
-                      <div className="text-sm font-semibold text-slate-500">{result.platformLabel} 初步体检结果</div>
+                      <div className="text-sm font-semibold text-slate-500">{result.platformLabel} · {result.imageRoleLabel} 初步体检结果</div>
                       <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">{result.summary}</h2>
                     </div>
                     <StatusBadge status={result.overallStatus} />

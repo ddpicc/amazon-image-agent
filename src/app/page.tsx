@@ -33,7 +33,7 @@ const entries = [
     eyebrow: '图片工具',
     title: '平台合规体检',
     description: '上传商品图，按 Amazon、Temu 等平台的基础规范逐项检查，快速找到需要修改的风险点。',
-    bullets: ['白底、主体、文字水印检查', '支持 Amazon 与 Temu 基础规则', '不通过项给出整改方向'],
+    bullets: ['主图白底与主体检查', '辅图内容与真实性检查', '不通过项给出整改方向'],
     accent: 'from-emerald-100/60 via-teal-50 to-white',
     iconTone: 'bg-emerald-100 text-emerald-600',
   },

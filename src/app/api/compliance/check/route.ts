@@ -1,13 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { completeAiOperation, getAiOperationExpiryDate, startAiOperation } from '@/lib/ai-operations'
 import { requireApiUser } from '@/lib/auth'
-import { checkPlatformCompliance, CompliancePlatform, inspectImageBuffer } from '@/lib/compliance-check'
+import { checkPlatformCompliance, inspectImageBuffer } from '@/lib/compliance-check'
+import type { ComplianceImageRole, CompliancePlatform } from '@/lib/compliance-check'
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 const SUPPORTED_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
 
 function isCompliancePlatform(value: string): value is CompliancePlatform {
   return value === 'amazon' || value === 'temu'
+}
+
+function isComplianceImageRole(value: string): value is ComplianceImageRole {
+  return value === 'main' || value === 'secondary'
 }
 
 export async function POST(request: NextRequest) {
@@ -21,9 +26,10 @@ export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData()
     const platformValue = typeof formData.get('platform') === 'string' ? String(formData.get('platform')) : ''
+    const imageRoleValue = typeof formData.get('imageRole') === 'string' ? String(formData.get('imageRole')) : 'main'
     const image = formData.get('image')
 
-    if (!isCompliancePlatform(platformValue)) {
+    if (!isCompliancePlatform(platformValue) || !isComplianceImageRole(imageRoleValue)) {
       return NextResponse.json({ error: '请选择需要检查的平台' }, { status: 400 })
     }
 
@@ -49,6 +55,7 @@ export async function POST(request: NextRequest) {
       entryPoint: '/api/compliance/check',
       inputSummary: {
         platform: platformValue,
+        imageRole: imageRoleValue,
         fileName: image.name,
         mimeType: image.type,
         bytes: image.size,
@@ -57,6 +64,7 @@ export async function POST(request: NextRequest) {
       },
       requestSnapshot: {
         platform: platformValue,
+        imageRole: imageRoleValue,
         fileName: image.name,
         mimeType: image.type,
         bytes: image.size,
@@ -68,6 +76,7 @@ export async function POST(request: NextRequest) {
 
     const result = await checkPlatformCompliance({
       platform: platformValue,
+      imageRole: imageRoleValue,
       buffer,
       technical,
       operationId,
