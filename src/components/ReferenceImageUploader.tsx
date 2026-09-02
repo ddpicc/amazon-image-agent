@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 interface ReferenceImageUploaderProps {
   label: string
   helperText?: string
+  accept?: string
   maxImages?: number
   emptySummaryText?: string
   filledSummaryText?: string
@@ -15,6 +16,7 @@ interface ReferenceImageUploaderProps {
 export default function ReferenceImageUploader({
   label,
   helperText,
+  accept = 'image/*',
   maxImages = 3,
   emptySummaryText,
   filledSummaryText,
@@ -98,7 +100,17 @@ export default function ReferenceImageUploader({
         onDrop={handleDrop}
         onDragOver={(event) => event.preventDefault()}
         onClick={() => fileInputRef.current?.click()}
-        className="group rounded-2xl border border-dashed border-slate-300 bg-slate-50/70 p-4 transition hover:border-amazon-orange hover:bg-orange-50/60 cursor-pointer"
+        onKeyDown={(event) => {
+          if (event.target !== event.currentTarget) return
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            fileInputRef.current?.click()
+          }
+        }}
+        role="button"
+        tabIndex={0}
+        aria-label={`${label}，点击或拖拽上传`}
+        className="group cursor-pointer rounded-2xl border border-dashed border-slate-300 bg-slate-50/70 p-4 transition hover:border-amazon-orange hover:bg-orange-50/60 focus:outline-none focus:ring-4 focus:ring-orange-100"
       >
         {previewUrls.length > 0 ? (
           <div className="space-y-3">
@@ -146,7 +158,7 @@ export default function ReferenceImageUploader({
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*"
+          accept={accept}
           multiple
           onChange={handleInputChange}
           className="hidden"

@@ -27,19 +27,20 @@ const entries = [
     accent: 'from-amazon-blue/20 via-sky-100 to-white',
     iconTone: 'bg-sky-100 text-sky-600',
   },
+  {
+    href: '/compliance',
+    icon: 'shield-check',
+    eyebrow: '图片工具',
+    title: '平台合规体检',
+    description: '上传商品图，按 Amazon、Temu 等平台的基础规范逐项检查，快速找到需要修改的风险点。',
+    bullets: ['白底、主体、文字水印检查', '支持 Amazon 与 Temu 基础规则', '不通过项给出整改方向'],
+    accent: 'from-emerald-100/60 via-teal-50 to-white',
+    iconTone: 'bg-emerald-100 text-emerald-600',
+  },
 ]
 
 // 即将上线的工作流入口：先占位展示（不可点击）。上线时把对应项搬进上面的 entries 数组即可。
 const upcomingEntries = [
-  {
-    icon: 'shield-check',
-    eyebrow: '图片工具',
-    title: '平台合规体检',
-    description: '上传商品图，按 Amazon、Temu 等平台的主图规范逐项检查，输出可执行的整改建议。',
-    bullets: ['白底、占比、水印逐项检查', '覆盖多平台主图规范', '不通过项给出整改方向'],
-    accent: 'from-emerald-100/60 via-teal-50 to-white',
-    iconTone: 'bg-emerald-100 text-emerald-600',
-  },
   {
     icon: 'photo',
     eyebrow: 'Temu 工作流',

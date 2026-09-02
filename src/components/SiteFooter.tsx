@@ -4,6 +4,7 @@ import Link from 'next/link'
 const quickLinks = [
   { href: '/amazon', label: '做 Amazon 图片' },
   { href: '/playground', label: '单张自由生成' },
+  { href: '/compliance', label: '平台合规体检' },
   { href: '/points', label: '积分中心' },
   { href: '/history', label: '我的历史' },
 ]
