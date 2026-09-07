@@ -14,7 +14,6 @@ interface UserRow {
   createdAt: string
   pointsBalance: number
   totalRechargeAmountCents: number
-  totalRechargePoints: number
   totalSpentPoints: number
   lastActiveAt: string | null
   imageRequestCount: number
@@ -100,7 +99,7 @@ export default function AdminUsersPageClient({ initialData }: { initialData: Adm
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <h2 className="text-lg font-semibold text-slate-950">用户总览</h2>
-              <p className="mt-1 text-sm text-slate-500">总充值积分、总消耗积分和当前余额均按新积分口径显示；历史流水保留原始记录。</p>
+              <p className="mt-1 text-sm text-slate-500">当前余额和总消耗积分按新积分口径显示；历史流水保留原始记录。</p>
             </div>
             <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
               共 {data.users.total} 人
@@ -117,7 +116,6 @@ export default function AdminUsersPageClient({ initialData }: { initialData: Adm
                   <th className="pb-3 pr-4">注册时间</th>
                   <th className="pb-3 pr-4">当前余额</th>
                   <th className="pb-3 pr-4">总充值金额</th>
-                  <th className="pb-3 pr-4">总充值积分（新）</th>
                   <th className="pb-3 pr-4">总消耗积分（新）</th>
                   <th className="pb-3 pr-4">最近活跃</th>
                   <th className="pb-3 pr-4">生图次数</th>
@@ -127,7 +125,7 @@ export default function AdminUsersPageClient({ initialData }: { initialData: Adm
               <tbody>
                 {data.users.items.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="py-8 text-center text-slate-500">暂无用户数据。</td>
+                    <td colSpan={10} className="py-8 text-center text-slate-500">暂无用户数据。</td>
                   </tr>
                 ) : data.users.items.map((user) => (
                   <tr key={user.id} className="border-t border-slate-200 align-top">
@@ -137,7 +135,6 @@ export default function AdminUsersPageClient({ initialData }: { initialData: Adm
                     <td className="py-4 pr-4 text-slate-700">{formatDateTimeInBeijing(user.createdAt)}</td>
                     <td className="py-4 pr-4 text-slate-700">{formatPoints(user.pointsBalance)}</td>
                     <td className="py-4 pr-4 text-slate-700">{formatMoney(user.totalRechargeAmountCents)}</td>
-                    <td className="py-4 pr-4 text-slate-700">{formatPoints(user.totalRechargePoints)}</td>
                     <td className="py-4 pr-4 text-slate-700">{formatPoints(user.totalSpentPoints)}</td>
                     <td className="py-4 pr-4 text-slate-700">{user.lastActiveAt ? formatDateTimeInBeijing(user.lastActiveAt) : '-'}</td>
                     <td className="py-4 pr-4 text-slate-700">{user.imageRequestCount}</td>
