@@ -89,7 +89,7 @@ export default function AdminUsersPageClient({ initialData }: { initialData: Adm
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">管理员</div>
             <h1 className="mt-2 text-3xl font-semibold text-slate-950">用户总览</h1>
-            <p className="mt-2 text-sm text-slate-500">查看每个用户的余额、充值、消耗与最近活跃情况，以及近 7 天积分流水。</p>
+            <p className="mt-2 text-sm text-slate-500">查看每个用户的余额、充值、消耗与最近活跃情况；充值和消耗积分统一按新积分口径统计。</p>
           </div>
           <Link href="/admin" className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900">
             返回工作台
@@ -100,7 +100,7 @@ export default function AdminUsersPageClient({ initialData }: { initialData: Adm
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <h2 className="text-lg font-semibold text-slate-950">用户总览</h2>
-              <p className="mt-1 text-sm text-slate-500">查看每个用户的余额、充值、消耗与最近活跃情况。</p>
+              <p className="mt-1 text-sm text-slate-500">总充值积分、总消耗积分和当前余额均按新积分口径显示；历史流水保留原始记录。</p>
             </div>
             <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
               共 {data.users.total} 人
@@ -117,8 +117,8 @@ export default function AdminUsersPageClient({ initialData }: { initialData: Adm
                   <th className="pb-3 pr-4">注册时间</th>
                   <th className="pb-3 pr-4">当前余额</th>
                   <th className="pb-3 pr-4">总充值金额</th>
-                  <th className="pb-3 pr-4">总充值积分</th>
-                  <th className="pb-3 pr-4">总消耗积分</th>
+                  <th className="pb-3 pr-4">总充值积分（新）</th>
+                  <th className="pb-3 pr-4">总消耗积分（新）</th>
                   <th className="pb-3 pr-4">最近活跃</th>
                   <th className="pb-3 pr-4">生图次数</th>
                   <th className="pb-3">分析次数</th>

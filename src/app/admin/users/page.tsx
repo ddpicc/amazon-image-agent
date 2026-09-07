@@ -1,6 +1,6 @@
 import AdminUsersPageClient, { type AdminUsersPageData } from './AdminUsersPageClient'
 import { requireAdmin } from '@/lib/auth'
-import { toDisplayPoints } from '@/lib/points-config'
+import { toCurrentDisplayPoints, toDisplayPoints } from '@/lib/points-config'
 import { prisma } from '@/lib/prisma'
 
 const USERS_PAGE_SIZE = 20
@@ -98,14 +98,13 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
 
   // Fetch related data for current page users only
   const userIds = users.map((u) => u.id)
-  const [userPaymentOrders, userLedgerDebits] = await Promise.all([
+  const [userPaymentOrders, userLedgerRecharges, userLedgerDebits] = await Promise.all([
     prisma.paymentOrder.findMany({
       where: { userId: { in: userIds }, status: 'PAID' },
       select: {
         userId: true,
         amountCents: true,
         paidAt: true,
-        paymentPackage: { select: { points: true } },
       },
       orderBy: [
         { paidAt: 'desc' },
@@ -113,10 +112,23 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
       ],
     }),
     prisma.pointsLedgerEntry.findMany({
+      where: { userId: { in: userIds }, type: 'PAYMENT_RECHARGE' },
+      select: {
+        userId: true,
+        pointsDelta: true,
+        metadata: true,
+        referenceType: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.pointsLedgerEntry.findMany({
       where: { userId: { in: userIds }, type: 'GENERATION_DEBIT' },
       select: {
         userId: true,
         pointsDelta: true,
+        metadata: true,
+        referenceType: true,
         createdAt: true,
       },
       orderBy: { createdAt: 'desc' },
@@ -125,12 +137,19 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
 
   // Group related data by userId
   const paymentOrdersByUser = new Map<string, typeof userPaymentOrders>()
+  const ledgerRechargesByUser = new Map<string, typeof userLedgerRecharges>()
   const ledgerDebitsByUser = new Map<string, typeof userLedgerDebits>()
 
   for (const order of userPaymentOrders) {
     const list = paymentOrdersByUser.get(order.userId) || []
     list.push(order)
     paymentOrdersByUser.set(order.userId, list)
+  }
+
+  for (const entry of userLedgerRecharges) {
+    const list = ledgerRechargesByUser.get(entry.userId) || []
+    list.push(entry)
+    ledgerRechargesByUser.set(entry.userId, list)
   }
 
   for (const entry of userLedgerDebits) {
@@ -160,6 +179,7 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
 
   // --- Serialize data for client ---
   type PaymentOrderAgg = (typeof userPaymentOrders)[number]
+  type LedgerRechargeAgg = (typeof userLedgerRecharges)[number]
   type LedgerDebitAgg = (typeof userLedgerDebits)[number]
   type UserItem = (typeof users)[number]
   type LedgerItem = (typeof ledgerEntries)[number]
@@ -168,11 +188,18 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
     users: {
       items: users.map((user: UserItem) => {
         const orders = paymentOrdersByUser.get(user.id) || []
+        const recharges = ledgerRechargesByUser.get(user.id) || []
         const debits = ledgerDebitsByUser.get(user.id) || []
 
         const totalRechargeAmountCents = orders.reduce((sum: number, o: PaymentOrderAgg) => sum + o.amountCents, 0)
-        const totalRechargePoints = orders.reduce((sum: number, o: PaymentOrderAgg) => sum + o.paymentPackage.points, 0)
-        const totalSpentPoints = Math.abs(debits.reduce((sum: number, e: LedgerDebitAgg) => sum + e.pointsDelta, 0))
+        const totalRechargePoints = recharges.reduce(
+          (sum: number, e: LedgerRechargeAgg) => sum + toCurrentDisplayPoints(e.pointsDelta, e.metadata, e.referenceType),
+          0,
+        )
+        const totalSpentPoints = Math.abs(debits.reduce(
+          (sum: number, e: LedgerDebitAgg) => sum + toCurrentDisplayPoints(e.pointsDelta, e.metadata, e.referenceType),
+          0,
+        ))
 
         const lastActiveAt = lastActiveAtByUser.get(user.id) ?? user.createdAt
 
@@ -184,8 +211,8 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
           createdAt: user.createdAt.toISOString(),
           pointsBalance: toDisplayPoints(user.pointsBalance),
           totalRechargeAmountCents,
-          totalRechargePoints: toDisplayPoints(totalRechargePoints),
-          totalSpentPoints: toDisplayPoints(totalSpentPoints),
+          totalRechargePoints,
+          totalSpentPoints,
           lastActiveAt: lastActiveAt ? lastActiveAt.toISOString() : null,
           imageRequestCount: user._count.imageGenerationRequests,
           analysisCount: user._count.analysisRecords,
@@ -203,8 +230,8 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
         id: entry.id,
         userEmail: entry.user.email,
         type: entry.type,
-        pointsDelta: toDisplayPoints(entry.pointsDelta),
-        balanceAfter: toDisplayPoints(entry.balanceAfter),
+        pointsDelta: toCurrentDisplayPoints(entry.pointsDelta, entry.metadata, entry.referenceType),
+        balanceAfter: toCurrentDisplayPoints(entry.balanceAfter, entry.metadata, entry.referenceType),
         createdAt: entry.createdAt.toISOString(),
       })),
       page: currentLedgerPage,

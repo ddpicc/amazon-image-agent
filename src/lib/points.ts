@@ -399,6 +399,7 @@ export async function applyPaymentOrderSuccess(params: {
         referenceType: 'payment_order',
         referenceId: order.id,
         metadata: {
+          pointsUnit: 'new',
           outTradeNo: order.outTradeNo,
           packageId: order.packageId,
           packageName: order.paymentPackage.name,
@@ -624,6 +625,7 @@ async function debitPointsForAnalysisInTransaction(
       referenceType: 'analysis_record',
       referenceId: params.analysisId,
       metadata: {
+        pointsUnit: 'new',
         billingKind: 'analysis',
         scene: params.scene,
         chargedPoints: toDisplayPoints(debitAmount),
@@ -691,6 +693,7 @@ export async function debitPointForGeneration(params: { userId: string; requestI
         referenceType: 'image_generation_request',
         referenceId: params.requestId,
         metadata: {
+          pointsUnit: 'new',
           billingKind: 'generation',
           scene: params.scene,
           chargedPoints: toDisplayPoints(debitAmount),
@@ -749,6 +752,9 @@ export async function refundPointForFailedGeneration(params: { userId: string; r
         idempotencyKey: refundKey,
         referenceType: 'image_generation_request',
         referenceId: params.requestId,
+        metadata: {
+          pointsUnit: 'new',
+        },
       },
     })
   })
