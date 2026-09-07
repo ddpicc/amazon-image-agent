@@ -174,7 +174,7 @@ export default function AuthForm({ mode, initialReferralCode = '' }: AuthFormPro
                   value={referralCode}
                   onChange={(event) => setReferralCode(event.target.value.trim().toLowerCase())}
                   className="input-field"
-                  placeholder="选填，填写后注册可获 6 积分"
+                  placeholder="选填，填写后注册可获 60 积分"
                 />
               </div>
             )}

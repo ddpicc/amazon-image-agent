@@ -252,7 +252,7 @@ export default function PointsPageClient({ initialData }: { initialData: PointsP
 
         <div className="panel p-6">
           <h2 className="text-lg font-semibold text-slate-950">邀请奖励</h2>
-          <p className="mt-1 text-sm text-slate-500">被邀请用户注册可得 6 积分；当被邀请用户完成首充后，邀请人可得 20 积分；未填写邀请码的新用户注册赠送 3 积分。</p>
+          <p className="mt-1 text-sm text-slate-500">被邀请用户注册可得 60 积分；当被邀请用户完成首充后，邀请人可得 100 积分；未填写邀请码的新用户注册赠送 30 积分。</p>
           <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <div className="text-xs font-medium uppercase tracking-[0.2em] text-slate-400">邀请链接</div>
             <div className="mt-2 break-all text-sm text-slate-700">{inviteLink}</div>

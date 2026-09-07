@@ -22,9 +22,9 @@ export class InsufficientPointsError extends Error {
   }
 }
 
-export const SIGNUP_BONUS_POINTS = toInternalPoints(3)
-export const REFERRAL_INVITEE_BONUS_POINTS = toInternalPoints(6)
-export const REFERRAL_INVITER_REWARD_POINTS = toInternalPoints(20)
+export const SIGNUP_BONUS_POINTS = toInternalPoints(30)
+export const REFERRAL_INVITEE_BONUS_POINTS = toInternalPoints(60)
+export const REFERRAL_INVITER_REWARD_POINTS = toInternalPoints(100)
 
 function toNullableJsonValue(value: unknown): Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput | undefined {
   if (value === undefined) {
