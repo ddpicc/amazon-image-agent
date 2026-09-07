@@ -141,6 +141,7 @@ model AnalysisRecord {
   operationId            String?                 @unique
   productName            String
   description            String
+  additionalRequirements String?
   category               String
   targetAudience         String
   referenceImageCount    Int                     @default(0)

@@ -9,11 +9,13 @@ import {
 } from '@/lib/anthropic'
 import {
   AmazonBranch,
+  AMAZON_REFERENCE_IMAGE_LIMIT,
   PromptResults,
   normalizePromptResults,
   isBasicAnalysisResult,
   parseStoredReferenceImages,
 } from '@/lib/amazon-workflow'
+import { ensureSufficientPointsForAnalysisByScene, saveSuccessfulAnalysisWithCharge } from '@/lib/points'
 import { prisma } from '@/lib/prisma'
 import { createReferenceImagePayloadsFromUrls, areReferenceImagesExpired } from '@/lib/reference-images'
 
@@ -79,6 +81,7 @@ export async function POST(request: NextRequest) {
         createdAt: true,
         productName: true,
         description: true,
+        additionalRequirements: true,
         category: true,
         targetAudience: true,
         analysisJson: true,
@@ -101,8 +104,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         branch,
         result: existingResult,
+        charged: false,
       })
     }
+
+    await ensureSufficientPointsForAnalysisByScene(
+      user.id,
+      branch === 'aplus' ? 'aplus-analysis' : 'amazon-analysis',
+    )
 
     if (!isBasicAnalysisResult(record.analysisJson)) {
       return NextResponse.json({ error: '分析结果格式无效，请重新分析' }, { status: 400 })
@@ -119,7 +128,8 @@ export async function POST(request: NextRequest) {
     }
 
     const imagePayloads = await createReferenceImagePayloadsFromUrls(
-      storedReferenceImages.slice(0, 3).map((item) => item.url),
+      storedReferenceImages.map((item) => item.url),
+      AMAZON_REFERENCE_IMAGE_LIMIT,
     )
     const analysisSummary = branch === 'amazon-set'
       ? buildAnalysisSummaryForPromptGeneration(basicAnalysisResult)
@@ -136,6 +146,7 @@ export async function POST(request: NextRequest) {
           imagePayloads,
           analysisSummary,
           operationId ?? undefined,
+          record.additionalRequirements ?? '',
         )),
       }
       : {
@@ -148,13 +159,16 @@ export async function POST(request: NextRequest) {
           imagePayloads,
           analysisSummary,
           operationId ?? undefined,
+          promptResults.amazonSet,
         )),
       }
 
     const nextPromptResults = mergePromptResults(promptResults, branch, result)
 
-    await prisma.analysisRecord.update({
-      where: { id: record.id },
+    await saveSuccessfulAnalysisWithCharge({
+      userId: user.id,
+      analysisId: record.id,
+      scene: branch === 'aplus' ? 'aplus-analysis' : 'amazon-analysis',
       data: {
         promptPlanJson: nextPromptResults as any,
       },
@@ -175,6 +189,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       branch,
       result,
+      charged: true,
     })
   } catch (error) {
     if (operationId) {

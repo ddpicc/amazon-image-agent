@@ -2,6 +2,7 @@ import HistoryPageClient, { HistoryPageData } from './HistoryPageClient'
 import { requireNonAdminUser } from '@/lib/auth'
 import { toDisplayPoints } from '@/lib/points-config'
 import { prisma } from '@/lib/prisma'
+import { isPromptGenerationComplete, normalizePromptResults } from '@/lib/amazon-workflow'
 
 const ANALYSIS_PAGE_SIZE = 5
 const IMAGE_PAGE_SIZE = 12
@@ -70,6 +71,7 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
     analysisRecords: {
       items: analysisRecords.map((record: AnalysisRecordItem) => ({
         ...record,
+        canResumeToPromptPage: isPromptGenerationComplete(normalizePromptResults(record.promptPlanJson).amazonSet),
         createdAt: record.createdAt.toISOString(),
         updatedAt: record.updatedAt.toISOString(),
       })),

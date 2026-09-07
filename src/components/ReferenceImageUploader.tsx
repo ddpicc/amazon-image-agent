@@ -7,6 +7,7 @@ interface ReferenceImageUploaderProps {
   helperText?: string
   accept?: string
   maxImages?: number
+  previewColumns?: 4 | 5
   emptySummaryText?: string
   filledSummaryText?: string
   value: File[]
@@ -18,6 +19,7 @@ export default function ReferenceImageUploader({
   helperText,
   accept = 'image/*',
   maxImages = 3,
+  previewColumns = 5,
   emptySummaryText,
   filledSummaryText,
   value,
@@ -36,6 +38,7 @@ export default function ReferenceImageUploader({
   }, [value])
 
   const remainingCount = Math.max(0, maxImages - value.length)
+  const previewGridClassName = previewColumns === 4 ? 'sm:grid-cols-4' : 'sm:grid-cols-3 xl:grid-cols-5'
 
   const summaryText = useMemo(() => {
     if (!value.length) {
@@ -99,12 +102,14 @@ export default function ReferenceImageUploader({
       <div
         onDrop={handleDrop}
         onDragOver={(event) => event.preventDefault()}
-        onClick={() => fileInputRef.current?.click()}
+        onClick={() => {
+          if (value.length < maxImages) fileInputRef.current?.click()
+        }}
         onKeyDown={(event) => {
           if (event.target !== event.currentTarget) return
           if (event.key === 'Enter' || event.key === ' ') {
             event.preventDefault()
-            fileInputRef.current?.click()
+            if (value.length < maxImages) fileInputRef.current?.click()
           }
         }}
         role="button"
@@ -114,13 +119,13 @@ export default function ReferenceImageUploader({
       >
         {previewUrls.length > 0 ? (
           <div className="space-y-3">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className={`grid grid-cols-2 gap-3 ${previewGridClassName}`}>
               {previewUrls.map((previewUrl, index) => (
                 <div key={previewUrl} className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white">
                   <img
                     src={previewUrl}
                     alt={`Reference ${index + 1}`}
-                    className="h-32 w-full object-cover"
+                    className="aspect-[4/3] w-full object-contain bg-slate-50 p-1"
                   />
                   <button
                     type="button"
@@ -135,7 +140,7 @@ export default function ReferenceImageUploader({
                 </div>
               ))}
               {remainingCount > 0 && (
-                <div className="flex h-32 items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white text-center text-sm text-slate-500">
+                <div className="flex aspect-[4/3] items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white text-center text-sm text-slate-500">
                   <div>
                     <div className="font-medium text-slate-700">继续添加参考图</div>
                     <div className="mt-1 text-xs">还可上传 {remainingCount} 张</div>

@@ -1,6 +1,20 @@
 export type AmazonBranch = 'amazon-set' | 'aplus'
+export const AMAZON_REFERENCE_IMAGE_LIMIT = 5
+export type AmazonAnalysisStageKey =
+  | 'product-facts'
+  | 'reference-images'
+  | 'visual-style'
+  | 'amazon-guidelines'
 export type AmazonPromptKey =
   | 'main-white'
+  | 'secondary-1'
+  | 'secondary-2'
+  | 'secondary-3'
+  | 'secondary-4'
+  | 'secondary-5'
+  | 'secondary-6'
+  | 'secondary-7'
+  | 'secondary-8'
   | 'size'
   | 'detail'
   | 'infographic-1'
@@ -38,6 +52,27 @@ export interface RecommendedImagePlanItem {
   notes: string[]
 }
 
+export type GallerySlotId =
+  | 'main-white'
+  | 'secondary-1'
+  | 'secondary-2'
+  | 'secondary-3'
+  | 'secondary-4'
+  | 'secondary-5'
+  | 'secondary-6'
+  | 'secondary-7'
+  | 'secondary-8'
+
+export interface AmazonGalleryPromptItem {
+  slotId: GallerySlotId
+  title: string
+  visualForm: string
+  prompt: string
+  displayPrompt?: string
+  size: string
+  enabled: boolean
+}
+
 export interface ReferenceImageAdvice {
   needMoreReferences: boolean
   reason: string
@@ -47,6 +82,14 @@ export interface ReferenceImageAdvice {
 export interface ReferenceImageObservation {
   imageIndex: number
   observations: string[]
+}
+
+export interface AmazonAnalysisStageResult {
+  key: AmazonAnalysisStageKey
+  title: string
+  summary: string
+  points: string[]
+  cautions: string[]
 }
 
 export interface BasicAnalysisResult {
@@ -62,12 +105,16 @@ export interface BasicAnalysisResult {
   promptingPrinciples: string[]
   referenceImageAdvice: ReferenceImageAdvice
   canGeneratePrompts: boolean
+  workflowVersion?: 2
+  analysisStages?: AmazonAnalysisStageResult[]
 }
 
 export interface PromptGenerationResult {
   status: 'idle' | 'completed'
   recommendedImagePlan: RecommendedImagePlanItem[]
   suggestedPrompts: Record<string, string>
+  workflowVersion?: 2
+  items?: AmazonGalleryPromptItem[]
 }
 
 export interface APlusPromptGenerationResult extends PromptGenerationResult {
@@ -107,6 +154,7 @@ export interface AmazonResumeState {
   analysisId: string
   productName: string
   description: string
+  additionalRequirements?: string
   category: string
   targetAudience: string
   status: 'STARTED' | 'SUCCEEDED' | 'FAILED'
@@ -115,6 +163,7 @@ export interface AmazonResumeState {
   referenceImages: StoredReferenceImage[]
   basicAnalysisResult: BasicAnalysisResult | null
   promptResults: PromptResults
+  canResumeToPromptPage: boolean
   currentBranch?: AmazonBranch | null
   generatedImages: AmazonResumeImage[]
 }
@@ -162,6 +211,7 @@ interface AmazonResumeRecordLike {
   id: string
   productName: string
   description: string
+  additionalRequirements?: string | null
   category: string
   targetAudience: string
   status: 'STARTED' | 'SUCCEEDED' | 'FAILED'
@@ -262,10 +312,13 @@ export function buildAmazonResumeState(
   record: AmazonResumeRecordLike,
   options?: { imageRequests?: AmazonResumeImageRequestRow[] },
 ): AmazonResumeState {
+  const promptResults = normalizePromptResults(record.promptPlanJson)
+
   return {
     analysisId: record.id,
     productName: record.productName,
     description: record.description,
+    additionalRequirements: record.additionalRequirements ?? '',
     category: record.category,
     targetAudience: record.targetAudience,
     status: record.status,
@@ -273,7 +326,8 @@ export function buildAmazonResumeState(
     errorMessage: record.errorMessage ?? null,
     referenceImages: parseStoredReferenceImages(record.referenceImagesJson),
     basicAnalysisResult: isBasicAnalysisResult(record.analysisJson) ? record.analysisJson : null,
-    promptResults: normalizePromptResults(record.promptPlanJson),
+    promptResults,
+    canResumeToPromptPage: isPromptGenerationComplete(promptResults.amazonSet),
     currentBranch: null,
     generatedImages: toAmazonResumeImages(options?.imageRequests ?? []),
   }
@@ -322,7 +376,11 @@ export function normalizePromptResults(value: unknown): PromptResults {
 }
 
 export function isPromptGenerationComplete(result: PromptGenerationResult | null | undefined) {
-  return Boolean(result && result.recommendedImagePlan.length > 0 && Object.keys(result.suggestedPrompts).length > 0)
+  return Boolean(
+    result
+      && result.recommendedImagePlan.length > 0
+      && (result.items?.some((item) => item.enabled) || Object.keys(result.suggestedPrompts).length > 0),
+  )
 }
 
 export function getPromptResultForBranch(promptResults: PromptResults, branch: AmazonBranch) {

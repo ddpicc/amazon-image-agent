@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import ReferenceImageUploader from '@/components/ReferenceImageUploader'
-import { DEFAULT_IMAGE_MODEL, IMAGE_MODEL_OPTIONS, ImageModel, RenderSize, SIZE_OPTIONS } from '@/lib/image-options'
+import { DEFAULT_IMAGE_MODEL, IMAGE_MODEL_OPTIONS, ImageModel, PLAYGROUND_REFERENCE_IMAGE_LIMIT, RenderSize, SIZE_OPTIONS } from '@/lib/image-options'
 import { formatPoints, getGenerationCostDisplay } from '@/lib/points-config'
 import { usePoints } from '@/components/PointsProvider'
 
@@ -236,7 +236,7 @@ export default function PlaygroundPage({ initialPointsBalance }: { initialPoints
       formData.append('size', size)
       formData.append('sourcePage', 'playground')
       formData.append('billingScene', 'playground')
-      referenceImages.slice(0, 3).forEach((image) => {
+      referenceImages.slice(0, PLAYGROUND_REFERENCE_IMAGE_LIMIT).forEach((image) => {
         formData.append('referenceImages', image)
       })
 
@@ -338,7 +338,9 @@ export default function PlaygroundPage({ initialPointsBalance }: { initialPoints
 
             <ReferenceImageUploader
               label="参考图"
-              helperText="可选，最多上传 3 张。不上传时会直接走纯提示词生图。"
+              helperText={`可选，最多上传 ${PLAYGROUND_REFERENCE_IMAGE_LIMIT} 张。不上传时会直接走纯提示词生图。`}
+              maxImages={PLAYGROUND_REFERENCE_IMAGE_LIMIT}
+              previewColumns={4}
               value={referenceImages}
               onChange={setReferenceImages}
             />
@@ -415,7 +417,7 @@ export default function PlaygroundPage({ initialPointsBalance }: { initialPoints
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">参考图</div>
-                  <div className="mt-1 text-sm font-medium text-slate-800">{referenceImages.length ? `${referenceImages.length} / 3` : '未上传'}</div>
+                  <div className="mt-1 text-sm font-medium text-slate-800">{referenceImages.length ? `${referenceImages.length} / ${PLAYGROUND_REFERENCE_IMAGE_LIMIT}` : '未上传'}</div>
                 </div>
               </div>
             </div>

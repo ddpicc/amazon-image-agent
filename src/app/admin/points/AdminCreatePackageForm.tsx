@@ -53,7 +53,7 @@ export default function AdminCreatePackageForm() {
       <h3 className="text-base font-semibold text-slate-900">新建积分包</h3>
       <div className="mt-4 grid gap-3 md:grid-cols-2">
         <input value={name} onChange={(e) => setName(e.target.value)} className="input-field" placeholder="名称，例如 直播专享包" />
-        <input value={points} onChange={(e) => setPoints(e.target.value)} className="input-field" placeholder="积分数量，例如 200" />
+        <input value={points} onChange={(e) => setPoints(e.target.value)} className="input-field" placeholder="积分数量，例如 500" />
         <input value={priceCents} onChange={(e) => setPriceCents(e.target.value)} className="input-field" placeholder="价格分，例如 9900" />
         <input value={displayOrder} onChange={(e) => setDisplayOrder(e.target.value)} className="input-field" placeholder="排序，例如 40" />
       </div>

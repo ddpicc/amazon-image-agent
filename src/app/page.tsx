@@ -32,15 +32,24 @@ const entries = [
     icon: 'shield-check',
     eyebrow: '图片工具',
     title: '平台合规体检',
-    description: '上传商品图，按 Amazon、Temu 等平台的基础规范逐项检查，快速找到需要修改的风险点。',
-    bullets: ['主图白底与主体检查', '辅图内容与真实性检查', '不通过项给出整改方向'],
+    description: '只上传商品图片，检查平台规范、图片内文字与 Logo、外观设计专利相似性，以及版权和素材风险。',
+    bullets: ['平台主图与辅图规范', '文字、Logo 与视觉 IP 风险', '外观专利相似性初筛'],
     accent: 'from-emerald-100/60 via-teal-50 to-white',
     iconTone: 'bg-emerald-100 text-emerald-600',
   },
 ]
 
-// 即将上线的工作流入口：先占位展示（不可点击）。上线时把对应项搬进上面的 entries 数组即可。
+// 即将上线的工作流入口：先占位展示。上线时把对应项搬进上面的 entries 数组即可。
 const upcomingEntries = [
+  {
+    icon: 'link',
+    eyebrow: '货源复刻',
+    title: '1688 / 淘宝链接生图',
+    description: '粘贴 1688 或淘宝商品链接，先获取商品信息和图片，再进入后续图片生成流程。',
+    bullets: ['解析 1688 商品 offerid', '获取商品标题与全部图片', '后续接入 AI 生图流程'],
+    accent: 'from-violet-200/60 via-fuchsia-50 to-white',
+    iconTone: 'bg-violet-100 text-violet-600',
+  },
   {
     icon: 'photo',
     eyebrow: 'Temu 工作流',
@@ -51,20 +60,11 @@ const upcomingEntries = [
     iconTone: 'bg-rose-100 text-rose-600',
   },
   {
-    icon: 'link',
-    eyebrow: '货源复刻',
-    title: '1688 / 拼多多链接生图',
-    description: '粘贴 1688 或拼多多商品链接，抓取商品图后直接进入生成流程，产出电商成品图。',
-    bullets: ['无需手动上传商品图', '自动抓取主图与 SKU 图', '抓取后接现有生成流程'],
-    accent: 'from-violet-200/60 via-fuchsia-50 to-white',
-    iconTone: 'bg-violet-100 text-violet-600',
-  },
-  {
-    icon: 'wrench',
-    eyebrow: '图片工具箱',
-    title: '图片处理工具箱',
-    description: '上传图片即可抠白底、精修并提升质感，支持一张图适配多平台尺寸，图内文案还能翻译成目标语言。',
-    bullets: ['抠白底、精修、提升质感', '一张图适配多平台尺寸', '图内文案翻译成目标语言'],
+    icon: 'chart',
+    eyebrow: '视觉策略',
+    title: '竞品图片策略分析',
+    description: '分析竞品商品图的结构、卖点表达与视觉差异，帮助你规划更有竞争力的图片方案。',
+    bullets: ['拆解竞品图片分工', '识别视觉同质化问题', '输出差异化图片策略'],
     accent: 'from-cyan-100/60 via-sky-50 to-white',
     iconTone: 'bg-cyan-100 text-cyan-600',
   },
@@ -79,6 +79,7 @@ const ENTRY_ICONS: Record<string, string> = {
     'M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z',
   photo:
     'm2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z',
+  chart: 'M3 3v18h18m-14.25-6 3-3 2.25 2.25L18 9.75',
   link: 'M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244',
   wrench:
     'M11.42 15.17 17.25 21A2.652 2.652 0 0 0 21 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 1 1-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 0 0 4.486-6.336l-3.276 3.277a3.004 3.004 0 0 1-2.25-2.25l3.276-3.276a4.5 4.5 0 0 0-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085m-1.745 1.437L5.909 7.5H4.5L2.25 3.75l1.5-1.5L7.5 4.5v1.409l4.26 4.26m-1.745 1.437 1.745-1.437m6.615 8.206L15.75 15.75M4.867 19.125h.008v.008h-.008v-.008Z',
@@ -86,7 +87,7 @@ const ENTRY_ICONS: Record<string, string> = {
 const FALLBACK_ICON =
   'M2.25 12.76c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.076-4.076a1.526 1.526 0 0 1 1.037-.443 48.282 48.282 0 0 0 5.68-.494c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z'
 
-const heroChips = ['Amazon · Temu 生图', '合规体检', '1688 / 拼多多链接生图', '抠白底 · 精修 · 翻译', '自由生成']
+const heroChips = ['Amazon 生图', '合规体检', '货源复刻', 'Temu 工作流', '视觉策略']
 
 // 卡片不满一行时用占位卡补齐，保持网格完整；新增入口后占位卡会自动减少。
 const fillerCount = (3 - ((entries.length + upcomingEntries.length) % 3)) % 3
@@ -194,38 +195,38 @@ export default async function Home() {
               ))}
 
               {upcomingEntries.map((entry) => (
-                <div
-                  key={entry.title}
-                  className={`relative flex flex-col rounded-3xl border border-dashed border-slate-300 bg-white px-6 py-7 ${entry.accent}`}
-                >
-                  <div className="relative flex items-start justify-between gap-4">
-                    <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/80 shadow-sm ${entry.iconTone}`}>
-                      <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" strokeWidth={1.6} stroke="currentColor" aria-hidden="true">
-                        <path strokeLinecap="round" strokeLinejoin="round" d={ENTRY_ICONS[entry.icon] ?? FALLBACK_ICON} />
-                      </svg>
-                    </span>
-                    <span className="inline-flex rounded-full border border-white/80 bg-white/80 px-3 py-1 text-xs font-semibold text-slate-700 backdrop-blur">
-                      {entry.eyebrow}
-                    </span>
-                  </div>
-                  <div className="relative mt-6 flex grow flex-col">
-                    <h3 className="text-2xl font-semibold text-slate-950">{entry.title}</h3>
-                    <p className="mt-3 text-sm leading-6 text-slate-600">{entry.description}</p>
-                    <ul className="mt-6 space-y-3 text-sm text-slate-700">
-                      {entry.bullets.map((bullet) => (
-                        <li key={bullet} className="flex items-start gap-3">
-                          <svg className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor" aria-hidden="true">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                          </svg>
-                          <span>{bullet}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    <div className="mt-8">
-                      <span className="inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">即将上线</span>
+                  <div
+                    key={entry.title}
+                    className={`relative flex flex-col rounded-3xl border border-dashed border-slate-300 bg-white px-6 py-7 ${entry.accent}`}
+                  >
+                    <div className="relative flex items-start justify-between gap-4">
+                      <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/80 shadow-sm ${entry.iconTone}`}>
+                        <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" strokeWidth={1.6} stroke="currentColor" aria-hidden="true">
+                          <path strokeLinecap="round" strokeLinejoin="round" d={ENTRY_ICONS[entry.icon] ?? FALLBACK_ICON} />
+                        </svg>
+                      </span>
+                      <span className="inline-flex rounded-full border border-white/80 bg-white/80 px-3 py-1 text-xs font-semibold text-slate-700 backdrop-blur">
+                        {entry.eyebrow}
+                      </span>
+                    </div>
+                    <div className="relative mt-6 flex grow flex-col">
+                      <h3 className="text-2xl font-semibold text-slate-950">{entry.title}</h3>
+                      <p className="mt-3 text-sm leading-6 text-slate-600">{entry.description}</p>
+                      <ul className="mt-6 space-y-3 text-sm text-slate-700">
+                        {entry.bullets.map((bullet) => (
+                          <li key={bullet} className="flex items-start gap-3">
+                            <svg className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor" aria-hidden="true">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                            </svg>
+                            <span>{bullet}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      <div className="mt-8">
+                        <span className="inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">SOON</span>
+                      </div>
                     </div>
                   </div>
-                </div>
               ))}
 
               {Array.from({ length: fillerCount }).map((_, index) => (

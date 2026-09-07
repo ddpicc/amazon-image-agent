@@ -1,6 +1,14 @@
 import { PaymentOrderStatus, PointsLedgerType, PointsPackageStatus, RedemptionCodeStatus, Prisma } from '@prisma/client'
 import { hashRedemptionCode } from '@/lib/crypto'
-import { formatInternalPoints, GenerationBillingScene, getGenerationCostInternal, toDisplayPoints, toInternalPoints } from '@/lib/points-config'
+import {
+  AnalysisBillingScene,
+  formatInternalPoints,
+  GenerationBillingScene,
+  getAnalysisCostInternal,
+  getGenerationCostInternal,
+  toDisplayPoints,
+  toInternalPoints,
+} from '@/lib/points-config'
 import { prisma } from '@/lib/prisma'
 import type { ZPayPayType } from '@/lib/payments/zpay'
 
@@ -564,6 +572,87 @@ export async function ensureSufficientPointsForGenerationByScene(userId: string,
   return user.pointsBalance
 }
 
+export async function ensureSufficientPointsForAnalysisByScene(userId: string, scene: AnalysisBillingScene) {
+  const user = await prisma.user.findUniqueOrThrow({
+    where: { id: userId },
+    select: { pointsBalance: true },
+  })
+
+  const requiredPoints = getAnalysisCostInternal(scene)
+  if (user.pointsBalance < requiredPoints) {
+    throw new InsufficientPointsError(requiredPoints)
+  }
+
+  return user.pointsBalance
+}
+
+async function debitPointsForAnalysisInTransaction(
+  tx: Prisma.TransactionClient,
+  params: { userId: string; analysisId: string; scene: AnalysisBillingScene },
+) {
+  const idempotencyKey = `analysis:${params.analysisId}:${params.scene}:debit`
+  const existingEntry = await tx.pointsLedgerEntry.findUnique({
+    where: { idempotencyKey },
+  })
+
+  if (existingEntry) {
+    return existingEntry
+  }
+
+  const user = await tx.user.findUniqueOrThrow({
+    where: { id: params.userId },
+    select: { pointsBalance: true },
+  })
+  const debitAmount = getAnalysisCostInternal(params.scene)
+  if (user.pointsBalance < debitAmount) {
+    throw new InsufficientPointsError(debitAmount)
+  }
+
+  const nextBalance = user.pointsBalance - debitAmount
+  await tx.user.update({
+    where: { id: params.userId },
+    data: { pointsBalance: nextBalance },
+  })
+
+  return tx.pointsLedgerEntry.create({
+    data: {
+      userId: params.userId,
+      type: PointsLedgerType.GENERATION_DEBIT,
+      pointsDelta: -debitAmount,
+      balanceAfter: nextBalance,
+      idempotencyKey,
+      referenceType: 'analysis_record',
+      referenceId: params.analysisId,
+      metadata: {
+        billingKind: 'analysis',
+        scene: params.scene,
+        chargedPoints: toDisplayPoints(debitAmount),
+      },
+    },
+  })
+}
+
+export async function saveSuccessfulAnalysisWithCharge(params: {
+  userId: string
+  analysisId: string
+  scene: AnalysisBillingScene
+  data: Prisma.AnalysisRecordUpdateInput
+}) {
+  return prisma.$transaction(async (tx) => {
+    const ledgerEntry = await debitPointsForAnalysisInTransaction(tx, {
+      userId: params.userId,
+      analysisId: params.analysisId,
+      scene: params.scene,
+    })
+    const analysisRecord = await tx.analysisRecord.update({
+      where: { id: params.analysisId },
+      data: params.data,
+    })
+
+    return { analysisRecord, ledgerEntry }
+  })
+}
+
 export async function debitPointForGeneration(params: { userId: string; requestId: string; scene: GenerationBillingScene }) {
   return prisma.$transaction(async (tx) => {
     const idempotencyKey = `generation:${params.requestId}:debit`
@@ -602,6 +691,7 @@ export async function debitPointForGeneration(params: { userId: string; requestI
         referenceType: 'image_generation_request',
         referenceId: params.requestId,
         metadata: {
+          billingKind: 'generation',
           scene: params.scene,
           chargedPoints: toDisplayPoints(debitAmount),
         },

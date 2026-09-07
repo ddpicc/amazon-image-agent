@@ -1,8 +1,9 @@
 import { NextRequest } from 'next/server'
 import { completeAiOperation, getAiOperationExpiryDate, startAiOperation } from '@/lib/ai-operations'
 import { requireApiUser } from '@/lib/auth'
-import { analyzeProduct } from '@/lib/anthropic'
-import { StoredReferenceImage } from '@/lib/amazon-workflow'
+import { analyzeAmazonProductWorkflow } from '@/lib/anthropic'
+import { AMAZON_REFERENCE_IMAGE_LIMIT, StoredReferenceImage } from '@/lib/amazon-workflow'
+import { ensureSufficientPointsForAnalysisByScene, saveSuccessfulAnalysisWithCharge } from '@/lib/points'
 import { prisma } from '@/lib/prisma'
 import { createReferenceImagePayloadsFromFiles, uploadReferenceImagesForAnalysis } from '@/lib/reference-images'
 
@@ -10,8 +11,10 @@ export const dynamic = 'force-dynamic'
 
 type StreamEvent =
   | { type: 'analysis-created'; analysisId: string }
-  | { type: 'stage'; stage: 'preparing' | 'analyzing' | 'completed'; label: string; progress: number }
-  | { type: 'partial-analysis'; data: Awaited<ReturnType<typeof analyzeProduct>> }
+  | { type: 'stage'; stage: 'preparing' | 'analyzing' | 'prompting' | 'completed'; label: string; progress: number }
+  | { type: 'analysis-stage'; data: Awaited<ReturnType<typeof analyzeAmazonProductWorkflow>>['stages'][number] }
+  | { type: 'partial-analysis'; data: Awaited<ReturnType<typeof analyzeAmazonProductWorkflow>>['basicAnalysis'] }
+  | { type: 'amazon-prompts'; data: Awaited<ReturnType<typeof analyzeAmazonProductWorkflow>>['amazonPrompts'] }
   | { type: 'warning'; message: string }
   | { type: 'error'; message: string; recoverable: boolean }
   | { type: 'done' }
@@ -80,6 +83,7 @@ export async function POST(request: NextRequest) {
 
         const productName = formData.get('productName') as string
         const description = formData.get('description') as string
+        const additionalRequirements = ((formData.get('additionalRequirements') as string) || '').trim()
         const category = formData.get('category') as string
         const targetAudience = formData.get('targetAudience') as string
         const referenceImages = [
@@ -94,6 +98,7 @@ export async function POST(request: NextRequest) {
           entryPoint: '/api/analyze/stream',
           inputSummary: {
             productName,
+            additionalRequirements,
             category: category || 'General',
             targetAudience: targetAudience || 'General consumers',
             referenceImageCount: referenceImages.length,
@@ -101,6 +106,7 @@ export async function POST(request: NextRequest) {
           requestSnapshot: {
             productName,
             description,
+            additionalRequirements,
             category: category || 'General',
             targetAudience: targetAudience || 'General consumers',
             referenceImages: referenceImages.map((image, index) => ({
@@ -113,25 +119,27 @@ export async function POST(request: NextRequest) {
           expiresAt: getAiOperationExpiryDate(),
         })).id
 
-        if (!productName || !description) {
+        if (!productName || !description || referenceImages.length === 0) {
           if (operationId) {
             await completeAiOperation({
               operationId,
               status: 'FAILED',
-              errorMessage: 'Product name and description are required',
+              errorMessage: 'Product name, description, and at least one reference image are required',
               responseSnapshot: {
-                errorMessage: 'Product name and description are required',
+                errorMessage: 'Product name, description, and at least one reference image are required',
               },
             }).catch(() => undefined)
           }
           push({
             type: 'error',
-            message: 'Product name and description are required',
+            message: 'Product name, description, and at least one reference image are required',
             recoverable: false,
           })
           closeStream()
           return
         }
+
+        await ensureSufficientPointsForAnalysisByScene(user.id, 'amazon-analysis')
 
         const analysisRecord = await prisma.analysisRecord.create({
           data: {
@@ -139,6 +147,7 @@ export async function POST(request: NextRequest) {
             operationId,
             productName,
             description,
+            additionalRequirements,
             category: category || 'General',
             targetAudience: targetAudience || 'General consumers',
             referenceImageCount: referenceImages.length,
@@ -146,6 +155,7 @@ export async function POST(request: NextRequest) {
             requestSnapshotJson: {
               productName,
               description,
+              additionalRequirements,
               category: category || 'General',
               targetAudience: targetAudience || 'General consumers',
             },
@@ -160,8 +170,9 @@ export async function POST(request: NextRequest) {
         storedReferenceImages = await uploadReferenceImagesForAnalysis({
           recordId: analysisRecord.id,
           files: referenceImages,
+          maxImages: AMAZON_REFERENCE_IMAGE_LIMIT,
         })
-        const imagePayloads = await createReferenceImagePayloadsFromFiles(referenceImages)
+        const imagePayloads = await createReferenceImagePayloadsFromFiles(referenceImages, AMAZON_REFERENCE_IMAGE_LIMIT)
 
         await prisma.analysisRecord.update({
           where: { id: analysisRecord.id },
@@ -173,28 +184,54 @@ export async function POST(request: NextRequest) {
         push({
           type: 'stage',
           stage: 'analyzing',
-          label: '正在分析商品卖点、参考图和 Amazon 规范',
-          progress: 45,
+          label: '四个分析模块正在并行处理商品信息和参考图',
+          progress: 20,
         })
 
-        const basicResult = await analyzeProduct({
+        let completedStageCount = 0
+        const workflowResult = await analyzeAmazonProductWorkflow({
           productName,
           description,
+          additionalRequirements,
           category: category || 'General',
           targetAudience: targetAudience || 'General consumers',
           referenceImages: imagePayloads,
           operationId: operationId ?? undefined,
           sourcePage: 'amazon',
           entryPoint: '/api/analyze/stream',
+        }, (stage) => {
+          completedStageCount += 1
+          push({ type: 'analysis-stage', data: stage })
+          push({
+            type: 'stage',
+            stage: completedStageCount === 4 ? 'prompting' : 'analyzing',
+            label: completedStageCount === 4
+              ? '四个分析模块已完成，正在直接生成 Amazon 图组 Prompt'
+              : `${stage.title}已完成，其他分析模块仍在并行处理（${completedStageCount}/4）`,
+            progress: Math.min(68, 20 + completedStageCount * 12),
+          })
         })
+        const basicResult = workflowResult.basicAnalysis
+        const amazonPromptResult = workflowResult.amazonPrompts
 
-        await prisma.analysisRecord.update({
-          where: { id: analysisRecord.id },
+        await saveSuccessfulAnalysisWithCharge({
+          userId: user.id,
+          analysisId: analysisRecord.id,
+          scene: 'amazon-analysis',
           data: {
             status: 'SUCCEEDED',
             productSummary: basicResult.productSummary,
             analysisJson: basicResult as any,
-            responseSnapshotJson: basicResult as any,
+            promptPlanJson: {
+              amazonSet: amazonPromptResult,
+              aplus: null,
+            } as any,
+            responseSnapshotJson: {
+              workflowVersion: 2,
+              stages: workflowResult.stages,
+              basicAnalysis: basicResult,
+              amazonPrompts: amazonPromptResult,
+            } as any,
             completedAt: new Date(),
             durationMs: analysisStartedAt ? Date.now() - analysisStartedAt.getTime() : undefined,
           },
@@ -205,11 +242,15 @@ export async function POST(request: NextRequest) {
           type: 'partial-analysis',
           data: basicResult,
         })
+        push({
+          type: 'amazon-prompts',
+          data: amazonPromptResult,
+        })
 
         push({
           type: 'stage',
           stage: 'completed',
-          label: '分析完成，可以进入下一步选择 Prompt 分支',
+          label: '分析完成，Amazon 图组 Prompt 已生成',
           progress: 100,
         })
         if (operationId) {
@@ -217,11 +258,17 @@ export async function POST(request: NextRequest) {
             operationId,
             status: 'SUCCEEDED',
             outputSummary: {
-              productSummary: basicResult.productSummary,
-              sellingPointsCount: basicResult.sellingPoints.length,
-              canGeneratePrompts: basicResult.canGeneratePrompts,
+              workflowVersion: 2,
+              analysisStageCount: workflowResult.stages.length,
+              analysisStageKeys: workflowResult.stages.map((stage) => stage.key),
+              amazonPromptCount: amazonPromptResult.items?.filter((item) => item.enabled).length || 0,
             },
-            responseSnapshot: basicResult,
+            responseSnapshot: {
+              workflowVersion: 2,
+              stages: workflowResult.stages,
+              basicAnalysis: basicResult,
+              amazonPrompts: amazonPromptResult,
+            },
           }).catch(() => undefined)
           operationCompletedSuccessfully = true
         }

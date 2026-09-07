@@ -47,13 +47,13 @@ function formatMoney(amountCents: number, currency: string) {
 
 function getPackageTag(item: RechargePackageItem, maxPoints: number) {
   if (item.points === maxPoints) return '推荐'
-  if (item.points <= 20) return '入门'
+  if (item.points <= 500) return '入门'
   return '常用'
 }
 
 function getPackageHint(item: RechargePackageItem, maxPoints: number) {
   if (item.points === maxPoints) return '适合连续出图，减少反复充值'
-  if (item.points <= 20) return '先少量补充，适合轻度使用'
+  if (item.points <= 500) return '先少量补充，适合轻度使用'
   return '覆盖一段时间的日常出图需求'
 }
 

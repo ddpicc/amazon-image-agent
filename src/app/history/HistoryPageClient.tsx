@@ -18,6 +18,7 @@ interface HistoryAnalysisRecord {
   productSummary: string | null
   analysisJson: unknown
   promptPlanJson: unknown
+  canResumeToPromptPage: boolean
   errorMessage: string | null
   createdAt: string
   updatedAt: string
@@ -163,7 +164,7 @@ export default function HistoryPageClient({ initialData }: { initialData: Histor
       return
     }
 
-    const confirmed = window.confirm(`确定删除“${record.productName}”这条分析记录吗？删除后将无法再恢复当时保存的分析结果和 Prompt 方案。`)
+    const confirmed = window.confirm(`确定删除“${record.productName}”这条记录吗？删除后将无法再恢复已保存的 Amazon 图组 Prompt。`)
     if (!confirmed) {
       return
     }
@@ -270,7 +271,7 @@ export default function HistoryPageClient({ initialData }: { initialData: Histor
             <div>
               <h2 className="text-lg font-semibold text-slate-900">分析记录</h2>
               <p className="mt-2 text-sm text-slate-500">
-                打开后会恢复当时保存的分析结果与已生成的 Prompt 方案。
+                只有已保存 Amazon 图组 Prompt 的记录才可以恢复，打开后直接进入图组 Prompt 页面。
               </p>
             </div>
             <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
@@ -303,7 +304,7 @@ export default function HistoryPageClient({ initialData }: { initialData: Histor
 
                   {record.referencesExpired && record.referenceImageCount > 0 && (
                     <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                      参考图已按 30 天保存策略自动清理。仍可查看分析结果与已生成的 Prompt；如需带原图重新生成，请重新上传参考图。
+                      参考图已按 30 天保存策略自动清理。仍可查看已保存的图组 Prompt；如需带原图重新生成，请重新上传参考图。
                     </div>
                   )}
 
@@ -320,12 +321,18 @@ export default function HistoryPageClient({ initialData }: { initialData: Histor
                   )}
 
                   <div className="mt-4 flex flex-wrap gap-3">
-                    <Link
-                      href={`/amazon?analysisId=${record.id}`}
-                      className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-900"
-                    >
-                      在 Amazon 工作流打开
-                    </Link>
+                    {record.canResumeToPromptPage ? (
+                      <Link
+                        href={`/amazon?analysisId=${record.id}`}
+                        className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-900"
+                      >
+                        打开图组 Prompt
+                      </Link>
+                    ) : (
+                      <span className="rounded-full border border-slate-200 bg-slate-100 px-4 py-2 text-sm text-slate-500">
+                        未生成 Amazon 图组 Prompt，无法恢复
+                      </span>
+                    )}
                     {canDelete && (
                       <button
                         type="button"

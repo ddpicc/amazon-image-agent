@@ -31,9 +31,9 @@ function buildReferenceImageKey(prefix: string, recordId: string, index: number,
   return `${prefix}/${env}/${yyyy}/${mm}/${dd}/${recordId}-${index + 1}.${ext}`
 }
 
-export async function createReferenceImagePayloadsFromFiles(files: File[]) {
+export async function createReferenceImagePayloadsFromFiles(files: File[], maxImages = 3) {
   return Promise.all(
-    files.slice(0, 3).map(async (image) => {
+    files.slice(0, maxImages).map(async (image) => {
       const arrayBuffer = await image.arrayBuffer()
       return {
         data: Buffer.from(arrayBuffer).toString('base64'),
@@ -46,9 +46,10 @@ export async function createReferenceImagePayloadsFromFiles(files: File[]) {
 export async function uploadReferenceImagesForAnalysis(params: {
   recordId: string
   files: File[]
+  maxImages?: number
 }): Promise<StoredReferenceImage[]> {
   return Promise.all(
-    params.files.slice(0, 3).map(async (image, index) => {
+    params.files.slice(0, params.maxImages ?? 3).map(async (image, index) => {
       const arrayBuffer = await image.arrayBuffer()
       const buffer = Buffer.from(arrayBuffer)
       const mimeType = image.type || 'image/jpeg'
@@ -69,9 +70,9 @@ export async function uploadReferenceImagesForAnalysis(params: {
   )
 }
 
-export async function createReferenceImagePayloadsFromUrls(urls: string[]) {
+export async function createReferenceImagePayloadsFromUrls(urls: string[], maxImages = 3) {
   return Promise.all(
-    urls.slice(0, 3).map(async (url) => {
+    urls.slice(0, maxImages).map(async (url) => {
       const response = await fetch(url)
       if (!response.ok) {
         throw new Error(`Failed to load saved reference image: ${response.status}`)
@@ -89,9 +90,10 @@ export async function createReferenceImagePayloadsFromUrls(urls: string[]) {
 export async function uploadReferenceImagesForGeneration(params: {
   requestId: string
   files: File[]
+  maxImages?: number
 }): Promise<StoredReferenceImage[]> {
   return Promise.all(
-    params.files.slice(0, 3).map(async (image, index) => {
+    params.files.slice(0, params.maxImages ?? 3).map(async (image, index) => {
       const arrayBuffer = await image.arrayBuffer()
       const buffer = Buffer.from(arrayBuffer)
       const mimeType = image.type || 'image/jpeg'

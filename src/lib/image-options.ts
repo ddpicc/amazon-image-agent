@@ -10,6 +10,7 @@ export const IMAGE_MODEL_OPTIONS: Array<{
 ]
 
 export const DEFAULT_IMAGE_MODEL: ImageModel = 'gpt-image-2'
+export const PLAYGROUND_REFERENCE_IMAGE_LIMIT = 5
 
 export type RenderSize =
   | '1024x1024'

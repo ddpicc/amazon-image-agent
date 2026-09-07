@@ -1,13 +1,15 @@
 import { Prisma } from '@prisma/client'
 import { completeAiOperation, getAiOperationExpiryDate, startAiOperation } from '@/lib/ai-operations'
-import { StoredReferenceImage } from '@/lib/amazon-workflow'
-import { RenderSize, ImageModel } from '@/lib/image-options'
+import { AMAZON_REFERENCE_IMAGE_LIMIT, StoredReferenceImage } from '@/lib/amazon-workflow'
+import { PLAYGROUND_REFERENCE_IMAGE_LIMIT, RenderSize, ImageModel } from '@/lib/image-options'
 import { PersistedImageGenerationPayload, RouteSummary, type ImageGenerationRequestStatus } from '@/lib/image-generation'
 import { fetchRemoteImageTask, RemoteTaskRecord, submitRemoteImageTask } from '@/lib/image-worker-client'
 import { debitPointForGeneration, ensureSufficientPointsForGenerationByScene } from '@/lib/points'
 import { GenerationBillingScene } from '@/lib/points-config'
 import { prisma } from '@/lib/prisma'
 import { signImageWorkerCallback } from '@/lib/crypto'
+
+const IMAGE_TEXT_CONSTRAINT = 'Visible text in the generated image must use accurate English only. Do not render Chinese characters, Chinese punctuation, or any other CJK text. If accurate English text cannot be rendered, omit all text.'
 
 function sourcePageToEnum(sourcePage: 'amazon' | 'playground'): 'AMAZON' | 'PLAYGROUND' {
   return sourcePage === 'amazon' ? 'AMAZON' : 'PLAYGROUND'
@@ -24,9 +26,9 @@ function parseStatus(value: string): ImageGenerationRequestStatus {
   return 'QUEUED'
 }
 
-async function loadReferenceImageUrlsForRemote(referenceImages: StoredReferenceImage[]) {
+async function loadReferenceImageUrlsForRemote(referenceImages: StoredReferenceImage[], maxImages = 3) {
   return referenceImages
-    .slice(0, 3)
+    .slice(0, maxImages)
     .map((image) => image.url)
     .filter((url) => /^https?:\/\//i.test(url))
 }
@@ -122,6 +124,7 @@ export async function createQueuedImageGenerationRequest(params: {
   analysisRecordId?: string | null
 }) {
   await ensureSufficientPointsForGenerationByScene(params.userId, params.billingScene)
+  const executionPrompt = `${params.prompt}\n\n${IMAGE_TEXT_CONSTRAINT}`
 
   const operation = await startAiOperation({
     userId: params.userId,
@@ -129,7 +132,7 @@ export async function createQueuedImageGenerationRequest(params: {
     sourcePage: params.sourcePage,
     entryPoint: params.entryApi,
     inputSummary: {
-      promptLength: params.prompt.length,
+      promptLength: executionPrompt.length,
       sourcePage: params.sourcePage,
       billingScene: params.billingScene,
       imageType: params.imageType ?? null,
@@ -140,7 +143,7 @@ export async function createQueuedImageGenerationRequest(params: {
       referenceMediaTypes: params.referenceImages.map((image) => image.mimeType),
     },
     requestSnapshot: {
-      prompt: params.prompt,
+      prompt: executionPrompt,
       originalPrompt: params.originalPrompt,
       sourcePage: params.sourcePage,
       billingScene: params.billingScene,
@@ -159,7 +162,7 @@ export async function createQueuedImageGenerationRequest(params: {
   })
 
   const requestPayload = await buildPersistedImageGenerationPayload({
-    prompt: params.prompt,
+    prompt: executionPrompt,
     originalPrompt: params.originalPrompt,
     sourcePage: params.sourcePage,
     billingScene: params.billingScene,
@@ -179,7 +182,7 @@ export async function createQueuedImageGenerationRequest(params: {
       entryApi: params.entryApi,
       billingScene: params.billingScene,
       prompt: params.originalPrompt,
-      finalPrompt: params.prompt,
+      finalPrompt: executionPrompt,
       imageType: params.imageType ?? null,
       containsSyntheticPerformer: Boolean(params.containsSyntheticPerformer),
       size: params.size,
@@ -225,7 +228,10 @@ export async function submitQueuedImageGenerationRequest(requestId: string) {
   }
 
   try {
-    const referenceImageUrls = await loadReferenceImageUrlsForRemote(payload.referenceImages || [])
+    const referenceImageUrls = await loadReferenceImageUrlsForRemote(
+      payload.referenceImages || [],
+      payload.sourcePage === 'amazon' ? AMAZON_REFERENCE_IMAGE_LIMIT : PLAYGROUND_REFERENCE_IMAGE_LIMIT,
+    )
     const remoteTask = await submitRemoteImageTask({
       prompt: payload.prompt,
       size: payload.size,

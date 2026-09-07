@@ -7,53 +7,27 @@ interface ProductInputProps {
   onAnalyze: (data: {
     productName: string
     description: string
-    category: string
-    targetAudience: string
+    additionalRequirements: string
     referenceImages: File[]
   }) => void
   isLoading: boolean
+  analysisCostText?: string
 }
 
-const categories = [
-  '消费电子',
-  '家居厨房',
-  '服饰鞋包',
-  '美妆个护',
-  '运动户外',
-  '玩具游戏',
-  '图书影音',
-  '健康护理',
-  '汽车用品',
-  '通用',
-]
-
-const audiences = [
-  '18-25 岁年轻人',
-  '25-45 岁职场人群',
-  '有孩子的家庭',
-  '65+ 长者人群',
-  '科技爱好者',
-  '价格敏感型用户',
-  '高端消费人群',
-  '大众消费者',
-]
-
-export default function ProductInput({ onAnalyze, isLoading }: ProductInputProps) {
+export default function ProductInput({ onAnalyze, isLoading, analysisCostText }: ProductInputProps) {
   const [productName, setProductName] = useState('')
   const [description, setDescription] = useState('')
-  const [category, setCategory] = useState('通用')
-  const [targetAudience, setTargetAudience] = useState('大众消费者')
+  const [additionalRequirements, setAdditionalRequirements] = useState('')
   const [referenceImages, setReferenceImages] = useState<File[]>([])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!productName.trim() || !description.trim()) return
+    if (!productName.trim() || !description.trim() || referenceImages.length === 0) return
 
     onAnalyze({
       productName: productName.trim(),
       description: description.trim(),
-      category,
-      targetAudience,
+      additionalRequirements: additionalRequirements.trim(),
       referenceImages,
     })
   }
@@ -69,7 +43,7 @@ export default function ProductInput({ onAnalyze, isLoading }: ProductInputProps
             商品信息填写
           </h2>
           <p className="mt-2 max-w-2xl text-sm text-slate-500">
-            告诉系统这是什么商品、面向谁，并上传参考图，方便后续分析和图片生成更贴近你的商品语境。
+            告诉系统这是什么商品，上传参考图，系统会自动规划整套 Amazon 商品图片。
           </p>
         </div>
       </div>
@@ -93,13 +67,13 @@ export default function ProductInput({ onAnalyze, isLoading }: ProductInputProps
 
           <div>
             <label htmlFor="description" className="mb-2 block text-sm font-medium text-slate-800">
-              商品描述与关键词 *
+              商品信息 *
             </label>
             <textarea
               id="description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="请描述商品功能、材质、核心卖点、适用场景，也可以补充想强调的关键词..."
+              placeholder="请简单描述商品功能、材质、核心卖点、适用场景或尺寸信息..."
               rows={5}
               className="input-field min-h-[132px] resize-none"
               required
@@ -107,55 +81,36 @@ export default function ProductInput({ onAnalyze, isLoading }: ProductInputProps
           </div>
         </div>
 
-        <div>
-          <label htmlFor="category" className="mb-2 block text-sm font-medium text-slate-800">
-            商品类目 <span className="text-slate-400">（选填，建议填写）</span>
+        <div className="lg:col-span-2">
+          <label htmlFor="additionalRequirements" className="mb-2 block text-sm font-medium text-slate-800">
+            补充要求 <span className="text-slate-400">（选填）</span>
           </label>
-          <p className="mb-2 text-xs leading-5 text-slate-500">
-            主要帮助系统判断商品属于哪一类，从而更准确地规划卖点图、场景图和风格方向。
+          <textarea
+            id="additionalRequirements"
+            value={additionalRequirements}
+            onChange={(e) => setAdditionalRequirements(e.target.value)}
+            placeholder="例如：整体偏高级简洁、突出防水、尽量不要人物、增加北美家庭场景..."
+            rows={3}
+            className="input-field min-h-[88px] resize-none"
+            maxLength={2000}
+          />
+          <p className="mt-2 text-xs leading-5 text-slate-500">
+            可以描述想强调的风格、场景或卖点，不能替代商品真实信息。
           </p>
-          <select
-            id="category"
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            className="input-field bg-white"
-          >
-            {categories.map((cat) => (
-              <option key={cat} value={cat}>{cat}</option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label htmlFor="audience" className="mb-2 block text-sm font-medium text-slate-800">
-            目标人群 <span className="text-slate-400">（选填，建议填写）</span>
-          </label>
-          <p className="mb-2 text-xs leading-5 text-slate-500">
-            主要帮助系统判断图片语境、生活方式场景和视觉表达，更适合礼品感、高端感或特定人群定位的商品。
-          </p>
-          <select
-            id="audience"
-            value={targetAudience}
-            onChange={(e) => setTargetAudience(e.target.value)}
-            className="input-field bg-white"
-          >
-            {audiences.map((aud) => (
-              <option key={aud} value={aud}>{aud}</option>
-            ))}
-          </select>
         </div>
       </div>
 
       <ReferenceImageUploader
         label="商品参考图"
-        helperText="最多上传三张。通常建议包含正面图、斜侧角度图和细节图，这样更容易得到稳定的亚马逊图片结果。"
+        helperText="至少上传一张，最多五张。建议包含主视图、不同角度、细节和使用场景图片。"
+        maxImages={5}
         value={referenceImages}
         onChange={setReferenceImages}
       />
 
       <button
         type="submit"
-        disabled={isLoading || !productName.trim() || !description.trim()}
+        disabled={isLoading || !productName.trim() || !description.trim() || referenceImages.length === 0}
         className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-amazon-orange px-6 py-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-slate-400"
       >
         {isLoading ? (
@@ -167,7 +122,7 @@ export default function ProductInput({ onAnalyze, isLoading }: ProductInputProps
             分析中...
           </>
         ) : (
-          '开始分析商品'
+          analysisCostText ? `开始分析商品（${analysisCostText} 积分）` : '开始分析商品'
         )}
       </button>
     </form>

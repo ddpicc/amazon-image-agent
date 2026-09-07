@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { formatDateTimeInBeijing } from '@/lib/date'
-import { formatPoints, getGenerationCostDisplay } from '@/lib/points-config'
+import { formatPoints, getAnalysisCostDisplay, getGenerationCostDisplay } from '@/lib/points-config'
 import { usePoints } from '@/components/PointsProvider'
 
 interface PointsUser {
@@ -82,9 +82,11 @@ function formatLedgerType(entry: PointsLedgerEntryItem) {
   if (type === 'REDEEM_CODE') return '兑换码到账'
   if (type === 'PAYMENT_RECHARGE') return '支付充值'
   if (type === 'GENERATION_DEBIT') {
-    if (scene === 'amazon') return 'Amazon 生图扣减'
-    if (scene === 'aplus') return 'A+ 生图扣减'
-    if (scene === 'playground') return '自由生成扣减'
+    if (scene === 'amazon-analysis') return 'Amazon 分析扣减'
+    if (scene === 'aplus-analysis') return 'A+ 分析扣减'
+    if (scene === 'amazon') return 'Amazon 普通图片生成扣减'
+    if (scene === 'aplus') return 'A+ 图片生成扣减'
+    if (scene === 'playground') return '自有生图/再次编辑扣减'
     return '生图扣减'
   }
   if (type === 'GENERATION_REFUND') return '失败退款'
@@ -108,9 +110,11 @@ export default function PointsPageClient({ initialData }: { initialData: PointsP
     [data.packages],
   )
   const generationPricing = useMemo(() => ([
-    { label: 'Amazon 单张生成', cost: getGenerationCostDisplay('amazon') },
-    { label: 'A+ 单张生成', cost: getGenerationCostDisplay('aplus') },
-    { label: '自由生成', cost: getGenerationCostDisplay('playground') },
+    { label: 'Amazon 商品分析', cost: getAnalysisCostDisplay('amazon-analysis'), suffix: '每次' },
+    { label: 'Amazon 普通图片生成', cost: getGenerationCostDisplay('amazon'), suffix: '每张' },
+    { label: 'A+ 分析', cost: getAnalysisCostDisplay('aplus-analysis'), suffix: '每次' },
+    { label: 'A+ 图片生成', cost: getGenerationCostDisplay('aplus'), suffix: '每张' },
+    { label: '自有生图 / 再次编辑', cost: getGenerationCostDisplay('playground'), suffix: '每张' },
   ]), [])
   const inviteLink = `https://amazon-image.zeabur.app/register?aff=${data.user.referralCode}`
 
@@ -190,7 +194,7 @@ export default function PointsPageClient({ initialData }: { initialData: PointsP
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-slate-950">积分包</h2>
-              <p className="mt-1 text-sm text-slate-500">选择套餐后可直接进入 ZPAY 支付入口，支付成功后系统自动入账积分；本次图片生成扣费已同步下调，新老用户立即生效。</p>
+              <p className="mt-1 text-sm text-slate-500">选择套餐后可直接进入 ZPAY 支付入口，支付成功后系统自动入账积分。新套餐按 1 积分 = 0.01 元计算。</p>
             </div>
           </div>
           <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -240,7 +244,7 @@ export default function PointsPageClient({ initialData }: { initialData: PointsP
             {generationPricing.map((item) => (
               <div key={item.label} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                 <div className="text-sm font-medium text-slate-900">{item.label}</div>
-                <div className="mt-1 text-sm text-slate-500">每张扣 {formatPoints(item.cost)} 积分</div>
+                <div className="mt-1 text-sm text-slate-500">{item.suffix}扣 {formatPoints(item.cost)} 积分</div>
               </div>
             ))}
           </div>

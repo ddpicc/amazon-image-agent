@@ -10,10 +10,12 @@ import {
   isRenderSize,
   ImageModel,
   DEFAULT_IMAGE_MODEL,
+  PLAYGROUND_REFERENCE_IMAGE_LIMIT,
 } from '@/lib/image-options'
 import { GenerationBillingScene } from '@/lib/points-config'
 import { prisma } from '@/lib/prisma'
 import { uploadReferenceImagesForGeneration } from '@/lib/reference-images'
+import { AMAZON_REFERENCE_IMAGE_LIMIT } from '@/lib/amazon-workflow'
 
 type StreamEvent =
   | { type: 'status'; message: string }
@@ -46,9 +48,9 @@ function formatEvent(event: StreamEvent) {
   return `${JSON.stringify(event)}\n`
 }
 
-function resolveBillingScene(sourcePage: string, rawBillingScene: string | null): GenerationBillingScene {
-  if (rawBillingScene === 'amazon' || rawBillingScene === 'aplus' || rawBillingScene === 'playground') {
-    return rawBillingScene
+function resolveBillingScene(sourcePage: string, imageType: string): GenerationBillingScene {
+  if (sourcePage === 'amazon' && imageType.startsWith('aplus-')) {
+    return 'aplus'
   }
 
   return sourcePage === 'amazon' ? 'amazon' : 'playground'
@@ -89,7 +91,8 @@ export async function POST(request: NextRequest) {
         const prompt = formData.get('prompt') as string
         const imageType = (formData.get('imageType') as string | null) || ''
         const sourcePage = (formData.get('sourcePage') as string) || 'playground'
-        const billingScene = resolveBillingScene(sourcePage, formData.get('billingScene') as string | null)
+        const referenceImageLimit = sourcePage === 'amazon' ? AMAZON_REFERENCE_IMAGE_LIMIT : PLAYGROUND_REFERENCE_IMAGE_LIMIT
+        const billingScene = resolveBillingScene(sourcePage, imageType)
         const size = formData.get('size') as string | null
         const model = (formData.get('model') as ImageModel | null) || DEFAULT_IMAGE_MODEL
         const analysisIdRaw = (formData.get('analysisId') as string | null) || null
@@ -98,9 +101,11 @@ export async function POST(request: NextRequest) {
         const referenceImages = [
           ...formData.getAll('referenceImages'),
           ...(!formData.get('referenceImage') ? [] : [formData.get('referenceImage')]),
-        ].filter((item): item is File => item instanceof File)
+        ].filter((item): item is File => item instanceof File).slice(0, referenceImageLimit)
         const referenceImageUrls = referenceImageUrlsRaw
-          ? JSON.parse(referenceImageUrlsRaw).filter((item: unknown): item is string => typeof item === 'string' && item.length > 0)
+          ? JSON.parse(referenceImageUrlsRaw)
+            .filter((item: unknown): item is string => typeof item === 'string' && item.length > 0)
+            .slice(0, referenceImageLimit)
           : []
         const isAPlus = sourcePage === 'amazon' && imageType.startsWith('aplus-')
         const containsSyntheticPerformer = sourcePage === 'amazon' && formData.get('containsSyntheticPerformer') === 'true'
@@ -122,9 +127,10 @@ export async function POST(request: NextRequest) {
           persistedRefImages = await uploadReferenceImagesForGeneration({
             requestId: tempId,
             files: referenceImages,
+            maxImages: referenceImageLimit,
           })
         } else if (referenceImageUrls.length > 0) {
-          persistedRefImages = referenceImageUrls.slice(0, 3).map((url: string, index: number) => ({
+          persistedRefImages = referenceImageUrls.map((url: string, index: number) => ({
             url,
             key: '',
             mimeType: 'image/jpeg',

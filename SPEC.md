@@ -23,9 +23,9 @@
 | 路由 | 说明 | 计费场景 |
 | --- | --- | --- |
 | `/` | 工作流入口页 | - |
-| `/amazon` | 商品分析 → 提示词 → 整套 listing 图 / 单张图 / A+ 模块图 | `amazon` 8/张、`aplus` 13/张 |
-| `/playground` | 单张自由生成（提示词 + 参考图 + 尺寸） | `playground` 6/张 |
-| `/compliance` | 选择主图 / 辅图后，按 Amazon / Temu 基础规则做 AI 初步合规体检 | - |
+| `/amazon` | 商品分析 → 提示词 → 整套 listing 图 / 单张图 / A+ 模块图 | Amazon 分析成功 5/次、普通图片成功 10/张；A+ 分析成功 5/次、A+ 图片成功 15/张 |
+| `/playground` | 单张自由生成（提示词 + 参考图 + 尺寸） | `playground` 10/张 |
+| `/compliance` | 上传 1–6 张图片后，按 Amazon / Temu 和美国 / 澳大利亚市场做四类图片合规与视觉 IP 风险初筛 | - |
 | `/history` | 生成历史与分析记录回看 | - |
 | `/points` | 积分中心：余额、账单、兑换码、充值、邀请返励 | - |
 | `/login` `/register` | 登录注册（邮箱验证码） | - |
@@ -49,10 +49,12 @@
 - 提交到远端 worker：无参考图走 `/v1/async/images/generations`，带参考图走 `/v1/async/images/edits`（`src/lib/image-worker-client.ts`）
 - 完成回调：`POST /api/image-worker/callback/[requestId]`（签名校验），前端通过 `GET /api/generate/[requestId]` 轮询
 - 参考图先上传 COS（`src/lib/cos.ts` + `reference-images.ts`）
-- 积分在任务成功时扣减（`debitPointForGeneration`），余额不足直接拒绝提交
+- 积分在图片任务成功时扣减（`debitPointForGeneration`），失败不扣费；整套 Amazon 生成按成功图片数量逐张计费，余额不足直接拒绝提交
 
 ### 积分体系
 - 展示积分 = 内部积分 / 10（`POINTS_SCALE`，`src/lib/points-config.ts`）
+- 新积分口径为 1 积分 = 0.01 元；默认充值套餐为 5 元 / 500 积分、25 元 / 2500 积分、100 元 / 10500 积分
+- Amazon 初始分析和 A+ 分析均在成功保存结果后各扣 5 积分，分析失败不扣费；分析流水复用现有 `GENERATION_DEBIT` 类型并通过 metadata 区分场景，不新增数据库枚举或迁移
 - 流水 `PointsLedgerEntry` 带幂等键；支持兑换码、ZPay 充值（`/api/points/payment-orders/*` + 支付回调）、注册 / 邀请奖励
 - 已知缺口：生图失败退款（`refundPointForFailedGeneration`）尚未接入调用方
 
@@ -64,7 +66,7 @@
 ## 6. API 一览
 
 - 分析：`POST /api/analyze/stream`、`POST /api/analyze/prompts`、`GET /api/analyze/[analysisId]`
-- 合规：`POST /api/compliance/check`（图片 + 目标平台 + 图片角色，返回 AI 初步检查结果）
+- 合规：`POST /api/compliance/scan`（1–6 张图片 + 平台 + 市场 + 图片角色，返回四类初筛结果）
 - 生图：`POST /api/generate`、`POST /api/generate/stream`、`GET /api/generate/[requestId]`
 - Worker 回调：`POST /api/image-worker/callback/[requestId]`
 - 下载：`GET /api/download`
@@ -79,7 +81,7 @@
 
 ## 8. 环境变量
 
-见 `.env.example`：`DATABASE_URL`、`APP_SECRET`、`PROVIDER_KEY_ENCRYPTION_KEY`、`APP_BASE_URL`、`IMAGE_WORKER_BASE_URL` / `IMAGE_WORKER_API_KEY` / `IMAGE_WORKER_TIMEOUT_MS`、`RESEND_API_KEY` / `RESEND_FROM`、`COS_*`、`ADMIN_EMAIL` / `ADMIN_PASSWORD`（seed 用）。
+见 `.env.example`：`DATABASE_URL`、`APP_SECRET`、`PROVIDER_KEY_ENCRYPTION_KEY`、`APP_BASE_URL`、`IMAGE_WORKER_BASE_URL` / `IMAGE_WORKER_API_KEY` / `IMAGE_WORKER_TIMEOUT_MS`、`RESEND_API_KEY` / `RESEND_FROM`、`COS_*`、`ADMIN_EMAIL` / `ADMIN_PASSWORD`（seed 用）。图片合规的 `PANGOL_SCRAPEAPI_API_KEY`（外观专利 WIPO 检索，Pangol ScrapeAPI）为可选；未配置时接口会返回检索不完整状态，不影响平台图片体检。
 
 ## 9. 常用脚本
 
