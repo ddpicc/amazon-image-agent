@@ -264,13 +264,29 @@ function getAmazonGalleryItems(result: PromptGenerationResult | null): AmazonGal
   }))
 }
 
+function getAmazonGalleryItemLabel(item: AmazonGalleryPromptItem): string {
+  if (item.slotId === 'main-white') return '主图'
+  const secondaryMatch = /^secondary-(\d+)$/.exec(item.slotId)
+  return secondaryMatch ? `副图 ${secondaryMatch[1]}` : item.title
+}
+
 function getImageTypeLabel(
   type: string,
   result: PromptGenerationResult | APlusPromptGenerationResult | null,
 ): string {
+  if (type === 'main-white') return '主图'
+  const secondaryMatch = /^secondary-(\d+)$/.exec(type)
+  if (secondaryMatch) return `副图 ${secondaryMatch[1]}`
   return result?.items?.find((item) => item.slotId === type)?.title
     || [...imageTypeOptions, ...aplusImageTypeOptions].find((option) => option.value === type)?.label
     || type
+}
+
+function getGeneratedImageStatusLabel(status?: GeneratedImage['status']): string {
+  if (status === 'SUCCEEDED') return '已生成'
+  if (status === 'QUEUED' || status === 'PROCESSING') return '生成中'
+  if (status === 'FAILED') return '失败'
+  return '未生成'
 }
 
 function buildReferenceAwarePromptHint(type: PromptKey, analysisResult: BasicAnalysisResult): string {
@@ -525,6 +541,7 @@ export default function AmazonPage({
   const [branchPromptElapsedMs, setBranchPromptElapsedMs] = useState(0)
   const [promptGenerationError, setPromptGenerationError] = useState('')
   const [userGuidance, setUserGuidance] = useState('')
+  const [selectedAmazonPromptType, setSelectedAmazonPromptType] = useState<AmazonPromptKey>('main-white')
   const [selectedImageType, setSelectedImageType] = useState<PromptKey>('main-white')
   const [selectedSize, setSelectedSize] = useState<RenderSize>('1024x1024')
   const [containsSyntheticPerformer, setContainsSyntheticPerformer] = useState(false)
@@ -553,6 +570,10 @@ export default function AmazonPage({
     [promptResults, selectedBranch],
   )
   const amazonPromptResult = promptResults.amazonSet
+  const amazonGalleryItems = useMemo(() => getAmazonGalleryItems(amazonPromptResult), [amazonPromptResult])
+  const selectedAmazonPromptItem = amazonGalleryItems.find((item) => item.slotId === selectedAmazonPromptType)
+    || amazonGalleryItems[0]
+    || null
   const generationCost = useMemo(
     () => getGenerationCostDisplay(selectedBranch === 'aplus' ? 'aplus' : 'amazon'),
     [selectedBranch],
@@ -917,6 +938,7 @@ export default function AmazonPage({
         )
         : '',
     )
+    setSelectedAmazonPromptType('main-white')
     setSelectedImageType('main-white')
     setSelectedSize('1024x1024')
 
@@ -1121,6 +1143,7 @@ export default function AmazonPage({
     setReferenceImages([])
     setEditingImage(null)
     setUserGuidance('')
+    setSelectedAmazonPromptType('main-white')
     setSelectedImageType('main-white')
     setSelectedSize('1024x1024')
 
@@ -1214,6 +1237,7 @@ export default function AmazonPage({
     setBranchPromptLabel('')
     setBranchPromptProgress(0)
     setCurrentStep('analysis')
+    setSelectedAmazonPromptType('main-white')
     setSelectedImageType('main-white')
     setSelectedSize('1024x1024')
     setEditedPrompt('')
@@ -1291,6 +1315,7 @@ export default function AmazonPage({
             const result = event.data as PromptGenerationResult
             setPromptResults((previous) => ({ ...previous, amazonSet: result }))
             setSelectedBranch('amazon-set')
+            setSelectedAmazonPromptType('main-white')
             setEditedPrompts({
               ...result.suggestedPrompts,
               ...(result.items || []).reduce<Record<string, string>>((accumulator, item) => {
@@ -1323,6 +1348,7 @@ export default function AmazonPage({
             setAnalysisStage('completed')
             setAnalysisStageLabel('分析完成，已生成 Amazon 图组 Prompt')
             setAnalysisProgress(100)
+            setSelectedAmazonPromptType('main-white')
             setSelectedImageType('main-white')
             setSelectedSize('1024x1024')
             setCurrentStep('generate')
@@ -1463,6 +1489,7 @@ export default function AmazonPage({
       setSelectedBranch(branch)
       if (branch === 'amazon-set') {
         const amazonResult = result as PromptGenerationResult
+        setSelectedAmazonPromptType('main-white')
         setEditedPrompts({
           ...amazonResult.suggestedPrompts,
           ...(amazonResult.items || []).reduce<Record<string, string>>((accumulator, item) => {
@@ -2016,43 +2043,68 @@ export default function AmazonPage({
                     )}
                   </div>
 
-                  <div className="mt-6 space-y-4">
-                      {getAmazonGalleryItems(amazonPromptResult).map((item, index) => (
-                        <div key={item.slotId} className="rounded-3xl border border-slate-200 bg-white p-5">
-                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                            <div>
-                              <div className="text-sm font-semibold text-slate-900">
-                                {item.slotId === 'main-white' ? '主图' : `副图 ${index}`} · {item.title}
-                              </div>
-                              <div className="mt-1 text-xs text-slate-500">{item.visualForm}</div>
-                            </div>
+                  <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,220px)_minmax(0,1fr)]">
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">图片列表</div>
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+                        {amazonGalleryItems.map((item) => {
+                          const latestGeneratedImage = generatedImages.find((image) => image.imageType === item.slotId)
+                          const isSelected = selectedAmazonPromptItem?.slotId === item.slotId
+                          return (
                             <button
+                              key={item.slotId}
                               type="button"
-                              onClick={() => handleGenerateSingle(
-                                item.slotId,
-                                getPromptForGeneration(
-                                  amazonPromptResult,
-                                  item.slotId,
-                                  editedPrompts[item.slotId] || item.displayPrompt || item.prompt,
-                                ),
-                                item.size === '2048x2048' ? '2048x2048' : '1024x1024',
-                                false,
-                              )}
-                              disabled={isGenerating || !(editedPrompts[item.slotId] || item.displayPrompt || item.prompt).trim()}
-                              className="rounded-xl bg-amazon-blue px-4 py-2 text-xs font-semibold text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-slate-400"
+                              onClick={() => setSelectedAmazonPromptType(item.slotId)}
+                              className={`flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left transition-colors ${
+                                isSelected
+                                  ? 'border-amazon-orange bg-orange-50 shadow-sm'
+                                  : 'border-slate-200 bg-white hover:border-slate-300'
+                              }`}
                             >
-                              生成此图（{formatPoints(amazonGenerationCost)} 积分）
+                              <span className="min-w-0 truncate text-sm font-medium text-slate-800">{getAmazonGalleryItemLabel(item)}</span>
+                              <span className={`shrink-0 text-xs ${latestGeneratedImage?.status === 'SUCCEEDED' ? 'text-emerald-700' : latestGeneratedImage?.status === 'FAILED' ? 'text-rose-600' : 'text-slate-400'}`}>
+                                {getGeneratedImageStatusLabel(latestGeneratedImage?.status)}
+                              </span>
                             </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+
+                    {selectedAmazonPromptItem && (
+                      <div className="min-w-0 rounded-3xl border border-slate-200 bg-white p-5">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <div className="text-sm font-semibold text-slate-900">{getAmazonGalleryItemLabel(selectedAmazonPromptItem)} Prompt</div>
+                            <div className="mt-1 text-xs text-slate-500">{selectedAmazonPromptItem.visualForm}</div>
                           </div>
-                          <textarea
-                            value={editedPrompts[item.slotId] || item.displayPrompt || item.prompt}
-                            onChange={(event) => setPromptValue(item.slotId, event.target.value)}
-                            rows={6}
-                            className="input-field mt-4 min-h-[148px] resize-y"
-                            aria-label={`${item.title} Prompt`}
-                          />
+                          <button
+                            type="button"
+                            onClick={() => handleGenerateSingle(
+                              selectedAmazonPromptItem.slotId,
+                              getPromptForGeneration(
+                                amazonPromptResult,
+                                selectedAmazonPromptItem.slotId,
+                                editedPrompts[selectedAmazonPromptItem.slotId] || selectedAmazonPromptItem.displayPrompt || selectedAmazonPromptItem.prompt,
+                              ),
+                              selectedAmazonPromptItem.size === '2048x2048' ? '2048x2048' : '1024x1024',
+                              false,
+                            )}
+                            disabled={isGenerating || !(editedPrompts[selectedAmazonPromptItem.slotId] || selectedAmazonPromptItem.displayPrompt || selectedAmazonPromptItem.prompt).trim()}
+                            className="rounded-xl bg-amazon-blue px-4 py-2 text-xs font-semibold text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-slate-400"
+                          >
+                            生成此图（{formatPoints(amazonGenerationCost)} 积分）
+                          </button>
                         </div>
-                      ))}
+                        <textarea
+                          value={editedPrompts[selectedAmazonPromptItem.slotId] || selectedAmazonPromptItem.displayPrompt || selectedAmazonPromptItem.prompt}
+                          onChange={(event) => setPromptValue(selectedAmazonPromptItem.slotId, event.target.value)}
+                          rows={6}
+                          className="input-field mt-4 min-h-[148px] resize-y"
+                          aria-label={`${getAmazonGalleryItemLabel(selectedAmazonPromptItem)} Prompt`}
+                        />
+                      </div>
+                    )}
                   </div>
 
                   {selectedBranch !== 'amazon-set' && (
@@ -2193,7 +2245,7 @@ export default function AmazonPage({
                             </div>
                           )}
                           <div className="p-4">
-                            <div className="mb-2 text-xs text-slate-500">
+                            <div className="mb-2 text-sm font-medium text-slate-800">
                               {getImageTypeLabel(image.imageType, currentPromptResult)}
                             </div>
                             <div className="mb-3 flex flex-wrap gap-2 text-[11px] text-slate-500">
