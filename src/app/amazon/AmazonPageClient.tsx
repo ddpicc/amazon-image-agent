@@ -7,7 +7,6 @@ import LoadingSpinner, { SkeletonBlock } from '@/components/LoadingSpinner'
 import {
   APlusPromptGenerationResult,
   AmazonGalleryPromptItem,
-  AmazonAnalysisStageResult,
   AmazonBranch,
   AMAZON_REFERENCE_IMAGE_LIMIT,
   AmazonPromptKey,
@@ -22,7 +21,7 @@ import {
   isPromptGenerationComplete,
 } from '@/lib/amazon-workflow'
 import { formatDateTimeInBeijing } from '@/lib/date'
-import { HIDDEN_APLUS_RENDER_SIZE, RenderSize } from '@/lib/image-options'
+import { AMAZON_DEFAULT_RENDER_SIZE, HIDDEN_APLUS_RENDER_SIZE, RenderSize } from '@/lib/image-options'
 import { formatPoints, GenerationBillingScene, getAnalysisCostDisplay, getGenerationCostDisplay } from '@/lib/points-config'
 import { usePoints } from '@/components/PointsProvider'
 
@@ -107,12 +106,12 @@ function formatElapsedTime(durationMs: number) {
 }
 
 interface AnalyzeStreamEvent {
-  type: 'analysis-created' | 'stage' | 'analysis-stage' | 'partial-analysis' | 'amazon-prompts' | 'warning' | 'error' | 'done'
+  type: 'analysis-created' | 'stage' | 'partial-analysis' | 'warning' | 'error' | 'done'
   analysisId?: string
   stage?: Exclude<AnalysisStage, 'idle' | 'error'>
   label?: string
   progress?: number
-  data?: BasicAnalysisResult | AmazonAnalysisStageResult | PromptGenerationResult
+  data?: BasicAnalysisResult
   message?: string
   recoverable?: boolean
 }
@@ -195,7 +194,7 @@ function createImageId() {
 }
 
 function getDefaultSizeForType(type: PromptKey): RenderSize {
-  return type.startsWith('aplus-') ? HIDDEN_APLUS_RENDER_SIZE : '1024x1024'
+  return type.startsWith('aplus-') ? HIDDEN_APLUS_RENDER_SIZE : AMAZON_DEFAULT_RENDER_SIZE
 }
 
 function getBillingSceneForPromptType(type: PromptKey): GenerationBillingScene {
@@ -259,7 +258,7 @@ function getAmazonGalleryItems(result: PromptGenerationResult | null): AmazonGal
     title: option.label,
     visualForm: option.description,
     prompt: result?.suggestedPrompts[option.value] || fallbackPrompts[option.value as PromptImageType],
-    size: '1024x1024',
+    size: AMAZON_DEFAULT_RENDER_SIZE,
     enabled: true,
   }))
 }
@@ -531,10 +530,10 @@ export default function AmazonPage({
   const [streamError, setStreamError] = useState('')
   const [isStreamCompleted, setIsStreamCompleted] = useState(false)
   const [basicAnalysisResult, setBasicAnalysisResult] = useState<BasicAnalysisResult | null>(null)
-  const [analysisSections, setAnalysisSections] = useState<AmazonAnalysisStageResult[]>([])
   const [promptResults, setPromptResults] = useState<PromptResults>(initialResumeState?.promptResults || EMPTY_PROMPT_RESULTS)
   const [selectedBranch, setSelectedBranch] = useState<AmazonBranch | null>(initialResumeState?.currentBranch || null)
   const [branchPromptStatus, setBranchPromptStatus] = useState<TaskStatus>('idle')
+  const [branchPromptBranch, setBranchPromptBranch] = useState<AmazonBranch | null>(null)
   const [branchPromptLabel, setBranchPromptLabel] = useState('')
   const [branchPromptProgress, setBranchPromptProgress] = useState(0)
   const [branchPromptStartedAt, setBranchPromptStartedAt] = useState<number | null>(null)
@@ -543,7 +542,7 @@ export default function AmazonPage({
   const [userGuidance, setUserGuidance] = useState('')
   const [selectedAmazonPromptType, setSelectedAmazonPromptType] = useState<AmazonPromptKey>('main-white')
   const [selectedImageType, setSelectedImageType] = useState<PromptKey>('main-white')
-  const [selectedSize, setSelectedSize] = useState<RenderSize>('1024x1024')
+  const [selectedSize, setSelectedSize] = useState<RenderSize>(AMAZON_DEFAULT_RENDER_SIZE)
   const [containsSyntheticPerformer, setContainsSyntheticPerformer] = useState(false)
   const [editedPrompt, setEditedPrompt] = useState('')
   const [editedPrompts, setEditedPrompts] = useState<Record<string, string>>({})
@@ -899,13 +898,13 @@ export default function AmazonPage({
     setAnalysisId(resumeState.analysisId)
     setStoredReferenceImages(resumeState.referenceImages || [])
     setBasicAnalysisResult(resumeState.basicAnalysisResult)
-    setAnalysisSections(resumeState.basicAnalysisResult?.analysisStages || [])
     setPromptResults(resumeState.promptResults || EMPTY_PROMPT_RESULTS)
     setPromptGenerationError(resumeState.status === 'FAILED' ? (resumeState.errorMessage || '这次分析没有成功完成。') : '')
     setStreamError(resumeState.status === 'FAILED' ? (resumeState.errorMessage || '这次分析没有成功完成。') : '')
     setAnalysisWarnings([])
     setIsAnalyzing(false)
     setBranchPromptStatus('idle')
+    setBranchPromptBranch(null)
     setBranchPromptLabel('')
     setBranchPromptProgress(0)
 
@@ -940,7 +939,7 @@ export default function AmazonPage({
     )
     setSelectedAmazonPromptType('main-white')
     setSelectedImageType('main-white')
-    setSelectedSize('1024x1024')
+    setSelectedSize(AMAZON_DEFAULT_RENDER_SIZE)
 
     if (resumeState.status === 'SUCCEEDED' && canResumeToPromptPage && resolvedPromptResult) {
       setIsStreamCompleted(true)
@@ -1145,7 +1144,7 @@ export default function AmazonPage({
     setUserGuidance('')
     setSelectedAmazonPromptType('main-white')
     setSelectedImageType('main-white')
-    setSelectedSize('1024x1024')
+    setSelectedSize(AMAZON_DEFAULT_RENDER_SIZE)
 
     // 恢复这次分析记录下已绑定保存的图片，并对仍在进行中的图重新轮询。
     // 编辑/再次生成会向前追加，这里只负责把历史快照载入，不覆盖后续新加的图。
@@ -1230,16 +1229,16 @@ export default function AmazonPage({
     setUserGuidance('')
     setResumeNotice('')
     setBasicAnalysisResult(null)
-    setAnalysisSections([])
     setPromptResults(EMPTY_PROMPT_RESULTS)
     setSelectedBranch(null)
     setBranchPromptStatus('idle')
+    setBranchPromptBranch(null)
     setBranchPromptLabel('')
     setBranchPromptProgress(0)
     setCurrentStep('analysis')
     setSelectedAmazonPromptType('main-white')
     setSelectedImageType('main-white')
-    setSelectedSize('1024x1024')
+    setSelectedSize(AMAZON_DEFAULT_RENDER_SIZE)
     setEditedPrompt('')
     setEditedPrompts({})
     let receivedBasicAnalysis = false
@@ -1302,30 +1301,6 @@ export default function AmazonPage({
             continue
           }
 
-          if (event.type === 'analysis-stage' && event.data) {
-            const stage = event.data as AmazonAnalysisStageResult
-            setAnalysisSections((previous) => [
-              ...previous.filter((item) => item.key !== stage.key),
-              stage,
-            ])
-            continue
-          }
-
-          if (event.type === 'amazon-prompts' && event.data) {
-            const result = event.data as PromptGenerationResult
-            setPromptResults((previous) => ({ ...previous, amazonSet: result }))
-            setSelectedBranch('amazon-set')
-            setSelectedAmazonPromptType('main-white')
-            setEditedPrompts({
-              ...result.suggestedPrompts,
-              ...(result.items || []).reduce<Record<string, string>>((accumulator, item) => {
-                accumulator[item.slotId] = item.displayPrompt || item.prompt
-                return accumulator
-              }, {}),
-            })
-            continue
-          }
-
           if (event.type === 'warning' && event.message) {
             setAnalysisWarnings((prev) => [...prev, event.message as string])
             continue
@@ -1346,12 +1321,11 @@ export default function AmazonPage({
             setIsStreamCompleted(true)
             setIsAnalyzing(false)
             setAnalysisStage('completed')
-            setAnalysisStageLabel('分析完成，已生成 Amazon 图组 Prompt')
+            setAnalysisStageLabel('分析完成，正在生成 Amazon 图组 Prompt')
             setAnalysisProgress(100)
             setSelectedAmazonPromptType('main-white')
             setSelectedImageType('main-white')
-            setSelectedSize('1024x1024')
-            setCurrentStep('generate')
+            setSelectedSize(AMAZON_DEFAULT_RENDER_SIZE)
           }
         }
       }
@@ -1364,9 +1338,8 @@ export default function AmazonPage({
           setIsStreamCompleted(true)
           setIsAnalyzing(false)
           setAnalysisStage('completed')
-          setAnalysisStageLabel('分析完成，已生成 Amazon 图组 Prompt')
+          setAnalysisStageLabel('分析完成，正在生成 Amazon 图组 Prompt')
           setAnalysisProgress(100)
-          setCurrentStep('generate')
         }
       }
 
@@ -1439,6 +1412,7 @@ export default function AmazonPage({
       setEditingImage(null)
     }
     setRouteNotice('')
+    setBranchPromptBranch(branch)
     setBranchPromptStatus('preparing')
     setBranchPromptLabel('正在读取基础分析结果和参考图信息')
     setBranchPromptProgress(12)
@@ -1661,7 +1635,7 @@ export default function AmazonPage({
           const result = await requestGenerate(
             item.slotId,
             prompt,
-            item.size === '2048x2048' ? '2048x2048' : '1024x1024',
+            AMAZON_DEFAULT_RENDER_SIZE,
             false,
           )
 
@@ -1880,7 +1854,7 @@ export default function AmazonPage({
                       系统会自动根据商品信息和参考图生成主图与副图 Prompt，完成后直接展示给你编辑。
                     </p>
                     <div className="mt-4 flex flex-wrap gap-2 text-xs font-medium text-slate-600">
-                      <span className="rounded-full bg-slate-100 px-3 py-1">4 个分析模块并行</span>
+                      <span className="rounded-full bg-slate-100 px-3 py-1">单次 AI 商品分析</span>
                       <span className="rounded-full bg-slate-100 px-3 py-1">当前已用时 {formatElapsedTime(analysisElapsedMs)}</span>
                     </div>
                   </div>
@@ -1892,48 +1866,24 @@ export default function AmazonPage({
                   label={analysisStageLabel}
                   progress={analysisProgress}
                   warnings={analysisWarnings}
-                    helperText={`四个分析模块会并发执行，分析成功后扣 ${amazonAnalysisCostText} 积分，并直接生成 Amazon 图组 Prompt。`}
+                  helperText={`AI 会先完成一次商品分析，再自动生成 Amazon 图组 Prompt；分析成功后扣 ${amazonAnalysisCostText} 积分。`}
                   elapsedText={formatElapsedTime(analysisElapsedMs)}
                   steps={[
                     { key: 'preparing', label: '读取商品信息' },
-                    { key: 'analyzing', label: '并行分析 4 个模块' },
+                    { key: 'analyzing', label: 'AI 商品分析' },
                     { key: 'prompting', label: '生成图组 Prompt' },
                     { key: 'completed', label: '完成' },
                   ]}
                 />
 
-                {analysisSections.length > 0 && (
-                  <div className="grid gap-4 md:grid-cols-2">
-                    {analysisSections.map((section) => (
-                      <div key={section.key} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                        <div className="flex items-center justify-between gap-3">
-                          <h4 className="text-sm font-semibold text-slate-900">{section.title}</h4>
-                          <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700">已完成</span>
-                        </div>
-                        <p className="mt-3 text-sm leading-6 text-slate-600">{section.summary}</p>
-                        {section.points.length > 0 && (
-                          <ul className="mt-3 space-y-2 text-xs leading-5 text-slate-500">
-                            {section.points.slice(0, 6).map((point) => <li key={point}>· {point}</li>)}
-                          </ul>
-                        )}
-                        {section.cautions.length > 0 && (
-                          <p className="mt-3 rounded-2xl bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-700">
-                            注意：{section.cautions.join('；')}
-                          </p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {branchPromptStatus !== 'idle' && (
+                {branchPromptStatus !== 'idle' && branchPromptBranch === 'amazon-set' && (
                   <TaskStatusPanel
-                    title="补充生成 A+ Prompt"
+                    title="生成 Amazon 图组 Prompt"
                     stage={branchPromptStatus}
-                    label={branchPromptLabel || '正在等待 A+ Prompt 生成结果'}
+                    label={branchPromptLabel || '正在等待 Amazon 图组 Prompt 生成结果'}
                     progress={branchPromptProgress}
                     warnings={[]}
-                        helperText={`A+ 分析成功后扣 ${aplusAnalysisCostText} 积分，会在 Amazon Prompt 页面中附加显示，不影响 Amazon 图组。`}
+                    helperText="基础商品分析完成后，系统正在整理 Amazon 主图和副图 Prompt。"
                     elapsedText={formatElapsedTime(branchPromptElapsedMs)}
                     steps={[
                       { key: 'preparing', label: '读取分析' },
@@ -1996,7 +1946,7 @@ export default function AmazonPage({
                   </div>
                 </div>
 
-                {branchPromptStatus !== 'idle' && (
+                {branchPromptStatus !== 'idle' && branchPromptBranch === 'aplus' && (
                   <TaskStatusPanel
                     title="补充生成 A+ Prompt"
                     stage={branchPromptStatus}
@@ -2087,7 +2037,7 @@ export default function AmazonPage({
                                 selectedAmazonPromptItem.slotId,
                                 editedPrompts[selectedAmazonPromptItem.slotId] || selectedAmazonPromptItem.displayPrompt || selectedAmazonPromptItem.prompt,
                               ),
-                              selectedAmazonPromptItem.size === '2048x2048' ? '2048x2048' : '1024x1024',
+                              AMAZON_DEFAULT_RENDER_SIZE,
                               false,
                             )}
                             disabled={isGenerating || !(editedPrompts[selectedAmazonPromptItem.slotId] || selectedAmazonPromptItem.displayPrompt || selectedAmazonPromptItem.prompt).trim()}

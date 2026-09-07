@@ -652,6 +652,9 @@ export async function saveSuccessfulAnalysisWithCharge(params: {
     })
 
     return { analysisRecord, ledgerEntry }
+  }, {
+    maxWait: 10_000,
+    timeout: 30_000,
   })
 }
 

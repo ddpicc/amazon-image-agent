@@ -3,6 +3,7 @@ import { requireApiUser } from '@/lib/auth'
 import { createQueuedImageGenerationRequest, submitQueuedImageGenerationRequest } from '@/lib/image-generation-service'
 import {
   appendHiddenAPlusSizeRequirement,
+  AMAZON_DEFAULT_RENDER_SIZE,
   HIDDEN_APLUS_RENDER_SIZE,
   RenderSize,
   SIZE_OPTIONS,
@@ -117,7 +118,11 @@ export async function POST(request: NextRequest) {
         }
 
         const trimmedPrompt = prompt.trim()
-        const validSize = isAPlus ? HIDDEN_APLUS_RENDER_SIZE : getValidSize(size)
+        const validSize = isAPlus
+          ? HIDDEN_APLUS_RENDER_SIZE
+          : sourcePage === 'amazon'
+            ? AMAZON_DEFAULT_RENDER_SIZE
+            : getValidSize(size)
         const upstreamPrompt = isAPlus ? appendHiddenAPlusSizeRequirement(trimmedPrompt) : trimmedPrompt
 
         let persistedRefImages: Awaited<ReturnType<typeof uploadReferenceImagesForGeneration>>

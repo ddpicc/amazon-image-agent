@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { completeAiOperation, getAiOperationExpiryDate, startAiOperation } from '@/lib/ai-operations'
 import { requireApiUser } from '@/lib/auth'
-import { analyzeAmazonProductWorkflow } from '@/lib/anthropic'
+import { analyzeProduct } from '@/lib/anthropic'
 import { AMAZON_REFERENCE_IMAGE_LIMIT, StoredReferenceImage } from '@/lib/amazon-workflow'
 import { ensureSufficientPointsForAnalysisByScene, saveSuccessfulAnalysisWithCharge } from '@/lib/points'
 import { prisma } from '@/lib/prisma'
@@ -12,9 +12,7 @@ export const dynamic = 'force-dynamic'
 type StreamEvent =
   | { type: 'analysis-created'; analysisId: string }
   | { type: 'stage'; stage: 'preparing' | 'analyzing' | 'prompting' | 'completed'; label: string; progress: number }
-  | { type: 'analysis-stage'; data: Awaited<ReturnType<typeof analyzeAmazonProductWorkflow>>['stages'][number] }
-  | { type: 'partial-analysis'; data: Awaited<ReturnType<typeof analyzeAmazonProductWorkflow>>['basicAnalysis'] }
-  | { type: 'amazon-prompts'; data: Awaited<ReturnType<typeof analyzeAmazonProductWorkflow>>['amazonPrompts'] }
+  | { type: 'partial-analysis'; data: Awaited<ReturnType<typeof analyzeProduct>> }
   | { type: 'warning'; message: string }
   | { type: 'error'; message: string; recoverable: boolean }
   | { type: 'done' }
@@ -184,12 +182,11 @@ export async function POST(request: NextRequest) {
         push({
           type: 'stage',
           stage: 'analyzing',
-          label: '四个分析模块正在并行处理商品信息和参考图',
-          progress: 20,
+          label: '正在分析商品、参考图和 Amazon 图片规范',
+          progress: 45,
         })
 
-        let completedStageCount = 0
-        const workflowResult = await analyzeAmazonProductWorkflow({
+        const basicResult = await analyzeProduct({
           productName,
           description,
           additionalRequirements,
@@ -199,20 +196,7 @@ export async function POST(request: NextRequest) {
           operationId: operationId ?? undefined,
           sourcePage: 'amazon',
           entryPoint: '/api/analyze/stream',
-        }, (stage) => {
-          completedStageCount += 1
-          push({ type: 'analysis-stage', data: stage })
-          push({
-            type: 'stage',
-            stage: completedStageCount === 4 ? 'prompting' : 'analyzing',
-            label: completedStageCount === 4
-              ? '四个分析模块已完成，正在直接生成 Amazon 图组 Prompt'
-              : `${stage.title}已完成，其他分析模块仍在并行处理（${completedStageCount}/4）`,
-            progress: Math.min(68, 20 + completedStageCount * 12),
-          })
         })
-        const basicResult = workflowResult.basicAnalysis
-        const amazonPromptResult = workflowResult.amazonPrompts
 
         await saveSuccessfulAnalysisWithCharge({
           userId: user.id,
@@ -222,16 +206,7 @@ export async function POST(request: NextRequest) {
             status: 'SUCCEEDED',
             productSummary: basicResult.productSummary,
             analysisJson: basicResult as any,
-            promptPlanJson: {
-              amazonSet: amazonPromptResult,
-              aplus: null,
-            } as any,
-            responseSnapshotJson: {
-              workflowVersion: 2,
-              stages: workflowResult.stages,
-              basicAnalysis: basicResult,
-              amazonPrompts: amazonPromptResult,
-            } as any,
+            responseSnapshotJson: basicResult as any,
             completedAt: new Date(),
             durationMs: analysisStartedAt ? Date.now() - analysisStartedAt.getTime() : undefined,
           },
@@ -242,15 +217,11 @@ export async function POST(request: NextRequest) {
           type: 'partial-analysis',
           data: basicResult,
         })
-        push({
-          type: 'amazon-prompts',
-          data: amazonPromptResult,
-        })
 
         push({
           type: 'stage',
           stage: 'completed',
-          label: '分析完成，Amazon 图组 Prompt 已生成',
+          label: '分析完成，正在准备 Amazon 图组 Prompt',
           progress: 100,
         })
         if (operationId) {
@@ -258,17 +229,11 @@ export async function POST(request: NextRequest) {
             operationId,
             status: 'SUCCEEDED',
             outputSummary: {
-              workflowVersion: 2,
-              analysisStageCount: workflowResult.stages.length,
-              analysisStageKeys: workflowResult.stages.map((stage) => stage.key),
-              amazonPromptCount: amazonPromptResult.items?.filter((item) => item.enabled).length || 0,
+              productSummary: basicResult.productSummary,
+              sellingPointsCount: basicResult.sellingPoints.length,
+              canGeneratePrompts: basicResult.canGeneratePrompts,
             },
-            responseSnapshot: {
-              workflowVersion: 2,
-              stages: workflowResult.stages,
-              basicAnalysis: basicResult,
-              amazonPrompts: amazonPromptResult,
-            },
+            responseSnapshot: basicResult,
           }).catch(() => undefined)
           operationCompletedSuccessfully = true
         }
