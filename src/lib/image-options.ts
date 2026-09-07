@@ -11,11 +11,11 @@ export const IMAGE_MODEL_OPTIONS: Array<{
 
 export const DEFAULT_IMAGE_MODEL: ImageModel = 'gpt-image-2'
 export const PLAYGROUND_REFERENCE_IMAGE_LIMIT = 5
-export const AMAZON_DEFAULT_RENDER_SIZE = '1600x1600' as const
+export const AMAZON_DEFAULT_RENDER_SIZE = '1:1' as const
 
 export type RenderSize =
   | '1024x1024'
-  | '1600x1600'
+  | '1:1'
   | '2048x2048'
   | '1536x1024'
   | '2048x1365'
@@ -39,9 +39,9 @@ export const SIZE_OPTIONS: SizeOption[] = [
     note: 'Square output, good for listing and generic tests',
   },
   {
-    value: '1600x1600',
-    label: '1600 × 1600',
-    note: 'Amazon listing square output',
+    value: '1:1',
+    label: '1:1',
+    note: 'Square output, recommended for Amazon listing images',
   },
   {
     value: '2048x2048',
