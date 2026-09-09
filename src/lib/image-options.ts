@@ -11,16 +11,16 @@ export const IMAGE_MODEL_OPTIONS: Array<{
 
 export const DEFAULT_IMAGE_MODEL: ImageModel = 'gpt-image-2'
 export const PLAYGROUND_REFERENCE_IMAGE_LIMIT = 5
-export const AMAZON_DEFAULT_RENDER_SIZE = '1:1' as const
+export const AMAZON_DEFAULT_RENDER_SIZE = '1600x1600' as const
 
 export type RenderSize =
   | '1024x1024'
-  | '1:1'
+  | '1600x1600'
   | '2048x2048'
   | '1536x1024'
-  | '2048x1365'
+  | '2048x1360'
   | '1024x1536'
-  | '1365x2048'
+  | '1360x2048'
   | '1536x960'
 
 export const HIDDEN_APLUS_RENDER_SIZE = '1536x960' as const
@@ -39,9 +39,9 @@ export const SIZE_OPTIONS: SizeOption[] = [
     note: 'Square output, good for listing and generic tests',
   },
   {
-    value: '1:1',
-    label: '1:1',
-    note: 'Square output, recommended for Amazon listing images',
+    value: '1600x1600',
+    label: '1600 × 1600',
+    note: 'Amazon listing square output',
   },
   {
     value: '2048x2048',
@@ -54,8 +54,8 @@ export const SIZE_OPTIONS: SizeOption[] = [
     note: 'Landscape output, suitable for wider scenes and A+ style layouts',
   },
   {
-    value: '2048x1365',
-    label: '2048 × 1365',
+    value: '2048x1360',
+    label: '2048 × 1360',
     note: 'Higher-resolution landscape output for wider scene testing',
   },
   {
@@ -64,8 +64,8 @@ export const SIZE_OPTIONS: SizeOption[] = [
     note: 'Portrait output, useful for tall compositions',
   },
   {
-    value: '1365x2048',
-    label: '1365 × 2048',
+    value: '1360x2048',
+    label: '1360 × 2048',
     note: 'Higher-resolution portrait output for tall compositions',
   },
 ]

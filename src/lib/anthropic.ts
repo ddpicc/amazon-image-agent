@@ -1150,7 +1150,7 @@ async function generateAdaptiveAmazonPrompts(
 - 拼图或分区不是默认模板：只有在多个功能、场景或动作能共同帮助用户比较和理解时才使用；控制在 2-4 个信息单元，保持一个共同购买问题、明确视觉主次、统一产品外观和足够留白。
 - 用户补充要求只能影响风格、场景和表达重点，不能覆盖真实性和上述限制。
 
-每项必须输出：slotId、title、visualForm、prompt、displayPrompt、size、enabled。prompt 是实际发送给生图模型的执行 Prompt，保持 main 风格的自然中文表达；图片内可见文字必须是准确简短英文，无法保证英文准确时不要放文字。displayPrompt 是给用户阅读和编辑的自然中文版本，必须完整保留产品事实和执行约束，不要省略或改变含义。不要输出策略解释、参考图使用建议或其他字段。普通 Amazon 图片 size 固定为 1:1。
+每项必须输出：slotId、title、visualForm、prompt、displayPrompt、size、enabled。prompt 是实际发送给生图模型的执行 Prompt，保持 main 风格的自然中文表达；图片内可见文字必须是准确简短英文，无法保证英文准确时不要放文字。displayPrompt 是给用户阅读和编辑的自然中文版本，必须完整保留产品事实和执行约束，不要省略或改变含义。不要输出策略解释、参考图使用建议或其他字段。普通 Amazon 图片 size 固定为 1600x1600。
 
 只输出 JSON：{"items":[...]}。`,
   }]
