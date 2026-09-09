@@ -181,6 +181,9 @@ export default async function AdminWorkbenchPage() {
             <Link href="/admin/image-records" className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900">
               生图记录
             </Link>
+            <Link href="/admin/image-models" className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900">
+              生图模型
+            </Link>
           </div>
         </div>
 

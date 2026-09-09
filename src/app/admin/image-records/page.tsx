@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { requireAdmin } from '@/lib/auth'
 import { formatDateTimeInBeijing } from '@/lib/date'
+import { formatInternalPoints } from '@/lib/points-config'
 import { prisma } from '@/lib/prisma'
 
 const PAGE_SIZE = 20
@@ -85,6 +86,8 @@ export default async function AdminImageRecordsPage({ searchParams }: AdminImage
                 <tr>
                   <th className="pb-3 pr-4">用户</th>
                   <th className="pb-3 pr-4">类型</th>
+                  <th className="pb-3 pr-4">模型</th>
+                  <th className="pb-3 pr-4">积分</th>
                   <th className="pb-3 pr-4">时间</th>
                   <th className="pb-3 pr-4">耗时</th>
                   <th className="pb-3 pr-4">状态</th>
@@ -94,12 +97,14 @@ export default async function AdminImageRecordsPage({ searchParams }: AdminImage
               <tbody>
                 {records.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-8 text-center text-slate-500">暂无生图调用记录。</td>
+                    <td colSpan={8} className="py-8 text-center text-slate-500">暂无生图调用记录。</td>
                   </tr>
                 ) : records.map((record: AdminImageRecord) => (
                   <tr key={record.id} className="border-t border-slate-200 align-top">
                     <td className="py-4 pr-4 text-slate-700">{record.user.email}</td>
                     <td className="py-4 pr-4 text-slate-700">{getRecordType(record)}</td>
+                    <td className="max-w-48 break-all py-4 pr-4 text-slate-700">{record.model || '-'}</td>
+                    <td className="py-4 pr-4 text-slate-700">{record.billingCost === null ? '-' : formatInternalPoints(record.billingCost)}</td>
                     <td className="py-4 pr-4 text-slate-700">{formatDateTimeInBeijing(record.createdAt)}</td>
                     <td className="py-4 pr-4 text-slate-700">{record.durationMs ? `${record.durationMs}ms` : '-'}</td>
                     <td className="py-4 pr-4 text-slate-700">{record.status}</td>

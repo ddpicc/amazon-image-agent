@@ -42,6 +42,8 @@ export async function GET(
     revisedPrompt: record.revisedPrompt,
     imageUrl: record.imageUrl,
     imageType: record.imageType,
+    model: record.model,
+    billingCost: record.billingCost === null ? null : toDisplayPoints(record.billingCost),
     size: record.size,
     active,
     routeSummary,

@@ -2,10 +2,11 @@ import { Prisma } from '@prisma/client'
 import { completeAiOperation, getAiOperationExpiryDate, startAiOperation } from '@/lib/ai-operations'
 import { AMAZON_REFERENCE_IMAGE_LIMIT, StoredReferenceImage } from '@/lib/amazon-workflow'
 import { PLAYGROUND_REFERENCE_IMAGE_LIMIT, RenderSize, ImageModel } from '@/lib/image-options'
+import { resolveImageModelForGeneration } from '@/lib/image-model-config'
 import { PersistedImageGenerationPayload, RouteSummary, type ImageGenerationRequestStatus } from '@/lib/image-generation'
 import { fetchRemoteImageTask, RemoteTaskRecord, submitRemoteImageTask } from '@/lib/image-worker-client'
-import { debitPointForGeneration, ensureSufficientPointsForGenerationByScene } from '@/lib/points'
-import { GenerationBillingScene } from '@/lib/points-config'
+import { debitPointForGeneration, ensureSufficientPointsForGeneration } from '@/lib/points'
+import { GenerationBillingScene, toDisplayPoints } from '@/lib/points-config'
 import { prisma } from '@/lib/prisma'
 import { signImageWorkerCallback } from '@/lib/crypto'
 
@@ -123,7 +124,8 @@ export async function createQueuedImageGenerationRequest(params: {
   referenceImages: StoredReferenceImage[]
   analysisRecordId?: string | null
 }) {
-  await ensureSufficientPointsForGenerationByScene(params.userId, params.billingScene)
+  const resolvedModel = await resolveImageModelForGeneration(params.model, params.billingScene)
+  await ensureSufficientPointsForGeneration(params.userId, resolvedModel.costInternal)
   const executionPrompt = `${params.prompt}\n\n${IMAGE_TEXT_CONSTRAINT}`
 
   const operation = await startAiOperation({
@@ -137,7 +139,7 @@ export async function createQueuedImageGenerationRequest(params: {
       billingScene: params.billingScene,
       imageType: params.imageType ?? null,
       containsSyntheticPerformer: Boolean(params.containsSyntheticPerformer),
-      model: params.model ?? null,
+      model: resolvedModel.model,
       size: params.size,
       referenceImageCount: params.referenceImages.length,
       referenceMediaTypes: params.referenceImages.map((image) => image.mimeType),
@@ -149,7 +151,7 @@ export async function createQueuedImageGenerationRequest(params: {
       billingScene: params.billingScene,
       imageType: params.imageType ?? null,
       containsSyntheticPerformer: Boolean(params.containsSyntheticPerformer),
-      model: params.model ?? null,
+      model: resolvedModel.model,
       size: params.size,
       referenceImages: params.referenceImages.map((image, index) => ({
         index,
@@ -168,7 +170,7 @@ export async function createQueuedImageGenerationRequest(params: {
     billingScene: params.billingScene,
     imageType: params.imageType ?? null,
     containsSyntheticPerformer: Boolean(params.containsSyntheticPerformer),
-    model: params.model ?? null,
+    model: resolvedModel.model,
     size: params.size,
     referenceImages: params.referenceImages,
   })
@@ -184,6 +186,8 @@ export async function createQueuedImageGenerationRequest(params: {
       prompt: params.originalPrompt,
       finalPrompt: executionPrompt,
       imageType: params.imageType ?? null,
+      model: resolvedModel.model,
+      billingCost: resolvedModel.costInternal,
       containsSyntheticPerformer: Boolean(params.containsSyntheticPerformer),
       size: params.size,
       referenceImageCount: params.referenceImages.length,
@@ -201,6 +205,8 @@ export async function createQueuedImageGenerationRequest(params: {
     operationId: operation.id,
     status: requestRecord.status,
     statusMessage: requestRecord.statusMessage || '任务已提交，等待 worker 处理',
+    model: resolvedModel.model,
+    billingCost: toDisplayPoints(resolvedModel.costInternal),
   }
 }
 
@@ -336,6 +342,8 @@ export async function applyRemoteImageTaskToRequest(requestId: string, remoteTas
       userId: request.userId,
       requestId: request.id,
       scene: (request.billingScene || 'amazon') as GenerationBillingScene,
+      debitAmount: request.billingCost,
+      model: request.model,
     })
 
     await prisma.imageGenerationRequest.update({

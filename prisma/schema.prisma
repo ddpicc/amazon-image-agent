@@ -216,6 +216,8 @@ model ImageGenerationRequest {
   revisedPrompt           String?
   imageUrl                String?
   imageType               String?
+  model                   String?
+  billingCost             Int?
   containsSyntheticPerformer Boolean                @default(false)
   aspectRatio             String?
   size                    String?
@@ -239,6 +241,22 @@ model ImageGenerationRequest {
   @@index([userId, createdAt(sort: Desc)])
   @@index([status, createdAt(sort: Desc)])
   @@index([analysisRecordId])
+}
+
+model ImageModelConfig {
+  id           String   @id @default(cuid())
+  model        String   @unique
+  displayName  String
+  description  String?
+  enabled      Boolean  @default(false)
+  isDefault    Boolean  @default(false)
+  displayOrder Int      @default(100)
+  standardCost Int      @default(100)
+  aplusCost    Int      @default(100)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([enabled, displayOrder])
 }
 
 model AiOperation {

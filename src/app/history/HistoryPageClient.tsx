@@ -28,6 +28,8 @@ interface HistoryImageRequest {
   id: string
   entryApi: string
   imageType: string | null
+  model: string | null
+  billingCost: number | null
   prompt: string
   revisedPrompt: string | null
   imageUrl: string | null
@@ -413,6 +415,7 @@ export default function HistoryPageClient({ initialData }: { initialData: Histor
                       <span className="rounded-full bg-slate-100 px-2.5 py-1">{formatDate(record.createdAt)}</span>
                       <span className="rounded-full bg-slate-100 px-2.5 py-1">{formatStatus(record.status)}</span>
                       <span className="rounded-full bg-slate-100 px-2.5 py-1">{record.imageType || 'freeform'}</span>
+                      {record.model && <span className="rounded-full bg-sky-50 px-2.5 py-1 text-sky-700">{record.model}</span>}
                       {record.pointsLedgerEntry && (
                         <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-700">
                           {formatPoints(record.pointsLedgerEntry.pointsDelta)} 积分

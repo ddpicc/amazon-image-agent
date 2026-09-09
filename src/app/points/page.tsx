@@ -1,11 +1,15 @@
 import Link from 'next/link'
 import PointsPageClient, { PointsPageData } from './PointsPageClient'
 import { requireNonAdminUser } from '@/lib/auth'
+import { listEnabledImageModelOptions } from '@/lib/image-model-config'
 import { getPointsSummary } from '@/lib/points'
 
 export default async function PointsPage() {
   const user = await requireNonAdminUser()
-  const summary = await getPointsSummary(user.id)
+  const [summary, imageModels] = await Promise.all([
+    getPointsSummary(user.id),
+    listEnabledImageModelOptions(),
+  ])
 
   const initialData: PointsPageData = {
     user: summary.user,
@@ -28,6 +32,7 @@ export default async function PointsPage() {
         updatedAt: item.paymentPackage.updatedAt.toISOString(),
       },
     })),
+    imageModels,
   }
 
   return (

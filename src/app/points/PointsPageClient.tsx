@@ -3,7 +3,8 @@
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { formatDateTimeInBeijing } from '@/lib/date'
-import { formatPoints, getAnalysisCostDisplay, getGenerationCostDisplay } from '@/lib/points-config'
+import type { ImageModelOption } from '@/lib/image-options'
+import { formatPoints, getAnalysisCostDisplay } from '@/lib/points-config'
 import { usePoints } from '@/components/PointsProvider'
 
 interface PointsUser {
@@ -63,6 +64,7 @@ export interface PointsPageData {
   packages: PointsPackageItem[]
   ledgerEntries: PointsLedgerEntryItem[]
   paymentOrders: PaymentOrderItem[]
+  imageModels: ImageModelOption[]
 }
 
 function formatMoney(amountCents: number, currency: string) {
@@ -111,11 +113,12 @@ export default function PointsPageClient({ initialData }: { initialData: PointsP
   )
   const generationPricing = useMemo(() => ([
     { label: 'Amazon 商品分析', cost: getAnalysisCostDisplay('amazon-analysis'), suffix: '每次' },
-    { label: 'Amazon 普通图片生成', cost: getGenerationCostDisplay('amazon'), suffix: '每张' },
     { label: 'A+ 分析', cost: getAnalysisCostDisplay('aplus-analysis'), suffix: '每次' },
-    { label: 'A+ 图片生成', cost: getGenerationCostDisplay('aplus'), suffix: '每张' },
-    { label: '自有生图 / 再次编辑', cost: getGenerationCostDisplay('playground'), suffix: '每张' },
-  ]), [])
+    ...data.imageModels.flatMap((model) => [
+      { label: `${model.label} · 普通图片/自由生成`, cost: model.standardCost, suffix: '每张' },
+      { label: `${model.label} · A+ 图片`, cost: model.aplusCost, suffix: '每张' },
+    ]),
+  ]), [data.imageModels])
   const inviteLink = `https://amazon-image.zeabur.app/register?aff=${data.user.referralCode}`
 
   const handleCopyInviteLink = async () => {

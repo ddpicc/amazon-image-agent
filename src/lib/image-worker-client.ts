@@ -74,10 +74,43 @@ async function parseJson(response: Response) {
   return response.json().catch(() => null) as Promise<any>
 }
 
+export async function listRemoteImageModels(): Promise<string[]> {
+  const response = await fetch(`${getWorkerBaseUrl()}/v1/models`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${getWorkerApiKey()}`,
+    },
+    cache: 'no-store',
+    signal: createTimeoutSignal(),
+  })
+
+  const payload = await parseJson(response)
+  if (!response.ok) {
+    throw new Error(payload?.error || `Remote image worker model list failed: ${response.status}`)
+  }
+
+  if (!Array.isArray(payload?.data)) {
+    throw new Error('Remote image worker model list returned an invalid payload')
+  }
+
+  return Array.from(new Set<string>(
+    payload.data
+      .map((item: unknown) => (
+        item && typeof item === 'object' && 'id' in item && typeof item.id === 'string'
+          ? item.id.trim()
+          : ''
+      ))
+      .filter(Boolean),
+  ))
+}
+
 export async function submitRemoteImageTask(input: SubmitRemoteTaskInput): Promise<SubmitRemoteTaskResult> {
   const isEditRequest = input.referenceImageUrls.length > 0
   const endpoint = isEditRequest ? '/v1/async/images/edits' : '/v1/async/images/generations'
-  const model = input.model || 'gpt-image-2'
+  const model = input.model?.trim()
+  if (!model) {
+    throw new Error('Image model is required')
+  }
   const body = isEditRequest
     ? {
         model,

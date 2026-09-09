@@ -1,6 +1,7 @@
 import AmazonPageClient from './AmazonPageClient'
 import { AmazonResumeState, buildAmazonResumeState } from '@/lib/amazon-workflow'
 import { requireNonAdminUser } from '@/lib/auth'
+import { listEnabledImageModelOptions } from '@/lib/image-model-config'
 import { getUserPointsBalance } from '@/lib/points'
 import { prisma } from '@/lib/prisma'
 
@@ -13,7 +14,10 @@ interface AmazonPageProps {
 
 export default async function AmazonPage({ searchParams }: AmazonPageProps) {
   const user = await requireNonAdminUser()
-  const pointsBalance = await getUserPointsBalance(user.id)
+  const [pointsBalance, imageModels] = await Promise.all([
+    getUserPointsBalance(user.id),
+    listEnabledImageModelOptions(),
+  ])
   const analysisId = searchParams?.analysisId
   let initialResumeState: AmazonResumeState | null = null
 
@@ -42,5 +46,5 @@ export default async function AmazonPage({ searchParams }: AmazonPageProps) {
     }
   }
 
-  return <AmazonPageClient initialResumeState={initialResumeState} initialPointsBalance={pointsBalance} />
+  return <AmazonPageClient initialResumeState={initialResumeState} initialPointsBalance={pointsBalance} imageModels={imageModels} />
 }

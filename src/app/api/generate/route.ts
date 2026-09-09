@@ -8,8 +8,6 @@ import {
   RenderSize,
   stripHiddenAPlusSizeRequirement,
   isRenderSize,
-  ImageModel,
-  DEFAULT_IMAGE_MODEL,
   PLAYGROUND_REFERENCE_IMAGE_LIMIT,
 } from '@/lib/image-options'
 import { GenerationBillingScene } from '@/lib/points-config'
@@ -67,7 +65,7 @@ export async function POST(request: NextRequest) {
     const referenceImageLimit = sourcePage === 'amazon' ? AMAZON_REFERENCE_IMAGE_LIMIT : PLAYGROUND_REFERENCE_IMAGE_LIMIT
     const billingScene = resolveBillingScene(sourcePage, imageType)
     const size = formData.get('size') as string | null
-    const model = (formData.get('model') as ImageModel | null) || DEFAULT_IMAGE_MODEL
+    const model = (formData.get('model') as string | null) || null
     const analysisIdRaw = (formData.get('analysisId') as string | null) || null
     const analysisRecordId = await resolveOwnedAnalysisRecordId(user.id, analysisIdRaw)
     const referenceImageUrlsRaw = formData.get('referenceImageUrls') as string | null
@@ -152,6 +150,8 @@ export async function POST(request: NextRequest) {
       operationId: queued.operationId,
       status: queued.status,
       statusMessage: queued.statusMessage,
+      model: queued.model,
+      billingCost: queued.billingCost,
       imageType,
       size: validSize,
       revisedPrompt: isAPlus ? trimmedPrompt : stripHiddenAPlusSizeRequirement(trimmedPrompt),

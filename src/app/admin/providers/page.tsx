@@ -250,7 +250,8 @@ export default async function AdminProvidersPage() {
           <h2 className="text-xl font-semibold text-slate-950">图片线路</h2>
           <p className="mt-2 text-sm text-slate-500">
             Amazon、Playground 的生图任务现在统一提交到远端 `amazon-image-worker`。
-            该 worker 自己维护图片 provider、队列、fallback 和对象存储，这个仓库不再提供本地图片线路管理入口。
+            该 worker 自己维护图片 provider、队列、fallback 和对象存储；用户可见模型和积分在本站的
+            {' '}<Link href="/admin/image-models" className="font-medium text-amazon-blue hover:text-blue-600">生图模型</Link> 中配置。
           </p>
         </section>
 

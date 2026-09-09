@@ -1,4 +1,4 @@
-import { ImageModel, RenderSize } from '@/lib/image-options'
+import { RenderSize } from '@/lib/image-options'
 import { GenerationBillingScene } from '@/lib/points-config'
 import { StoredReferenceImage } from '@/lib/amazon-workflow'
 
@@ -26,7 +26,7 @@ export interface PersistedImageGenerationPayload {
   billingScene: GenerationBillingScene
   imageType?: string | null
   containsSyntheticPerformer: boolean
-  model?: ImageModel | null
+  model?: string | null
   size: RenderSize
   referenceImages: StoredReferenceImage[]
 }

@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
+import ImageModelSelector from '@/components/ImageModelSelector'
 import ReferenceImageUploader from '@/components/ReferenceImageUploader'
-import { DEFAULT_IMAGE_MODEL, IMAGE_MODEL_OPTIONS, ImageModel, PLAYGROUND_REFERENCE_IMAGE_LIMIT, RenderSize, SIZE_OPTIONS } from '@/lib/image-options'
-import { formatPoints, getGenerationCostDisplay } from '@/lib/points-config'
+import { getImageModelCost, type ImageModelOption, PLAYGROUND_REFERENCE_IMAGE_LIMIT, RenderSize, SIZE_OPTIONS } from '@/lib/image-options'
+import { formatPoints } from '@/lib/points-config'
 import { usePoints } from '@/components/PointsProvider'
 
 interface GeneratedImage {
@@ -18,6 +19,7 @@ interface GeneratedImage {
   statusMessage?: string | null
   errorMessage?: string | null
   charged?: boolean
+  billedCost?: number
 }
 
 interface RouteSummary {
@@ -37,7 +39,7 @@ type GenerateStreamEvent =
   | { type: 'status'; message: string }
   | { type: 'result'; data: { requestId: string; imageUrl: string; revisedPrompt: string; size: RenderSize; routeSummary: RouteSummary | null } }
   | { type: 'error'; message: string }
-  | { type: 'queued'; data: { requestId: string; operationId: string; status: string; statusMessage: string } }
+  | { type: 'queued'; data: { requestId: string; operationId: string; status: string; statusMessage: string; model: string; billingCost: number } }
 
 interface GenerationStatusPayload {
   requestId: string
@@ -48,6 +50,8 @@ interface GenerationStatusPayload {
   revisedPrompt: string | null
   imageUrl: string | null
   size: string | null
+  model: string | null
+  billingCost: number | null
   active: boolean
 }
 
@@ -55,10 +59,16 @@ function createImageId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 }
 
-export default function PlaygroundPage({ initialPointsBalance }: { initialPointsBalance: number }) {
+export default function PlaygroundPage({
+  initialPointsBalance,
+  imageModels,
+}: {
+  initialPointsBalance: number
+  imageModels: ImageModelOption[]
+}) {
   const [prompt, setPrompt] = useState('')
   const [referenceImages, setReferenceImages] = useState<File[]>([])
-  const [model, setModel] = useState<ImageModel>(DEFAULT_IMAGE_MODEL)
+  const [model, setModel] = useState(() => imageModels.find((option) => option.isDefault)?.value || imageModels[0]?.value || '')
   const [size, setSize] = useState<RenderSize>('1024x1024')
   const [isGenerating, setIsGenerating] = useState(false)
   const [pointsBalance, setPointsBalance] = useState(initialPointsBalance)
@@ -67,8 +77,9 @@ export default function PlaygroundPage({ initialPointsBalance }: { initialPoints
   const [routeNotice, setRouteNotice] = useState('')
   const pollingTimersRef = useRef<Map<string, number>>(new Map())
 
-  const generationCost = getGenerationCostDisplay('playground')
-  const hasEnoughPointsToGenerate = pointsBalance >= generationCost
+  const selectedModel = imageModels.find((option) => option.value === model) || null
+  const generationCost = getImageModelCost(selectedModel, 'standard')
+  const hasEnoughPointsToGenerate = Boolean(selectedModel) && pointsBalance >= generationCost
 
   useEffect(() => {
     return () => {
@@ -181,9 +192,11 @@ export default function PlaygroundPage({ initialPointsBalance }: { initialPoints
           }
 
           if (nextStatus === 'SUCCEEDED' && !image.charged) {
-            setPointsBalance((current) => Math.max(0, Number((current - generationCost).toFixed(1))))
+            const billedCost = payload.billingCost ?? image.billedCost ?? generationCost
+            setPointsBalance((current) => Math.max(0, Number((current - billedCost).toFixed(1))))
             void refreshPoints()
             nextImage.charged = true
+            nextImage.billedCost = billedCost
           }
 
           return nextImage
@@ -220,7 +233,7 @@ export default function PlaygroundPage({ initialPointsBalance }: { initialPoints
   }
 
   const handleGenerate = async () => {
-    if (!prompt.trim()) return
+    if (!prompt.trim() || !selectedModel) return
     if (!hasEnoughPointsToGenerate) {
       alert('积分不足，请先充值后再进入图片生成。')
       return
@@ -255,6 +268,7 @@ export default function PlaygroundPage({ initialPointsBalance }: { initialPoints
           statusMessage: result.data.statusMessage,
           errorMessage: null,
           charged: false,
+          billedCost: result.data.billingCost,
         }, ...prev])
         startPollingRequest(result.data.requestId)
       } else {
@@ -267,6 +281,7 @@ export default function PlaygroundPage({ initialPointsBalance }: { initialPoints
           size: (result.data.size || size) as RenderSize,
           status: 'SUCCEEDED',
           charged: true,
+          billedCost: generationCost,
         }
 
         setGeneratedImages((prev) => [nextImage, ...prev])
@@ -317,7 +332,7 @@ export default function PlaygroundPage({ initialPointsBalance }: { initialPoints
           <div className="max-w-3xl">
             <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950">提示词 + 参考图 + 尺寸</h2>
             <p className="mt-3 text-sm leading-6 text-slate-600 sm:text-base">
-              不经过商品分析，直接组合提示词、参考图与尺寸来测试单张图片效果。当前单张自由生成按最新标准每次扣 {formatPoints(generationCost)} 积分。
+              不经过商品分析，直接组合提示词、参考图、模型与尺寸来测试单张图片效果。
             </p>
           </div>
         </section>
@@ -347,19 +362,7 @@ export default function PlaygroundPage({ initialPointsBalance }: { initialPoints
 
             <div>
               <label className="mb-3 block text-sm font-medium text-slate-800">生成模型</label>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {IMAGE_MODEL_OPTIONS.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setModel(option.value)}
-                    className={`rounded-2xl border p-4 text-left transition ${model === option.value ? 'border-amazon-orange bg-orange-50 shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300'}`}
-                  >
-                    <div className="text-sm font-medium text-slate-800">{option.label}</div>
-                    <div className="mt-1 text-xs text-slate-500">{option.description}</div>
-                  </button>
-                ))}
-              </div>
+              <ImageModelSelector models={imageModels} value={model} onChange={setModel} scene="standard" disabled={isGenerating} />
             </div>
 
             <div>
@@ -384,13 +387,13 @@ export default function PlaygroundPage({ initialPointsBalance }: { initialPoints
             <button
               type="button"
               onClick={handleGenerate}
-              disabled={isGenerating || !prompt.trim()}
+              disabled={isGenerating || !prompt.trim() || !selectedModel}
               className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-amazon-blue px-6 py-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-slate-400"
             >
-              {isGenerating ? '生成中...' : '开始生成图片'}
+              {isGenerating ? '生成中...' : selectedModel ? `开始生成图片（${formatPoints(generationCost)} 积分）` : '暂无可用模型'}
             </button>
 
-            {!hasEnoughPointsToGenerate && (
+            {selectedModel && !hasEnoughPointsToGenerate && (
               <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                 当前积分不足，单张自由生成需要 {formatPoints(generationCost)} 积分。请先前往 <Link href="/points/recharge" className="font-semibold underline">积分中心</Link> 充值或兑换积分包后再进入生图。
               </div>
@@ -409,7 +412,7 @@ export default function PlaygroundPage({ initialPointsBalance }: { initialPoints
               <div className="mt-4 grid gap-3 sm:grid-cols-3">
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">模型</div>
-                  <div className="mt-1 text-sm font-medium text-slate-800">{IMAGE_MODEL_OPTIONS.find((option) => option.value === model)?.label || model}</div>
+                  <div className="mt-1 text-sm font-medium text-slate-800">{selectedModel?.label || '未选择'}</div>
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">尺寸</div>

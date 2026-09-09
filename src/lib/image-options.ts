@@ -1,15 +1,18 @@
-export type ImageModel = 'gpt-image-2' | 'agnes-image-2.1-flash'
+export type ImageModel = string
 
-export const IMAGE_MODEL_OPTIONS: Array<{
+export interface ImageModelOption {
   value: ImageModel
   label: string
   description: string
-}> = [
-  { value: 'gpt-image-2', label: 'GPT Image 2', description: '默认模型，高质量' },
-  { value: 'agnes-image-2.1-flash', label: 'Agnes Image 2.1 Flash', description: '免费生成' },
-]
+  standardCost: number
+  aplusCost: number
+  isDefault: boolean
+}
 
-export const DEFAULT_IMAGE_MODEL: ImageModel = 'gpt-image-2'
+export function getImageModelCost(option: ImageModelOption | null | undefined, scene: 'standard' | 'aplus') {
+  if (!option) return 0
+  return scene === 'aplus' ? option.aplusCost : option.standardCost
+}
 export const PLAYGROUND_REFERENCE_IMAGE_LIMIT = 5
 export const AMAZON_DEFAULT_RENDER_SIZE = '1600x1600' as const
 

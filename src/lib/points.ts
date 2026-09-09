@@ -559,13 +559,12 @@ export async function redeemCode(params: { userId: string; code: string }) {
   })
 }
 
-export async function ensureSufficientPointsForGenerationByScene(userId: string, scene: GenerationBillingScene) {
+export async function ensureSufficientPointsForGeneration(userId: string, requiredPoints: number) {
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: userId },
     select: { pointsBalance: true },
   })
 
-  const requiredPoints = getGenerationCostInternal(scene)
   if (user.pointsBalance < requiredPoints) {
     throw new InsufficientPointsError(requiredPoints)
   }
@@ -658,7 +657,13 @@ export async function saveSuccessfulAnalysisWithCharge(params: {
   })
 }
 
-export async function debitPointForGeneration(params: { userId: string; requestId: string; scene: GenerationBillingScene }) {
+export async function debitPointForGeneration(params: {
+  userId: string
+  requestId: string
+  scene: GenerationBillingScene
+  debitAmount?: number | null
+  model?: string | null
+}) {
   return prisma.$transaction(async (tx) => {
     const idempotencyKey = `generation:${params.requestId}:debit`
     const existingEntry = await tx.pointsLedgerEntry.findUnique({
@@ -674,7 +679,7 @@ export async function debitPointForGeneration(params: { userId: string; requestI
       select: { pointsBalance: true },
     })
 
-    const debitAmount = getGenerationCostInternal(params.scene)
+    const debitAmount = params.debitAmount ?? getGenerationCostInternal(params.scene)
     if (user.pointsBalance < debitAmount) {
       throw new InsufficientPointsError(debitAmount)
     }
@@ -699,6 +704,7 @@ export async function debitPointForGeneration(params: { userId: string; requestI
           pointsUnit: 'new',
           billingKind: 'generation',
           scene: params.scene,
+          model: params.model || null,
           chargedPoints: toDisplayPoints(debitAmount),
         },
       },

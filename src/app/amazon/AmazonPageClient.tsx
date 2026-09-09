@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
+import ImageModelSelector from '@/components/ImageModelSelector'
 import ProductInput from '@/components/ProductInput'
 import LoadingSpinner, { SkeletonBlock } from '@/components/LoadingSpinner'
 import {
@@ -21,8 +22,8 @@ import {
   isPromptGenerationComplete,
 } from '@/lib/amazon-workflow'
 import { formatDateTimeInBeijing } from '@/lib/date'
-import { AMAZON_DEFAULT_RENDER_SIZE, HIDDEN_APLUS_RENDER_SIZE, RenderSize } from '@/lib/image-options'
-import { formatPoints, GenerationBillingScene, getAnalysisCostDisplay, getGenerationCostDisplay } from '@/lib/points-config'
+import { AMAZON_DEFAULT_RENDER_SIZE, getImageModelCost, HIDDEN_APLUS_RENDER_SIZE, type ImageModelOption, RenderSize } from '@/lib/image-options'
+import { formatPoints, GenerationBillingScene, getAnalysisCostDisplay } from '@/lib/points-config'
 import { usePoints } from '@/components/PointsProvider'
 
 type AmazonImageType = 'main-white' | 'lifestyle' | 'infographic' | 'detail' | 'size'
@@ -74,7 +75,7 @@ type GenerateStreamEvent =
   | { type: 'status'; message: string }
   | { type: 'result'; data: { requestId: string; imageUrl: string; revisedPrompt: string; routeSummary: RouteSummary | null; size?: RenderSize } }
   | { type: 'error'; message: string }
-  | { type: 'queued'; data: { requestId: string; operationId: string; status: string; statusMessage: string } }
+  | { type: 'queued'; data: { requestId: string; operationId: string; status: string; statusMessage: string; model: string; billingCost: number } }
 
 interface GenerationStatusPayload {
   requestId: string
@@ -85,6 +86,8 @@ interface GenerationStatusPayload {
   revisedPrompt: string | null
   imageUrl: string | null
   imageType: string | null
+  model: string | null
+  billingCost: number | null
   size: string | null
   active: boolean
   routeSummary: RouteSummary | null
@@ -512,9 +515,11 @@ function TaskStatusPanel({
 export default function AmazonPage({
   initialResumeState,
   initialPointsBalance,
+  imageModels,
 }: {
   initialResumeState: AmazonResumeState | null
   initialPointsBalance: number
+  imageModels: ImageModelOption[]
 }) {
   const [referenceImages, setReferenceImages] = useState<File[]>([])
   const [storedReferenceImages, setStoredReferenceImages] = useState<StoredReferenceImage[]>(initialResumeState?.referenceImages || [])
@@ -544,6 +549,7 @@ export default function AmazonPage({
   const [selectedImageType, setSelectedImageType] = useState<PromptKey>('main-white')
   const [selectedSize, setSelectedSize] = useState<RenderSize>(AMAZON_DEFAULT_RENDER_SIZE)
   const [containsSyntheticPerformer, setContainsSyntheticPerformer] = useState(false)
+  const [selectedModel, setSelectedModel] = useState(() => imageModels.find((option) => option.isDefault)?.value || imageModels[0]?.value || '')
   const [editedPrompt, setEditedPrompt] = useState('')
   const [editedPrompts, setEditedPrompts] = useState<Record<string, string>>({})
   const [isGenerating, setIsGenerating] = useState(false)
@@ -573,20 +579,20 @@ export default function AmazonPage({
   const selectedAmazonPromptItem = amazonGalleryItems.find((item) => item.slotId === selectedAmazonPromptType)
     || amazonGalleryItems[0]
     || null
+  const selectedModelOption = imageModels.find((option) => option.value === selectedModel) || null
   const generationCost = useMemo(
-    () => getGenerationCostDisplay(selectedBranch === 'aplus' ? 'aplus' : 'amazon'),
-    [selectedBranch],
+    () => getImageModelCost(selectedModelOption, selectedBranch === 'aplus' ? 'aplus' : 'standard'),
+    [selectedBranch, selectedModelOption],
   )
   const generationCostText = useMemo(() => formatPoints(generationCost), [generationCost])
-  const amazonGenerationCost = useMemo(() => getGenerationCostDisplay('amazon'), [])
+  const amazonGenerationCost = useMemo(() => getImageModelCost(selectedModelOption, 'standard'), [selectedModelOption])
   const amazonAnalysisCost = useMemo(() => getAnalysisCostDisplay('amazon-analysis'), [])
   const amazonAnalysisCostText = useMemo(() => formatPoints(amazonAnalysisCost), [amazonAnalysisCost])
   const aplusAnalysisCost = useMemo(() => getAnalysisCostDisplay('aplus-analysis'), [])
   const aplusAnalysisCostText = useMemo(() => formatPoints(aplusAnalysisCost), [aplusAnalysisCost])
-  const hasEnoughPointsToGenerate = pointsBalance >= generationCost
   const activeReferenceImageCount = referenceImages.length || storedReferenceImages.length
   // 再次编辑：用已生成的图作为参考图走 edits 接口，按自有生图标准计费
-  const editImageCost = useMemo(() => getGenerationCostDisplay('playground'), [])
+  const editImageCost = useMemo(() => getImageModelCost(selectedModelOption, 'standard'), [selectedModelOption])
   const editImageCostText = useMemo(() => formatPoints(editImageCost), [editImageCost])
   const hasEnoughPointsToEdit = pointsBalance >= editImageCost
 
@@ -683,6 +689,7 @@ export default function AmazonPage({
     formData.append('size', size)
     formData.append('sourcePage', 'amazon')
     formData.append('billingScene', getBillingSceneForPromptType(type))
+    formData.append('model', selectedModel)
     if (analysisId) {
       formData.append('analysisId', analysisId)
     }
@@ -781,7 +788,7 @@ export default function AmazonPage({
         imageType: type,
       },
     }
-  }, [analysisId, buildPrompt, containsSyntheticPerformer, currentPromptResult, referenceImages, storedReferenceImages])
+  }, [analysisId, buildPrompt, containsSyntheticPerformer, currentPromptResult, referenceImages, selectedModel, storedReferenceImages])
 
   // 再次编辑：把已生成的图作为参考图，走 edits 接口，按 playground 标准计费
   const requestEditImage = useCallback(async (
@@ -798,6 +805,7 @@ export default function AmazonPage({
     formData.append('size', size)
     formData.append('sourcePage', 'playground')
     formData.append('billingScene', 'playground')
+    formData.append('model', selectedModel)
     if (analysisId) {
       formData.append('analysisId', analysisId)
     }
@@ -889,7 +897,7 @@ export default function AmazonPage({
         imageType,
       },
     }
-  }, [analysisId])
+  }, [analysisId, selectedModel])
 
   const applyRecoveredAnalysisState = useCallback((resumeState: AmazonResumeState, options?: {
     stageLabel?: string
@@ -1083,7 +1091,7 @@ export default function AmazonPage({
           }
 
           if (payload.status === 'SUCCEEDED' && !image.charged) {
-            const billedCost = image.billedCost ?? generationCost
+            const billedCost = payload.billingCost ?? image.billedCost ?? generationCost
             setPointsBalance((current) => Math.max(0, Number((current - billedCost).toFixed(1))))
             void refreshPoints()
             nextImage.charged = true
@@ -1516,12 +1524,16 @@ export default function AmazonPage({
     includeContextualHints = true,
   ) => {
     if (!basicAnalysisResult || !selectedBranch || isGenerating) return
+    if (!selectedModelOption) {
+      alert('暂无可用生图模型，请联系管理员。')
+      return
+    }
     if (!activeReferenceImageCount) {
       alert('请先上传至少一张参考图，或从历史分析记录恢复参考图后再生成。')
       return
     }
     const generationType = typeOverride || selectedImageType
-    const generationCostForImage = getGenerationCostDisplay(generationType.startsWith('aplus-') ? 'aplus' : 'amazon')
+    const generationCostForImage = getImageModelCost(selectedModelOption, generationType.startsWith('aplus-') ? 'aplus' : 'standard')
     if (pointsBalance < generationCostForImage) {
       alert('积分不足，请先充值后再生成图片。')
       return
@@ -1554,7 +1566,7 @@ export default function AmazonPage({
           statusMessage: result.data.statusMessage,
           errorMessage: null,
           charged: false,
-          billedCost: generationCostForImage,
+          billedCost: result.data.billingCost,
         }, ...prev])
         startPollingGenerationRequest({
           requestId: result.data.requestId,
@@ -1587,10 +1599,14 @@ export default function AmazonPage({
     } finally {
       setIsGenerating(false)
     }
-  }, [activeReferenceImageCount, basicAnalysisResult, currentPromptResult, editedPrompt, editedPrompts, isGenerating, pointsBalance, requestGenerate, selectedBranch, selectedImageType, selectedSize, startPollingGenerationRequest])
+  }, [activeReferenceImageCount, basicAnalysisResult, currentPromptResult, editedPrompt, editedPrompts, isGenerating, pointsBalance, requestGenerate, selectedBranch, selectedImageType, selectedModelOption, selectedSize, startPollingGenerationRequest])
 
   const handleGenerateAll = useCallback(async () => {
     if (!basicAnalysisResult || isGenerating || !amazonPromptResult) return
+    if (!selectedModelOption) {
+      alert('暂无可用生图模型，请联系管理员。')
+      return
+    }
     if (!activeReferenceImageCount) {
       alert('请先上传至少一张参考图，或从历史分析记录恢复参考图后再生成。')
       return
@@ -1653,7 +1669,7 @@ export default function AmazonPage({
               statusMessage: result.data.statusMessage,
               errorMessage: null,
               charged: false,
-              billedCost: amazonGenerationCost,
+              billedCost: result.data.billingCost,
             }, ...previous])
             startPollingGenerationRequest({
               requestId: result.data.requestId,
@@ -1694,10 +1710,14 @@ export default function AmazonPage({
     } finally {
       setIsGenerating(false)
     }
-  }, [activeReferenceImageCount, amazonGenerationCost, amazonPromptResult, basicAnalysisResult, editedPrompts, isGenerating, pointsBalance, requestGenerate, refreshPoints, startPollingGenerationRequest])
+  }, [activeReferenceImageCount, amazonGenerationCost, amazonPromptResult, basicAnalysisResult, editedPrompts, isGenerating, pointsBalance, requestGenerate, refreshPoints, selectedModelOption, startPollingGenerationRequest])
 
   const handleEditImage = useCallback(async () => {
     if (!editingImage || !editingImage.imageUrl || isGenerating) return
+    if (!selectedModelOption) {
+      alert('暂无可用生图模型，请联系管理员。')
+      return
+    }
     if (!editingImage.prompt.trim()) {
       alert('请先填写这次编辑想做的修改。')
       return
@@ -1733,7 +1753,7 @@ export default function AmazonPage({
           statusMessage: result.data.statusMessage,
           errorMessage: null,
           charged: false,
-          billedCost: editImageCost,
+          billedCost: result.data.billingCost,
         }, ...prev])
         setEditingImage(null)
         startPollingGenerationRequest({
@@ -1768,7 +1788,7 @@ export default function AmazonPage({
     } finally {
       setIsGenerating(false)
     }
-  }, [editImageCost, editImageCostText, editingImage, hasEnoughPointsToEdit, isGenerating, requestEditImage, startPollingGenerationRequest])
+  }, [editImageCost, editImageCostText, editingImage, hasEnoughPointsToEdit, isGenerating, requestEditImage, selectedModelOption, startPollingGenerationRequest])
 
   const handleDownload = async (image: GeneratedImage) => {
     try {
@@ -1811,15 +1831,15 @@ export default function AmazonPage({
                 先分析商品，再生成适合 Amazon 的图片。
               </h2>
               <p className="mt-3 text-sm leading-6 text-slate-600 sm:text-base">
-                输入商品信息并上传参考图，系统会自动整理 Amazon 图组 Prompt；Amazon 分析成功扣 {amazonAnalysisCostText} 积分，A+ 分析成功扣 {aplusAnalysisCostText} 积分。
+                输入商品信息并上传参考图，系统会自动整理 Amazon 图组 Prompt，还可以在同一套方案中继续补充 A+ 页面素材。
               </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-4">
               {[
-                { step: '01', label: '填写商品信息' },
-                { step: '02', label: '自动生成 Prompt' },
-                { step: '03', label: '编辑 Prompt' },
-                { step: '04', label: '生成图片' },
+                { step: '01', label: '提交商品资料' },
+                { step: '02', label: '生成图片方案' },
+                { step: '03', label: '确认并调整 Prompt' },
+                { step: '04', label: '生成商品图片' },
               ].map((item) => (
                 <div key={item.step} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                   <div className="text-xs font-semibold text-slate-400">{item.step}</div>
@@ -1866,7 +1886,7 @@ export default function AmazonPage({
                   label={analysisStageLabel}
                   progress={analysisProgress}
                   warnings={analysisWarnings}
-                  helperText={`AI 会先完成一次商品分析，再自动生成 Amazon 图组 Prompt；分析成功后扣 ${amazonAnalysisCostText} 积分。`}
+                  helperText="AI 会先理解商品信息和参考图，再自动生成可编辑的 Amazon 图组 Prompt。"
                   elapsedText={formatElapsedTime(analysisElapsedMs)}
                   steps={[
                     { key: 'preparing', label: '读取商品信息' },
@@ -1925,7 +1945,7 @@ export default function AmazonPage({
                       </div>
                       <h3 className="mt-3 text-lg font-semibold text-slate-900">生成方式</h3>
                         <p className="mt-1 text-sm text-slate-500">
-                        Amazon 图组可以整套生成或逐张生成，普通图片成功一张扣 {formatPoints(amazonGenerationCost)} 积分；A+ Prompt 需要时可从右上角继续附加，A+ 图片成功一张扣 {generationCostText} 积分。
+                        Amazon 图组可以整套生成，也可以逐张调整和生成；需要 A+ 页面时，可从右上角继续补充对应 Prompt。
                       </p>
                       {storedReferenceImages.length > 0 && referenceImages.length === 0 && (
                         <p className="mt-2 text-sm text-sky-700">当前正在复用历史分析里保存的 {storedReferenceImages.length} 张参考图。</p>
@@ -1944,6 +1964,19 @@ export default function AmazonPage({
                       )}
                     </div>
                   </div>
+                  <div className="mt-5 border-t border-slate-200 pt-5">
+                    <div className="mb-3">
+                      <div className="text-sm font-semibold text-slate-900">生成模型</div>
+                      <div className="mt-1 text-xs text-slate-500">整套生成、单张生成和再次编辑都会使用当前选择。</div>
+                    </div>
+                    <ImageModelSelector
+                      models={imageModels}
+                      value={selectedModel}
+                      onChange={setSelectedModel}
+                      scene={selectedBranch === 'aplus' ? 'aplus' : 'standard'}
+                      disabled={isGenerating}
+                    />
+                  </div>
                 </div>
 
                 {branchPromptStatus !== 'idle' && branchPromptBranch === 'aplus' && (
@@ -1953,7 +1986,7 @@ export default function AmazonPage({
                     label={branchPromptLabel || '正在等待 A+ Prompt 生成结果'}
                     progress={branchPromptProgress}
                     warnings={[]}
-                    helperText={`A+ 会附加到当前 Prompt 页面，不影响已生成的 Amazon 图组；A+ 分析成功扣 ${aplusAnalysisCostText} 积分，图片成功一张扣 ${generationCostText} 积分。`}
+                    helperText="A+ 会附加到当前 Prompt 页面，不影响已生成的 Amazon 图组。"
                     elapsedText={formatElapsedTime(branchPromptElapsedMs)}
                     steps={[
                       { key: 'preparing', label: '读取分析' },
@@ -1978,14 +2011,14 @@ export default function AmazonPage({
                         Amazon 图片 Prompt
                       </h3>
                       <p className="mt-1 text-sm text-slate-500">
-                        已自动整理 {getAmazonGalleryItems(amazonPromptResult).length} 张图片。普通 Amazon 图片成功一张扣 {formatPoints(amazonGenerationCost)} 积分；失败图片不扣费。
+                        已自动整理 {getAmazonGalleryItems(amazonPromptResult).length} 张图片，可选择整套生成，也可以调整 Prompt 后逐张生成。
                       </p>
                     </div>
                     {amazonPromptResult && (
                       <button
                         type="button"
                         onClick={handleGenerateAll}
-                        disabled={isGenerating}
+                        disabled={isGenerating || !selectedModelOption}
                         className="inline-flex items-center justify-center rounded-2xl bg-amazon-orange px-5 py-3 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-slate-400"
                       >
                         {isGenerating ? '整套提交中...' : `生成整套图片（${formatPoints(amazonGenerationCost)} 积分/张）`}
@@ -2040,7 +2073,7 @@ export default function AmazonPage({
                               AMAZON_DEFAULT_RENDER_SIZE,
                               false,
                             )}
-                            disabled={isGenerating || !(editedPrompts[selectedAmazonPromptItem.slotId] || selectedAmazonPromptItem.displayPrompt || selectedAmazonPromptItem.prompt).trim()}
+                            disabled={isGenerating || !selectedModelOption || !(editedPrompts[selectedAmazonPromptItem.slotId] || selectedAmazonPromptItem.displayPrompt || selectedAmazonPromptItem.prompt).trim()}
                             className="rounded-xl bg-amazon-blue px-4 py-2 text-xs font-semibold text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-slate-400"
                           >
                             生成此图（{formatPoints(amazonGenerationCost)} 积分）
@@ -2061,7 +2094,7 @@ export default function AmazonPage({
                     <>
                     <div className="mt-8 border-t border-slate-200 pt-6">
                       <h3 className="text-lg font-semibold text-slate-900">A+ Prompt</h3>
-                      <p className="mt-1 text-sm text-slate-500">A+ 模块 Prompt 已附加到当前页面，保持独立的横版模块编排和计费。</p>
+                      <p className="mt-1 text-sm text-slate-500">A+ 模块 Prompt 已附加到当前页面，可以按横版模块逐段调整和生成。</p>
                     </div>
                     <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                     {getAPlusOptionSet(currentPromptResult).map((option) => (
@@ -2149,7 +2182,7 @@ export default function AmazonPage({
 
                   {selectedBranch !== 'amazon-set' && (<button
                     onClick={() => handleGenerateSingle()}
-                    disabled={isGenerating || !editedPrompt.trim()}
+                    disabled={isGenerating || !selectedModelOption || !editedPrompt.trim()}
                     className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-amazon-blue px-6 py-3.5 text-sm font-semibold text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-slate-400"
                   >
                     {isGenerating ? (
@@ -2258,7 +2291,7 @@ export default function AmazonPage({
                   </div>
 
                   <p className="mb-5 rounded-xl bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-700">
-                    将以上图作为参考图进行再次编辑，按自有生图标准计费，每张成功结果扣 <span className="font-semibold">{editImageCostText}</span> 积分，失败不扣费。编辑结果会作为一张新图追加到上方网格。
+                    将以上图作为参考图继续编辑，完成后会作为一张新图追加到上方网格。
                   </p>
 
                   <div className="mb-5 flex justify-center rounded-2xl bg-slate-50 p-3">
@@ -2285,7 +2318,7 @@ export default function AmazonPage({
                   <button
                     type="button"
                     onClick={handleEditImage}
-                    disabled={isGenerating || !editingImage.prompt.trim()}
+                    disabled={isGenerating || !selectedModelOption || !editingImage.prompt.trim()}
                     className="w-full rounded-2xl bg-amazon-orange px-4 py-3 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-slate-400"
                   >
                     {isGenerating ? '编辑中...' : `再次编辑（${editImageCostText} 积分/张）`}

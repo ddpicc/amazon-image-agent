@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import { formatDateTimeInBeijing } from '@/lib/date'
-import { formatPoints, getGenerationCostDisplay } from '@/lib/points-config'
+import { formatPoints } from '@/lib/points-config'
 
 interface RechargePackageItem {
   id: string
@@ -80,16 +80,6 @@ export default function RechargePageClient({
     () => initialPackages.reduce((max, item) => Math.max(max, item.points), 0),
     [initialPackages],
   )
-  const amazonGenerationCost = getGenerationCostDisplay('amazon')
-  const aplusGenerationCost = getGenerationCostDisplay('aplus')
-  const selectedPackageEquivalentAmazon = useMemo(() => {
-    if (!selectedPackage) return 0
-    return Math.floor(selectedPackage.points / amazonGenerationCost)
-  }, [amazonGenerationCost, selectedPackage])
-  const selectedPackageEquivalentAPlus = useMemo(() => {
-    if (!selectedPackage) return 0
-    return Math.floor(selectedPackage.points / aplusGenerationCost)
-  }, [aplusGenerationCost, selectedPackage])
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -198,7 +188,7 @@ export default function RechargePageClient({
               <div>套餐：{selectedPackage.name}</div>
               <div>积分：{formatPoints(selectedPackage.points)}</div>
               <div>金额：{formatMoney(selectedPackage.priceCents, selectedPackage.currency)}</div>
-              <div>大致可生成（按当前最新单张扣费标准估算）：Amazon 单张约 {selectedPackageEquivalentAmazon} 张，A+ 单张约 {selectedPackageEquivalentAPlus} 张</div>
+              <div>实际可生成数量取决于所选模型和图片类型，以生成页面显示的积分为准。</div>
               <div>支付方式：微信支付</div>
               <div>说明：创建订单后会打开独立支付页，自动轮询支付状态。</div>
             </div>
