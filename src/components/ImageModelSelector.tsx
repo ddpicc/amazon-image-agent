@@ -36,7 +36,7 @@ export default function ImageModelSelector({
             onClick={() => onChange(option.value)}
             disabled={disabled}
             aria-pressed={selected}
-            className={`min-h-[88px] rounded-2xl border p-4 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+            className={`min-h-[64px] rounded-2xl border p-4 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
               selected
                 ? 'border-amazon-orange bg-orange-50 shadow-sm'
                 : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
@@ -45,7 +45,6 @@ export default function ImageModelSelector({
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="text-sm font-semibold text-slate-900">{option.label}</div>
-                <div className="mt-1 text-xs leading-5 text-slate-500">{option.description}</div>
               </div>
               <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${selected ? 'bg-amazon-orange text-white' : 'bg-slate-100 text-slate-600'}`}>
                 {formatPoints(cost)} 积分/张

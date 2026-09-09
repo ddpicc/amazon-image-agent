@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import ImageModelSelector from '@/components/ImageModelSelector'
 import ReferenceImageUploader from '@/components/ReferenceImageUploader'
 import { getImageModelCost, type ImageModelOption, PLAYGROUND_REFERENCE_IMAGE_LIMIT, RenderSize, SIZE_OPTIONS } from '@/lib/image-options'
 import { formatPoints } from '@/lib/points-config'
@@ -361,8 +360,22 @@ export default function PlaygroundPage({
             />
 
             <div>
-              <label className="mb-3 block text-sm font-medium text-slate-800">生成模型</label>
-              <ImageModelSelector models={imageModels} value={model} onChange={setModel} scene="standard" disabled={isGenerating} />
+              <label htmlFor="playground-image-model" className="mb-2 block text-sm font-medium text-slate-800">生成模型</label>
+              <select
+                id="playground-image-model"
+                value={model}
+                onChange={(event) => setModel(event.target.value)}
+                disabled={isGenerating || imageModels.length === 0}
+                className="input-field cursor-pointer bg-white disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
+              >
+                {imageModels.length === 0 ? (
+                  <option value="">暂无可用模型</option>
+                ) : imageModels.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label} · {formatPoints(getImageModelCost(option, 'standard'))} 积分/张
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div>

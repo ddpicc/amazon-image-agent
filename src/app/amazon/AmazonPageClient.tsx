@@ -2021,7 +2021,7 @@ export default function AmazonPage({
                         disabled={isGenerating || !selectedModelOption}
                         className="inline-flex items-center justify-center rounded-2xl bg-amazon-orange px-5 py-3 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-slate-400"
                       >
-                        {isGenerating ? '整套提交中...' : `生成整套图片（${formatPoints(amazonGenerationCost)} 积分/张）`}
+                        {isGenerating ? '整套提交中...' : '生成整套图片'}
                       </button>
                     )}
                   </div>
@@ -2076,7 +2076,7 @@ export default function AmazonPage({
                             disabled={isGenerating || !selectedModelOption || !(editedPrompts[selectedAmazonPromptItem.slotId] || selectedAmazonPromptItem.displayPrompt || selectedAmazonPromptItem.prompt).trim()}
                             className="rounded-xl bg-amazon-blue px-4 py-2 text-xs font-semibold text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-slate-400"
                           >
-                            生成此图（{formatPoints(amazonGenerationCost)} 积分）
+                            生成此图
                           </button>
                         </div>
                         <textarea
