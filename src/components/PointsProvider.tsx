@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useCallback, useContext, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import { toDisplayPoints } from '@/lib/points-config'
 
 interface PointsContextValue {
@@ -26,6 +26,10 @@ export function PointsProvider({
   initialBalance: number // raw DB internal points (Int)
 }) {
   const [pointsBalance, setPointsBalance] = useState(toDisplayPoints(initialBalance))
+
+  useEffect(() => {
+    setPointsBalance(toDisplayPoints(initialBalance))
+  }, [initialBalance])
 
   const refreshPoints = useCallback(async () => {
     try {
