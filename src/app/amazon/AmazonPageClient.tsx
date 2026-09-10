@@ -58,6 +58,11 @@ interface GeneratedImage {
   billedCost?: number
 }
 
+function getGeneratedImageThumbnailUrl(image: GeneratedImage) {
+  if (!image.requestId) return image.imageUrl || ''
+  return `/api/generate/${encodeURIComponent(image.requestId)}/thumbnail`
+}
+
 interface RouteSummary {
   selectedLineName: string
   selectedLineIndex: number
@@ -2228,8 +2233,12 @@ export default function AmazonPage({
                         <div key={image.id} className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
                           {image.imageUrl ? (
                             <img
-                              src={image.imageUrl}
+                              src={getGeneratedImageThumbnailUrl(image)}
                               alt="Generated product"
+                              width={640}
+                              height={image.imageType.startsWith('aplus-') ? 400 : 640}
+                              loading="lazy"
+                              decoding="async"
                               role="button"
                               tabIndex={0}
                               onClick={() => setPreviewImage(image)}
@@ -2238,6 +2247,11 @@ export default function AmazonPage({
                                   event.preventDefault()
                                   setPreviewImage(image)
                                 }
+                              }}
+                              onError={(event) => {
+                                if (!image.imageUrl || event.currentTarget.dataset.originalFallback === 'true') return
+                                event.currentTarget.dataset.originalFallback = 'true'
+                                event.currentTarget.src = image.imageUrl
                               }}
                               aria-label="点击放大图片"
                               className={`${image.imageType.startsWith('aplus-') ? 'aspect-[8/5]' : 'aspect-square'} w-full cursor-zoom-in object-cover transition-opacity hover:opacity-90`}
