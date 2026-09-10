@@ -162,28 +162,11 @@ export default async function AdminWorkbenchPage() {
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,#fff_0%,#f8fafc_100%)] px-4 py-8 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl space-y-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">管理员工作台</div>
             <h1 className="mt-2 text-3xl font-semibold text-slate-950">运营总览</h1>
             <p className="mt-2 text-sm text-slate-500">查看用户、充值、消耗、失败请求与 Provider 健康状态，作为管理员日常运营与排障入口。</p>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <Link href="/admin/users" className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900">
-              用户总览
-            </Link>
-            <Link href="/admin/points" className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900">
-              积分与充值
-            </Link>
-            <Link href="/admin/operations" className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900">
-              AI 操作
-            </Link>
-            <Link href="/admin/image-records" className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900">
-              生图记录
-            </Link>
-            <Link href="/admin/image-models" className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900">
-              生图模型
-            </Link>
           </div>
         </div>
 

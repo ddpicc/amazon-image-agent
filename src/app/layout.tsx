@@ -11,17 +11,6 @@ const userNavLinks = [
   { href: '/notifications', label: '通知' },
 ]
 
-const adminNavLinks = [
-  { href: '/admin', label: '工作台' },
-  { href: '/admin/users', label: '用户' },
-  { href: '/admin/points', label: '积分与充值' },
-  { href: '/admin/announcement', label: '登录公告' },
-  { href: '/admin/operations', label: 'AI 操作' },
-  { href: '/admin/image-records', label: '生图记录' },
-  { href: '/admin/providers', label: 'Provider 管理' },
-  { href: '/admin/redemption-codes', label: '兑换码' },
-]
-
 export const metadata: Metadata = {
   title: 'PageMint | Amazon 商品图片工作台',
   description: '用 AI 高效完成 Amazon Listing 与 A+ 商品图片生产。',
@@ -39,7 +28,7 @@ export default async function RootLayout({
   }) : null
   const isAdmin = user?.role === 'ADMIN'
   const homeHref = isAdmin ? '/admin' : '/'
-  const navLinks = isAdmin ? adminNavLinks : userNavLinks
+  const navLinks = isAdmin ? [] : userNavLinks
 
   return (
     <html lang="zh-CN">
@@ -50,6 +39,7 @@ export default async function RootLayout({
           navLinks={navLinks}
           homeHref={homeHref}
           userEmail={user?.email}
+          isAdmin={isAdmin}
         >
           {children}
         </AppShell>

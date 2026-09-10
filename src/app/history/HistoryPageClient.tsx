@@ -78,6 +78,28 @@ function formatDate(value: string) {
   return formatDateTimeInBeijing(value)
 }
 
+function getImageAspectRatio(record: Pick<HistoryImageRequest, 'size' | 'imageType'>) {
+  const dimensions = record.size?.match(/^(\d+)\s*[x×]\s*(\d+)$/i)
+  if (dimensions) {
+    const width = Number(dimensions[1])
+    const height = Number(dimensions[2])
+    if (width > 0 && height > 0) return `${width} / ${height}`
+  }
+
+  const ratio = record.size?.match(/^(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)$/)
+  if (ratio) {
+    const width = Number(ratio[1])
+    const height = Number(ratio[2])
+    if (width > 0 && height > 0) return `${width} / ${height}`
+  }
+
+  return record.imageType?.startsWith('aplus-') ? '8 / 5' : '1 / 1'
+}
+
+function getHistoryThumbnailUrl(recordId: string) {
+  return `/api/generate/${encodeURIComponent(recordId)}/thumbnail`
+}
+
 function canDeleteAnalysisRecord(status: HistoryAnalysisRecord['status']) {
   return status === 'SUCCEEDED' || status === 'FAILED'
 }
@@ -398,29 +420,41 @@ export default function HistoryPageClient({ initialData }: { initialData: Histor
             ) : data.imageRequests.items.map((record) => {
               const isDeleting = deletingImageId === record.id
               const canDelete = canDeleteImageRecord(record.status)
+              const imageAspectRatio = getImageAspectRatio(record)
+              const deductedPoints = record.pointsLedgerEntry
+                ? Math.abs(record.pointsLedgerEntry.pointsDelta)
+                : 0
 
               return (
                 <article key={record.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                   {record.imageUrl ? (
                     <a href={record.imageUrl} target="_blank" rel="noreferrer" className="block">
-                      <img src={record.imageUrl} alt="" className="aspect-square h-44 w-full object-cover transition hover:opacity-95" />
+                      <img
+                        src={getHistoryThumbnailUrl(record.id)}
+                        alt="生成图片"
+                        width={640}
+                        height={640}
+                        loading="lazy"
+                        decoding="async"
+                        style={{ aspectRatio: imageAspectRatio }}
+                        onError={(event) => {
+                          if (event.currentTarget.dataset.originalFallback === 'true') return
+                          event.currentTarget.dataset.originalFallback = 'true'
+                          event.currentTarget.src = record.imageUrl || ''
+                        }}
+                        className="w-full bg-slate-50 object-contain transition hover:opacity-95"
+                      />
                     </a>
                   ) : (
-                    <div className="flex aspect-square h-44 items-center justify-center bg-slate-100 text-sm text-slate-400">
+                    <div style={{ aspectRatio: imageAspectRatio }} className="flex w-full items-center justify-center bg-slate-100 text-sm text-slate-400">
                       {isActiveStatus(record.status) ? '生成中' : '暂无图片'}
                     </div>
                   )}
                   <div className="space-y-2 p-3">
-                    <div className="flex flex-wrap gap-2 text-xs text-slate-500">
-                      <span className="rounded-full bg-slate-100 px-2.5 py-1">{formatDate(record.createdAt)}</span>
-                      <span className="rounded-full bg-slate-100 px-2.5 py-1">{formatStatus(record.status)}</span>
-                      <span className="rounded-full bg-slate-100 px-2.5 py-1">{record.imageType || 'freeform'}</span>
-                      {record.model && <span className="rounded-full bg-sky-50 px-2.5 py-1 text-sky-700">{record.model}</span>}
-                      {record.pointsLedgerEntry && (
-                        <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-700">
-                          {formatPoints(record.pointsLedgerEntry.pointsDelta)} 积分
-                        </span>
-                      )}
+                    <div className="space-y-1 text-xs leading-5 text-slate-500">
+                      <div>生成时间：{formatDate(record.createdAt)}</div>
+                      <div>模型名称：{record.model || '—'}</div>
+                      <div>扣除积分：{formatPoints(deductedPoints)}</div>
                     </div>
                     {isActiveStatus(record.status) && (
                       <p className="text-sm text-sky-700">{record.statusMessage || '生图任务仍在服务端执行，结果完成后会自动出现在这里。'}</p>

@@ -80,6 +80,28 @@ export async function getLatestAnnouncement() {
   })
 }
 
+export async function getAnnouncementHistory() {
+  return prisma.announcement.findMany({
+    orderBy: [
+      { createdAt: 'desc' },
+      { id: 'desc' },
+    ],
+  })
+}
+
+export async function deleteAnnouncement(announcementId: string) {
+  const normalizedId = announcementId.trim()
+  if (!normalizedId) {
+    throw new Error('公告 ID 不能为空')
+  }
+
+  const result = await prisma.announcement.deleteMany({
+    where: { id: normalizedId },
+  })
+
+  return result.count > 0
+}
+
 // 通知页列表：所有已发布的公告（含历史），到开始时间的排在里面，按时间倒序。
 export async function getPublishedAnnouncements(now = new Date()) {
   return prisma.announcement.findMany({

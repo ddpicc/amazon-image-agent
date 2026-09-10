@@ -1,4 +1,3 @@
-import Link from 'next/link'
 import { requireAdmin } from '@/lib/auth'
 import { listRemoteImageModels } from '@/lib/image-worker-client'
 import { formatInternalPoints } from '@/lib/points-config'
@@ -35,9 +34,6 @@ export default async function AdminImageModelsPage() {
                 从 Worker 同步模型
               </button>
             </form>
-            <Link href="/admin" className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900">
-              返回工作台
-            </Link>
           </div>
         </div>
 

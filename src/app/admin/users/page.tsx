@@ -4,12 +4,10 @@ import { toCurrentDisplayPoints, toDisplayPoints } from '@/lib/points-config'
 import { prisma } from '@/lib/prisma'
 
 const USERS_PAGE_SIZE = 20
-const LEDGER_PAGE_SIZE = 20
 
 interface AdminUsersPageProps {
   searchParams?: {
     usersPage?: string
-    ledgerPage?: string
   }
 }
 
@@ -21,9 +19,7 @@ function normalizePage(value?: string) {
 export default async function AdminUsersPage({ searchParams }: AdminUsersPageProps) {
   await requireAdmin()
 
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
   const requestedUsersPage = normalizePage(searchParams?.usersPage)
-  const requestedLedgerPage = normalizePage(searchParams?.ledgerPage)
 
   // --- Users section ---
   const usersTotal = await prisma.user.count()
@@ -141,30 +137,10 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
     ledgerDebitsByUser.set(entry.userId, list)
   }
 
-  // --- Ledger entries section ---
-  const ledgerWhere = { createdAt: { gte: sevenDaysAgo } }
-  const ledgerTotal = await prisma.pointsLedgerEntry.count({
-    where: ledgerWhere,
-  })
-  const ledgerTotalPages = Math.max(1, Math.ceil(ledgerTotal / LEDGER_PAGE_SIZE))
-  const currentLedgerPage = Math.min(requestedLedgerPage, ledgerTotalPages)
-  const ledgerSkip = (currentLedgerPage - 1) * LEDGER_PAGE_SIZE
-
-  const ledgerEntries = await prisma.pointsLedgerEntry.findMany({
-    where: ledgerWhere,
-    orderBy: { createdAt: 'desc' },
-    skip: ledgerSkip,
-    take: LEDGER_PAGE_SIZE,
-    include: {
-      user: { select: { email: true } },
-    },
-  })
-
   // --- Serialize data for client ---
   type PaymentOrderAgg = (typeof userPaymentOrders)[number]
   type LedgerDebitAgg = (typeof userLedgerDebits)[number]
   type UserItem = (typeof users)[number]
-  type LedgerItem = (typeof ledgerEntries)[number]
 
   const initialData: AdminUsersPageData = {
     users: {
@@ -200,22 +176,6 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
       totalPages: usersTotalPages,
       hasNextPage: currentUsersPage < usersTotalPages,
       hasPreviousPage: currentUsersPage > 1,
-    },
-    ledgerEntries: {
-      items: ledgerEntries.map((entry: LedgerItem) => ({
-        id: entry.id,
-        userEmail: entry.user.email,
-        type: entry.type,
-        pointsDelta: toCurrentDisplayPoints(entry.pointsDelta, entry.metadata, entry.referenceType),
-        balanceAfter: toCurrentDisplayPoints(entry.balanceAfter, entry.metadata, entry.referenceType),
-        createdAt: entry.createdAt.toISOString(),
-      })),
-      page: currentLedgerPage,
-      pageSize: LEDGER_PAGE_SIZE,
-      total: ledgerTotal,
-      totalPages: ledgerTotalPages,
-      hasNextPage: currentLedgerPage < ledgerTotalPages,
-      hasPreviousPage: currentLedgerPage > 1,
     },
   }
 

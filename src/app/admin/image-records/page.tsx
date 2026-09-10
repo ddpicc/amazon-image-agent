@@ -64,9 +64,6 @@ export default async function AdminImageRecordsPage({ searchParams }: AdminImage
             <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">管理员</div>
             <h1 className="mt-2 text-3xl font-semibold text-slate-950">生图调用记录</h1>
           </div>
-          <Link href="/admin" className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900">
-            返回工作台
-          </Link>
         </div>
 
         <div className="panel p-6">
@@ -110,8 +107,14 @@ export default async function AdminImageRecordsPage({ searchParams }: AdminImage
                     <td className="py-4 pr-4 text-slate-700">{record.status}</td>
                     <td className="py-4">
                       {record.imageUrl ? (
-                        <a href={record.imageUrl} target="_blank" className="block">
-                          <img src={record.imageUrl} alt="" className="h-16 w-16 rounded-xl object-cover" />
+                        <a href={record.imageUrl} target="_blank" rel="noreferrer" className="block">
+                          <img
+                            src={`/api/generate/${record.id}/thumbnail`}
+                            alt={`${record.user.email} 的生图结果`}
+                            loading="lazy"
+                            decoding="async"
+                            className="h-16 w-16 rounded-xl bg-slate-100 object-cover"
+                          />
                         </a>
                       ) : (
                         <span className="text-slate-400">-</span>

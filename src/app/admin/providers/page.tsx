@@ -241,9 +241,6 @@ export default async function AdminProvidersPage() {
             <h1 className="mt-2 text-3xl font-semibold text-slate-950">Providers</h1>
             <p className="mt-2 text-sm text-slate-500">这里只维护文本 provider。图片线路已经迁到 `amazon-image-worker` 单独管理。</p>
           </div>
-          <Link href="/admin" className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900">
-            返回工作台
-          </Link>
         </div>
 
         <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">

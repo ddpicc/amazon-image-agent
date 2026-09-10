@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
-import Link from 'next/link'
+import { useEffect, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import AdminAdjustPointsButton from './AdminAdjustPointsButton'
 import { formatDateTimeInBeijing } from '@/lib/date'
 import { formatPoints } from '@/lib/points-config'
 
@@ -20,15 +20,6 @@ interface UserRow {
   analysisCount: number
 }
 
-interface LedgerEntryRow {
-  id: string
-  userEmail: string
-  type: string
-  pointsDelta: number
-  balanceAfter: number
-  createdAt: string
-}
-
 interface PaginatedSection<T> {
   items: T[]
   page: number
@@ -41,22 +32,16 @@ interface PaginatedSection<T> {
 
 export interface AdminUsersPageData {
   users: PaginatedSection<UserRow>
-  ledgerEntries: PaginatedSection<LedgerEntryRow>
 }
 
-type UsersSectionKey = 'users' | 'ledger'
-
-function buildUsersQueryString(searchParams: URLSearchParams, updates: Partial<Record<'usersPage' | 'ledgerPage', number>>) {
+function buildUsersQueryString(searchParams: URLSearchParams, usersPage: number) {
   const params = new URLSearchParams(searchParams.toString())
-
-  for (const [key, value] of Object.entries(updates) as Array<[keyof typeof updates, number | undefined]>) {
-    if (!value || value <= 1) {
-      params.delete(key)
-    } else {
-      params.set(key, String(value))
-    }
+  params.delete('ledgerPage')
+  if (usersPage <= 1) {
+    params.delete('usersPage')
+  } else {
+    params.set('usersPage', String(usersPage))
   }
-
   return params.toString()
 }
 
@@ -66,19 +51,34 @@ function formatMoney(amountCents: number) {
 
 export default function AdminUsersPageClient({ initialData }: { initialData: AdminUsersPageData }) {
   const [data, setData] = useState<AdminUsersPageData>(initialData)
-  const [isNavigatingSection, setIsNavigatingSection] = useState<UsersSectionKey | null>(null)
+  const [isNavigating, setIsNavigating] = useState(false)
+  const [adjustmentMessage, setAdjustmentMessage] = useState('')
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
 
-  function navigateWithPages(section: UsersSectionKey, nextPage: number) {
-    setIsNavigatingSection(section)
+  useEffect(() => {
+    setData(initialData)
+    setIsNavigating(false)
+  }, [initialData])
 
-    const query = buildUsersQueryString(searchParams, section === 'users'
-      ? { usersPage: nextPage }
-      : { ledgerPage: nextPage })
-
+  function navigateWithPages(nextPage: number) {
+    setIsNavigating(true)
+    const query = buildUsersQueryString(searchParams, nextPage)
     router.push(query ? `${pathname}?${query}` : pathname)
+  }
+
+  function handlePointsAdjusted(userId: string, pointsBalance: number, pointsDelta: number) {
+    setData((current) => ({
+      ...current,
+      users: {
+        ...current.users,
+        items: current.users.items.map((user) => (
+          user.id === userId ? { ...user, pointsBalance } : user
+        )),
+      },
+    }))
+    setAdjustmentMessage(`积分调整成功，本次${pointsDelta > 0 ? '增加' : '扣除'} ${formatPoints(Math.abs(pointsDelta))} 积分。`)
   }
 
   return (
@@ -90,9 +90,6 @@ export default function AdminUsersPageClient({ initialData }: { initialData: Adm
             <h1 className="mt-2 text-3xl font-semibold text-slate-950">用户总览</h1>
             <p className="mt-2 text-sm text-slate-500">查看每个用户的余额、充值、消耗与最近活跃情况；充值和消耗积分统一按新积分口径统计。</p>
           </div>
-          <Link href="/admin" className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900">
-            返回工作台
-          </Link>
         </div>
 
         <section className="panel p-6">
@@ -105,6 +102,12 @@ export default function AdminUsersPageClient({ initialData }: { initialData: Adm
               共 {data.users.total} 人
             </div>
           </div>
+
+          {adjustmentMessage && (
+            <div aria-live="polite" className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+              {adjustmentMessage}
+            </div>
+          )}
 
           <div className="mt-4 overflow-x-auto">
             <table className="min-w-full text-left text-sm">
@@ -119,13 +122,14 @@ export default function AdminUsersPageClient({ initialData }: { initialData: Adm
                   <th className="pb-3 pr-4">总消耗积分（新）</th>
                   <th className="pb-3 pr-4">最近活跃</th>
                   <th className="pb-3 pr-4">生图次数</th>
-                  <th className="pb-3">分析次数</th>
+                  <th className="pb-3 pr-4">分析次数</th>
+                  <th className="pb-3">操作</th>
                 </tr>
               </thead>
               <tbody>
                 {data.users.items.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="py-8 text-center text-slate-500">暂无用户数据。</td>
+                    <td colSpan={11} className="py-8 text-center text-slate-500">暂无用户数据。</td>
                   </tr>
                 ) : data.users.items.map((user) => (
                   <tr key={user.id} className="border-t border-slate-200 align-top">
@@ -138,7 +142,13 @@ export default function AdminUsersPageClient({ initialData }: { initialData: Adm
                     <td className="py-4 pr-4 text-slate-700">{formatPoints(user.totalSpentPoints)}</td>
                     <td className="py-4 pr-4 text-slate-700">{user.lastActiveAt ? formatDateTimeInBeijing(user.lastActiveAt) : '-'}</td>
                     <td className="py-4 pr-4 text-slate-700">{user.imageRequestCount}</td>
-                    <td className="py-4 text-slate-700">{user.analysisCount}</td>
+                    <td className="py-4 pr-4 text-slate-700">{user.analysisCount}</td>
+                    <td className="py-4 text-slate-700">
+                      <AdminAdjustPointsButton
+                        user={{ id: user.id, email: user.email, pointsBalance: user.pointsBalance }}
+                        onAdjusted={(pointsBalance, pointsDelta) => handlePointsAdjusted(user.id, pointsBalance, pointsDelta)}
+                      />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -149,21 +159,21 @@ export default function AdminUsersPageClient({ initialData }: { initialData: Adm
             <div className="mt-6 flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="text-sm text-slate-500">
                 第 {data.users.page} / {data.users.totalPages} 页
-                {isNavigatingSection === 'users' && <span className="ml-2 text-slate-400">加载中...</span>}
+                {isNavigating && <span className="ml-2 text-slate-400">加载中...</span>}
               </div>
               <div className="flex items-center gap-3">
                 <button
                   type="button"
-                  onClick={() => navigateWithPages('users', data.users.page - 1)}
-                  disabled={!data.users.hasPreviousPage || isNavigatingSection !== null}
+                  onClick={() => navigateWithPages(data.users.page - 1)}
+                  disabled={!data.users.hasPreviousPage || isNavigating}
                   className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-900 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
                 >
                   上一页
                 </button>
                 <button
                   type="button"
-                  onClick={() => navigateWithPages('users', data.users.page + 1)}
-                  disabled={!data.users.hasNextPage || isNavigatingSection !== null}
+                  onClick={() => navigateWithPages(data.users.page + 1)}
+                  disabled={!data.users.hasNextPage || isNavigating}
                   className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-900 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
                 >
                   下一页
@@ -173,73 +183,6 @@ export default function AdminUsersPageClient({ initialData }: { initialData: Adm
           )}
         </section>
 
-        <section className="panel p-6">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <h2 className="text-lg font-semibold text-slate-950">积分流水</h2>
-              <p className="mt-1 text-sm text-slate-500">近 7 天积分变动记录，包含充值、消耗、兑换、退款等所有类型。</p>
-            </div>
-            <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
-              共 {data.ledgerEntries.total} 条
-            </div>
-          </div>
-
-          <div className="mt-4 overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
-              <thead className="text-slate-500">
-                <tr>
-                  <th className="pb-3 pr-4">用户</th>
-                  <th className="pb-3 pr-4">类型</th>
-                  <th className="pb-3 pr-4">变动</th>
-                  <th className="pb-3 pr-4">余额</th>
-                  <th className="pb-3">时间</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.ledgerEntries.items.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="py-8 text-center text-slate-500">暂无积分流水。</td>
-                  </tr>
-                ) : data.ledgerEntries.items.map((entry) => (
-                  <tr key={entry.id} className="border-t border-slate-200">
-                    <td className="py-4 pr-4 text-slate-700">{entry.userEmail}</td>
-                    <td className="py-4 pr-4 text-slate-700">{entry.type}</td>
-                    <td className="py-4 pr-4 text-slate-700">{formatPoints(entry.pointsDelta)}</td>
-                    <td className="py-4 pr-4 text-slate-700">{formatPoints(entry.balanceAfter)}</td>
-                    <td className="py-4 text-slate-700">{formatDateTimeInBeijing(entry.createdAt)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {data.ledgerEntries.total > 0 && (
-            <div className="mt-6 flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-sm text-slate-500">
-                第 {data.ledgerEntries.page} / {data.ledgerEntries.totalPages} 页
-                {isNavigatingSection === 'ledger' && <span className="ml-2 text-slate-400">加载中...</span>}
-              </div>
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => navigateWithPages('ledger', data.ledgerEntries.page - 1)}
-                  disabled={!data.ledgerEntries.hasPreviousPage || isNavigatingSection !== null}
-                  className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-900 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
-                >
-                  上一页
-                </button>
-                <button
-                  type="button"
-                  onClick={() => navigateWithPages('ledger', data.ledgerEntries.page + 1)}
-                  disabled={!data.ledgerEntries.hasNextPage || isNavigatingSection !== null}
-                  className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-900 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
-                >
-                  下一页
-                </button>
-              </div>
-            </div>
-          )}
-        </section>
       </div>
     </main>
   )

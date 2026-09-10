@@ -6,6 +6,7 @@ import {
   GenerationBillingScene,
   getAnalysisCostInternal,
   getGenerationCostInternal,
+  POINTS_SCALE,
   toDisplayPoints,
   toInternalPoints,
 } from '@/lib/points-config'
@@ -784,6 +785,81 @@ export async function createPointsPackage(params: {
       currency: params.currency || 'CNY',
       displayOrder: params.displayOrder || 0,
     },
+  })
+}
+
+export async function setUserPointsBalanceByAdmin(params: {
+  targetUserId: string
+  adminUserId: string
+  adminEmail: string
+  targetBalance: number
+  reason: string
+  requestId: string
+}) {
+  const reason = params.reason.trim()
+  const targetBalance = toInternalPoints(params.targetBalance)
+
+  if (!Number.isFinite(params.targetBalance) || params.targetBalance < 0) {
+    throw new Error('调整后的积分不能小于 0')
+  }
+  if (Math.abs(params.targetBalance * POINTS_SCALE - targetBalance) > 0.000001) {
+    throw new Error('积分最多支持 1 位小数')
+  }
+  if (params.targetBalance > 1_000_000) {
+    throw new Error('调整后的积分不能超过 1,000,000')
+  }
+  if (reason.length < 2 || reason.length > 200) {
+    throw new Error('调整原因需要填写 2–200 个字符')
+  }
+
+  const idempotencyKey = `admin-adjustment:${params.adminUserId}:${params.targetUserId}:${params.requestId}`
+
+  return prisma.$transaction(async (tx) => {
+    const existingEntry = await tx.pointsLedgerEntry.findUnique({
+      where: { idempotencyKey },
+    })
+    if (existingEntry) return existingEntry
+
+    const targetUser = await tx.user.findUnique({
+      where: { id: params.targetUserId },
+      select: { id: true, email: true, pointsBalance: true },
+    })
+    if (!targetUser) {
+      throw new Error('用户不存在')
+    }
+
+    const pointsDelta = targetBalance - targetUser.pointsBalance
+    if (pointsDelta === 0) {
+      throw new Error('调整后的积分与当前余额相同')
+    }
+
+    await tx.user.update({
+      where: { id: targetUser.id },
+      data: { pointsBalance: targetBalance },
+    })
+
+    return tx.pointsLedgerEntry.create({
+      data: {
+        userId: targetUser.id,
+        type: PointsLedgerType.ADMIN_ADJUSTMENT,
+        pointsDelta,
+        balanceAfter: targetBalance,
+        idempotencyKey,
+        referenceType: 'admin_manual_adjustment',
+        referenceId: params.adminUserId,
+        metadata: {
+          pointsUnit: 'new',
+          reason,
+          adjustedByUserId: params.adminUserId,
+          adjustedByEmail: params.adminEmail,
+          targetUserEmail: targetUser.email,
+          previousBalance: toDisplayPoints(targetUser.pointsBalance),
+          targetBalance: toDisplayPoints(targetBalance),
+        },
+      },
+    })
+  }, {
+    isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
   })
 }
 
