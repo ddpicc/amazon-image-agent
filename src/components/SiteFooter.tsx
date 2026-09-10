@@ -5,6 +5,7 @@ const quickLinks = [
   { href: '/amazon', label: '做 Amazon 图片' },
   { href: '/playground', label: '单张自由生成' },
   { href: '/compliance', label: '平台合规体检' },
+  { href: '/1688', label: '1688 商品找图' },
   { href: '/points', label: '积分中心' },
   { href: '/history', label: '我的历史' },
 ]

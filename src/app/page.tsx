@@ -37,19 +37,30 @@ const entries = [
     accent: 'from-emerald-100/60 via-teal-50 to-white',
     iconTone: 'bg-emerald-100 text-emerald-600',
   },
+  {
+    href: '/1688',
+    icon: 'link',
+    eyebrow: '货源复刻',
+    title: '1688 商品链接找图',
+    description: '输入 1688 商品链接或 offerid，获取商品图片并勾选需要使用的图片，再进入 Amazon 图片工作流。',
+    bullets: ['支持链接或 offerid', '勾选最多五张商品图', '继续分析并生成 Amazon 图片'],
+    accent: 'from-violet-200/60 via-fuchsia-50 to-white',
+    iconTone: 'bg-violet-100 text-violet-600',
+  },
+  {
+    href: '/competitor-strategy',
+    icon: 'chart',
+    eyebrow: '视觉策略',
+    title: '竞品图片策略分析',
+    description: '同时拆解销售任务与审美表达，提炼值得参考的版式、配色和文案，并形成有差异的图片策略。',
+    bullets: ['识别逐图销售任务与顺序', '评价审美并提炼可参考元素', '对比我方证据并形成差异策略'],
+    accent: 'from-cyan-100/60 via-sky-50 to-white',
+    iconTone: 'bg-cyan-100 text-cyan-600',
+  },
 ]
 
 // 即将上线的工作流入口：先占位展示。上线时把对应项搬进上面的 entries 数组即可。
 const upcomingEntries = [
-  {
-    icon: 'link',
-    eyebrow: '货源复刻',
-    title: '1688 / 淘宝链接生图',
-    description: '粘贴 1688 或淘宝商品链接，先获取商品信息和图片，再进入后续图片生成流程。',
-    bullets: ['解析 1688 商品 offerid', '获取商品标题与全部图片', '后续接入 AI 生图流程'],
-    accent: 'from-violet-200/60 via-fuchsia-50 to-white',
-    iconTone: 'bg-violet-100 text-violet-600',
-  },
   {
     icon: 'photo',
     eyebrow: 'Temu 工作流',
@@ -58,15 +69,6 @@ const upcomingEntries = [
     bullets: ['符合 Temu 图片规格', '商品分析 + 提示词生成', '支持整套图与单张精修'],
     accent: 'from-rose-100/60 via-orange-50 to-white',
     iconTone: 'bg-rose-100 text-rose-600',
-  },
-  {
-    icon: 'chart',
-    eyebrow: '视觉策略',
-    title: '竞品图片策略分析',
-    description: '分析竞品商品图的结构、卖点表达与视觉差异，帮助你规划更有竞争力的图片方案。',
-    bullets: ['拆解竞品图片分工', '识别视觉同质化问题', '输出差异化图片策略'],
-    accent: 'from-cyan-100/60 via-sky-50 to-white',
-    iconTone: 'bg-cyan-100 text-cyan-600',
   },
 ]
 

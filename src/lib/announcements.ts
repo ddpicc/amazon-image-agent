@@ -80,6 +80,23 @@ export async function getLatestAnnouncement() {
   })
 }
 
+// 通知页列表：所有已发布的公告（含历史），到开始时间的排在里面，按时间倒序。
+export async function getPublishedAnnouncements(now = new Date()) {
+  return prisma.announcement.findMany({
+    where: {
+      publishedAt: { not: null },
+      OR: [
+        { startsAt: null },
+        { startsAt: { lte: now } },
+      ],
+    },
+    orderBy: [
+      { publishedAt: 'desc' },
+      { createdAt: 'desc' },
+    ],
+  })
+}
+
 export async function saveAnnouncement(input: SaveAnnouncementInput) {
   const title = input.title.trim()
   const body = input.body.trim()
@@ -118,6 +135,7 @@ export async function saveAnnouncement(input: SaveAnnouncementInput) {
         endsAt,
         ctaLabel,
         ctaHref,
+        publishedAt: isActive ? new Date() : null,
       },
     }),
   ])

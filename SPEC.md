@@ -26,12 +26,13 @@
 | `/amazon` | 商品分析 → 提示词 → 整套 listing 图 / 单张图 / A+ 模块图 | Amazon 分析成功 5/次、普通图片成功 10/张；A+ 分析成功 5/次、A+ 图片成功 15/张 |
 | `/playground` | 单张自由生成（提示词 + 参考图 + 尺寸） | `playground` 10/张 |
 | `/compliance` | 上传 1–6 张图片后，按 Amazon / Temu 和美国 / 澳大利亚市场做四类图片合规与视觉 IP 风险初筛 | - |
+| `/1688` | 输入 1688 商品链接或 offerid，勾选商品图后进入 Amazon 图片工作流 | 与 `/amazon` 相同 |
+| `/competitor-strategy` | 输入 Amazon ASIN 或上传 1–9 张竞品图，拆解逐图销售任务、图序、重复卖点、我方视觉证据缺口与差异化图组 | - |
 | `/history` | 生成历史与分析记录回看 | - |
 | `/points` | 积分中心：余额、账单、兑换码、充值、邀请返励 | - |
 | `/login` `/register` | 登录注册（邮箱验证码） | - |
 
-**首页占位中的规划入口**（`src/app/page.tsx` 的 `upcomingEntries`）：
-做 Temu 图片、1688 / 拼多多链接生图、图片处理工具箱（抠白底 / 精修 / 多平台尺寸适配 / 图内文案翻译）。
+**首页占位中的规划入口**（`src/app/page.tsx` 的 `upcomingEntries`）：做 Temu 图片。
 
 ## 4. 后台（`/admin`）
 
@@ -67,6 +68,7 @@
 
 - 分析：`POST /api/analyze/stream`、`POST /api/analyze/prompts`、`GET /api/analyze/[analysisId]`
 - 合规：`POST /api/compliance/scan`（1–6 张图片 + 平台 + 市场 + 图片角色，返回四类初筛结果）
+- 竞品图片策略：`POST /api/competitor-strategy/analyze`（竞品必填、我方可选，两者均支持站点 + ASIN 或上传图片；返回销售任务、审美参考、视觉证据缺口和差异化策略）
 - 生图：`POST /api/generate`、`POST /api/generate/stream`、`GET /api/generate/[requestId]`
 - Worker 回调：`POST /api/image-worker/callback/[requestId]`
 - 下载：`GET /api/download`
@@ -81,7 +83,7 @@
 
 ## 8. 环境变量
 
-见 `.env.example`：`DATABASE_URL`、`APP_SECRET`、`PROVIDER_KEY_ENCRYPTION_KEY`、`APP_BASE_URL`、`IMAGE_WORKER_BASE_URL` / `IMAGE_WORKER_API_KEY` / `IMAGE_WORKER_TIMEOUT_MS`、`RESEND_API_KEY` / `RESEND_FROM`、`COS_*`、`ADMIN_EMAIL` / `ADMIN_PASSWORD`（seed 用）。图片合规的 `PANGOL_SCRAPEAPI_API_KEY`（外观专利 WIPO 检索，Pangol ScrapeAPI）为可选；未配置时接口会返回检索不完整状态，不影响平台图片体检。
+见 `.env.example`：`DATABASE_URL`、`APP_SECRET`、`PROVIDER_KEY_ENCRYPTION_KEY`、`APP_BASE_URL`、`IMAGE_WORKER_BASE_URL` / `IMAGE_WORKER_API_KEY` / `IMAGE_WORKER_TIMEOUT_MS`、`RESEND_API_KEY` / `RESEND_FROM`、`COS_*`、`ADMIN_EMAIL` / `ADMIN_PASSWORD`（seed 用）。Amazon 商品读取优先使用 `CANOPY_API_KEY`，失败时回退到 `PANGOL_SCRAPEAPI_API_KEY`；后者还用于图片合规的外观专利 WIPO 检索。
 
 ## 9. 常用脚本
 

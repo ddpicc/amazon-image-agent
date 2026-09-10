@@ -8,6 +8,7 @@ const userNavLinks = [
   { href: '/', label: '首页' },
   { href: '/history', label: '我的历史' },
   { href: '/points', label: '积分中心' },
+  { href: '/notifications', label: '通知' },
 ]
 
 const adminNavLinks = [

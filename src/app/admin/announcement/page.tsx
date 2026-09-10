@@ -15,7 +15,7 @@ export default async function AdminAnnouncementPage() {
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">管理员</div>
             <h1 className="mt-2 text-3xl font-semibold text-slate-950">登录公告</h1>
-            <p className="mt-2 text-sm text-slate-500">为普通用户配置登录后首页弹出的公告信息。</p>
+            <p className="mt-2 text-sm text-slate-500">为普通用户配置首次访问时弹出的公告，历史公告会保留在通知页。</p>
           </div>
           <Link href="/admin" className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900">
             返回工作台

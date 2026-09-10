@@ -5,6 +5,7 @@
 - 登录注册与多用户隔离
 - 商品分析与 Prompt 套餐生成
 - Amazon 工作流与自由生图页
+- 竞品 ASIN / 图片销售策略拆解与差异化图组建议
 - 通过 `amazon-image-worker` 统一中转图片生成
 - 生图结果统一上传腾讯云 COS
 - 用户历史页与管理员生图调用记录页
@@ -25,6 +26,14 @@
   - 先跑分析，再生成 Prompt 套餐，再做单张或整套图
 - `/playground`
   - 独立测试提示词、尺寸、比例和参考图
+- `/1688`
+  - 输入 1688 商品链接或 offerid，获取并展示商品图片
+  - 勾选最多五张图片后，直接进入现有 Amazon 分析、Prompt 和生图工作流
+- `/competitor-strategy`
+  - 竞品通过 Amazon 站点 + ASIN 自动读取图集，或按商品页顺序上传 1–9 张图片
+  - 我方商品为可选输入，支持同样的站点 + ASIN 或上传图片方式，无需填写已有卖点
+  - 识别逐图销售任务、图序、信息密度和反复卖点，并评价版式、配色、文案等审美表现
+  - 提炼竞品中值得参考的表达方式，同时输出视觉证据缺口和差异化图片策略
 - `/history`
   - 普通用户查看自己的分析记录和生图记录
 - `/admin/image-records`
@@ -65,6 +74,12 @@ COS_REGION=ap-guangzhou
 COS_BUCKET=your-bucket-name
 COS_PUBLIC_BASE_URL=https://your-bucket-name.cos.ap-guangzhou.myqcloud.com
 
+# Canopy API（ASIN 商品读取首选）
+CANOPY_API_KEY=your_canopy_api_key
+
+# Pangol ScrapeAPI（ASIN 商品读取备用、WIPO 外观专利检索）
+PANGOL_SCRAPEAPI_API_KEY=your_pangol_scrapeapi_key
+
 # Optional bootstrap admin
 ADMIN_EMAIL=admin@example.com
 ADMIN_PASSWORD=change_me_please
@@ -76,6 +91,8 @@ ADMIN_PASSWORD=change_me_please
 - `PROVIDER_KEY_ENCRYPTION_KEY` 用于加密数据库里的上游 provider key
 - `IMAGE_WORKER_BASE_URL` 和 `IMAGE_WORKER_API_KEY` 用于把生图任务提交到 `amazon-image-worker` 的 OpenAI-compatible 图片接口
 - `RESEND_API_KEY` 和 `RESEND_FROM` 用于注册邮箱验证码发送
+- `CANOPY_API_KEY` 用于按 Amazon ASIN 优先读取商品标题和图集；Canopy 未配置或读取失败时自动回退到 Pangol
+- `PANGOL_SCRAPEAPI_API_KEY` 用于 Amazon 商品读取兜底，并供合规体检检索 WIPO 外观专利
 - 文本 provider 仍通过数据库维护
 - 运行时不读取 `TEXT_KEY`、`TEXT_URL`、`TEXT_MODEL` 这类环境变量
 - 图片 provider 改由 `amazon-image-worker` 自己维护
@@ -166,6 +183,7 @@ npm run dev
 都会要求登录，分析结果会落库，供 `/history` 回看。
 - 文本分析、Prompt 生成从数据库读取 text provider，按优先级顺序 fallback。
 - `/compliance` 只需上传 1–6 张图片，提供 Amazon / Temu、美国 / 澳大利亚和主图 / 辅图选项，检查平台图片规范、图片内文字与 Logo、外观设计专利相似性、版权与素材风险；结果会写入脱敏后的 AI 操作审计，不要求输入品牌名、标题、关键词或描述。外观专利和视觉 IP 结果均为初步风险筛查，不能替代法律意见。
+- `/competitor-strategy` 的竞品输入支持站点 + ASIN 自动取图或上传图片；我方商品为可选，并支持相同的两种输入方式。结果同时拆解每张图的销售任务、整套顺序、重复卖点和审美表现；可以参考竞品中有效的版式、配色、构图与文案，但每项参考都要给出差异化处理。提供我方图片时会比较视觉证据缺口；未提供时只输出待核对项，不断言我方一定缺少。
 
 ## 常用脚本
 

@@ -184,20 +184,22 @@ model TextProvider {
 }
 
 model Announcement {
-  id        String    @id @default(cuid())
-  title     String
-  body      String
-  isActive  Boolean   @default(false)
-  startsAt  DateTime?
-  endsAt    DateTime?
-  ctaLabel  String?
-  ctaHref   String?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id          String    @id @default(cuid())
+  title       String
+  body        String
+  isActive    Boolean   @default(false)
+  startsAt    DateTime?
+  endsAt      DateTime?
+  ctaLabel    String?
+  ctaHref     String?
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@index([isActive, updatedAt])
   @@index([startsAt])
   @@index([endsAt])
+  @@index([publishedAt])
 }
 
 model ImageGenerationRequest {

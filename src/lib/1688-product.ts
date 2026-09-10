@@ -13,7 +13,7 @@ const TITLE_KEYS = [
   '商品名称',
 ]
 
-const IMAGE_KEY_PATTERN = /image|img|pic|photo|picture|gallery|thumbnail|thumb|主图|详情图|sku/i
+const OFFER_IMAGES_KEY = 'offerimages'
 
 export interface Product1688Result {
   offerId: string
@@ -32,15 +32,18 @@ interface JustOneResponse {
 function getRequiredEnv(name: string): string {
   const value = process.env[name]?.trim()
   if (!value) {
-    throw new Error(`${name} environment variable is not set`)
+    throw new Error('商品图片服务尚未配置，请联系管理员。')
   }
   return value
 }
 
 export function extract1688OfferId(sourceUrl: string): string | null {
+  const normalizedInput = sourceUrl.trim()
+  if (/^\d+$/.test(normalizedInput)) return normalizedInput
+
   let parsedUrl: URL
   try {
-    parsedUrl = new URL(sourceUrl.trim())
+    parsedUrl = new URL(normalizedInput)
   } catch {
     return null
   }
@@ -74,37 +77,41 @@ function normalizeUrl(value: string): string | null {
   }
 }
 
-function looksLikeImageUrl(value: string): boolean {
-  const normalized = normalizeUrl(value)
-  if (!normalized) return false
-
-  try {
-    const parsed = new URL(normalized)
-    return /\.(?:jpe?g|png|webp|gif|avif)(?:$|\?)/i.test(parsed.pathname + parsed.search)
-      || /image|img|pic|photo|picture|alicdn|1688|taobao|tbcdn/i.test(parsed.hostname + parsed.pathname)
-  } catch {
-    return false
-  }
-}
-
-function collectImageUrls(value: unknown, imageContext: boolean, output: string[]): void {
+function collectNestedStrings(value: unknown, output: string[]): void {
   if (typeof value === 'string') {
-    if (imageContext || looksLikeImageUrl(value)) {
-      const normalized = normalizeUrl(value)
-      if (normalized && !output.includes(normalized)) output.push(normalized)
-    }
+    output.push(value)
     return
   }
 
   if (Array.isArray(value)) {
-    value.forEach((item) => collectImageUrls(item, imageContext, output))
+    value.forEach((item) => collectNestedStrings(item, output))
     return
   }
 
   if (!value || typeof value !== 'object') return
 
+  Object.values(value).forEach((nestedValue) => collectNestedStrings(nestedValue, output))
+}
+
+function findOfferImages(value: unknown, output: string[]): void {
+  if (!value || typeof value !== 'object') return
+
+  if (Array.isArray(value)) {
+    value.forEach((item) => findOfferImages(item, output))
+    return
+  }
+
   Object.entries(value).forEach(([key, nestedValue]) => {
-    collectImageUrls(nestedValue, imageContext || IMAGE_KEY_PATTERN.test(key), output)
+    if (normalizeFieldName(key) === OFFER_IMAGES_KEY) {
+      const candidates: string[] = []
+      collectNestedStrings(nestedValue, candidates)
+      candidates.forEach((candidate) => {
+        const normalized = normalizeUrl(candidate)
+        if (normalized && !output.includes(normalized)) output.push(normalized)
+      })
+      return
+    }
+    findOfferImages(nestedValue, output)
   })
 }
 
@@ -138,34 +145,34 @@ function findTitle(value: unknown): string | null {
   return null
 }
 
-function getProviderErrorMessage(code: number | string | undefined, message: string | null | undefined): string {
+function getProviderErrorMessage(code: number | string | undefined, _message: string | null | undefined): string {
   const normalizedCode = String(code ?? '')
   const knownMessages: Record<string, string> = {
-    '100': 'JustOneAPI Token 无效或已失效',
-    '101': 'JustOneAPI Token 无效或未激活',
+    '100': '商品图片服务认证失败，请联系管理员',
+    '101': '商品图片服务尚未激活，请联系管理员',
     '301': '1688 商品采集失败，请稍后重试',
-    '302': 'JustOneAPI 请求频率已达到限制，请稍后重试',
-    '303': 'JustOneAPI 今日配额已用完',
+    '302': '商品图片读取过于频繁，请稍后重试',
+    '303': '商品图片服务今日额度已用完',
     '400': '1688 商品查询参数无效',
     '404': '未找到对应的 1688 商品',
-    '600': '当前 JustOneAPI Token 没有该接口权限',
-    '601': 'JustOneAPI 账户余额不足',
-    '602': 'JustOneAPI Token 的消费额度已达到上限',
+    '600': '商品图片服务暂无读取权限，请联系管理员',
+    '601': '商品图片服务余额不足，请联系管理员',
+    '602': '商品图片服务额度已达到上限，请联系管理员',
   }
-  return message?.trim() || knownMessages[normalizedCode] || `JustOneAPI 返回错误（code ${normalizedCode || 'unknown'}）`
+  return knownMessages[normalizedCode] || `商品图片服务返回错误（code ${normalizedCode || 'unknown'}）`
 }
 
-function parseProviderResponse(body: JustOneResponse, offerId: string, sourceUrl: string): Product1688Result {
+export function parseProviderResponse(body: JustOneResponse, offerId: string, sourceUrl: string): Product1688Result {
   if (String(body.code) !== '0') {
     throw new Error(getProviderErrorMessage(body.code, body.message))
   }
 
   const images: string[] = []
-  collectImageUrls(body.data, false, images)
+  findOfferImages(body.data, images)
   const title = findTitle(body.data) || `1688 商品 ${offerId}`
 
   if (!images.length) {
-    throw new Error('接口调用成功，但暂未识别到商品图片，请检查 JustOneAPI 返回数据。')
+    throw new Error('没有找到可用的商品图片，请稍后重试或换个商品。')
   }
 
   return {
@@ -179,8 +186,12 @@ function parseProviderResponse(body: JustOneResponse, offerId: string, sourceUrl
 export async function fetch1688Product(sourceUrl: string): Promise<Product1688Result> {
   const offerId = extract1688OfferId(sourceUrl)
   if (!offerId) {
-    throw new Error('请输入有效的 1688 商品链接，例如 https://detail.1688.com/offer/123456789.html')
+    throw new Error('请输入有效的 1688 商品链接或 offerid。')
   }
+
+  const normalizedSourceUrl = /^\d+$/.test(sourceUrl.trim())
+    ? `https://detail.1688.com/offer/${offerId}.html`
+    : sourceUrl.trim()
 
   const token = getRequiredEnv('JUSTONE_API_TOKEN')
   const baseUrl = (process.env.JUSTONE_API_BASE_URL || 'https://api.justoneapi.com').replace(/\/$/, '')
@@ -199,26 +210,26 @@ export async function fetch1688Product(sourceUrl: string): Promise<Product1688Re
     })
     const contentLength = Number(response.headers.get('content-length') || 0)
     if (contentLength > MAX_RESPONSE_BYTES) {
-      throw new Error('JustOneAPI 返回数据过大，已停止处理')
+      throw new Error('商品图片服务返回数据过大，已停止处理')
     }
 
     const rawBody = await response.text()
     if (Buffer.byteLength(rawBody, 'utf8') > MAX_RESPONSE_BYTES) {
-      throw new Error('JustOneAPI 返回数据过大，已停止处理')
+      throw new Error('商品图片服务返回数据过大，已停止处理')
     }
 
     let body: JustOneResponse
     try {
       body = JSON.parse(rawBody) as JustOneResponse
     } catch {
-      throw new Error(`JustOneAPI 返回了无法识别的数据（HTTP ${response.status}）`)
+      throw new Error(`商品图片服务返回了无法识别的数据（HTTP ${response.status}）`)
     }
 
     if (!response.ok) {
-      throw new Error(getProviderErrorMessage(body.code, body.message) || `JustOneAPI 请求失败（HTTP ${response.status}）`)
+      throw new Error(getProviderErrorMessage(body.code, body.message) || `商品图片服务请求失败（HTTP ${response.status}）`)
     }
 
-    return parseProviderResponse(body, offerId, sourceUrl.trim())
+    return parseProviderResponse(body, offerId, normalizedSourceUrl)
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
       throw new Error('1688 商品查询超过 120 秒未完成，请稍后重试')

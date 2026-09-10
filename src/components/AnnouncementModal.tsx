@@ -16,36 +16,24 @@ interface AnnouncementModalProps {
 
 export default function AnnouncementModal({ announcement, isLoggedIn }: AnnouncementModalProps) {
   const [isOpen, setIsOpen] = useState(false)
-  const [hideForToday, setHideForToday] = useState(false)
 
-  const hideForTodayKey = useMemo(() => {
-    return announcement ? `announcement:hidden-on:${announcement.id}` : ''
+  // 每条公告只弹一次：首次看到时弹出，关闭后记录，不再打扰；历史公告统一在通知页查看。
+  const seenKey = useMemo(() => {
+    return announcement ? `announcement:seen:${announcement.id}` : ''
   }, [announcement])
 
-  const today = () => {
-    const date = new Date()
-    const month = String(date.getMonth() + 1).padStart(2, '0')
-    const day = String(date.getDate()).padStart(2, '0')
-    return `${date.getFullYear()}-${month}-${day}`
-  }
-
   useEffect(() => {
-    if (!announcement || !isLoggedIn || !hideForTodayKey) {
+    if (!announcement || !isLoggedIn || !seenKey) {
       setIsOpen(false)
       return
     }
 
-    setHideForToday(false)
-    setIsOpen(window.localStorage.getItem(hideForTodayKey) !== today())
-  }, [announcement, hideForTodayKey, isLoggedIn])
+    setIsOpen(window.localStorage.getItem(seenKey) === null)
+  }, [announcement, seenKey, isLoggedIn])
 
   const handleClose = () => {
-    if (hideForTodayKey) {
-      if (hideForToday) {
-        window.localStorage.setItem(hideForTodayKey, today())
-      } else {
-        window.localStorage.removeItem(hideForTodayKey)
-      }
+    if (seenKey) {
+      window.localStorage.setItem(seenKey, '1')
     }
     setIsOpen(false)
   }
@@ -80,16 +68,10 @@ export default function AnnouncementModal({ announcement, isLoggedIn }: Announce
           <button type="button" onClick={handleClose} className="inline-flex items-center justify-center rounded-full border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-950">
             我知道了
           </button>
+          <Link href="/notifications" onClick={handleClose} className="text-sm text-slate-500 underline-offset-4 transition hover:text-slate-900 hover:underline">
+            查看全部通知
+          </Link>
         </div>
-        <label className="mt-5 flex w-fit cursor-pointer items-center gap-2 text-sm text-slate-500">
-          <input
-            type="checkbox"
-            checked={hideForToday}
-            onChange={(event) => setHideForToday(event.target.checked)}
-            className="h-4 w-4 rounded border-slate-300"
-          />
-          今日不再显示
-        </label>
       </div>
     </div>
   )

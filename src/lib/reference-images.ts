@@ -3,6 +3,9 @@ import { StoredReferenceImage } from '@/lib/amazon-workflow'
 
 // 与 COS 桶的生命周期规则保持一致：参考图上传 30 天后会被自动清理。
 export const REFERENCE_IMAGE_RETENTION_DAYS = 30
+const IMPORT_IMAGE_TIMEOUT_MS = 30_000
+const MAX_IMPORTED_IMAGE_BYTES = 10 * 1024 * 1024
+const SUPPORTED_IMPORTED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
 
 export function areReferenceImagesExpired(createdAt: Date | string, now = new Date()): boolean {
   const created = typeof createdAt === 'string' ? new Date(createdAt) : createdAt
@@ -85,6 +88,36 @@ export async function createReferenceImagePayloadsFromUrls(urls: string[], maxIm
       }
     }),
   )
+}
+
+export async function downloadReferenceImageFiles(urls: string[], maxImages = 5): Promise<File[]> {
+  return Promise.all(urls.slice(0, maxImages).map(async (url, index) => {
+    const parsedUrl = new URL(url)
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) throw new Error('1688 商品图片地址无效，请重新获取商品图片。')
+
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), IMPORT_IMAGE_TIMEOUT_MS)
+    try {
+      const response = await fetch(parsedUrl, { cache: 'no-store', signal: controller.signal })
+      if (!response.ok) throw new Error(`第 ${index + 1} 张 1688 商品图片读取失败。`)
+
+      const mimeType = (response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase()
+      if (!SUPPORTED_IMPORTED_IMAGE_TYPES.has(mimeType)) throw new Error(`第 ${index + 1} 张 1688 商品图片格式不受支持。`)
+
+      const contentLength = Number(response.headers.get('content-length') || 0)
+      if (contentLength > MAX_IMPORTED_IMAGE_BYTES) throw new Error(`第 ${index + 1} 张 1688 商品图片超过 10 MB。`)
+      const buffer = await response.arrayBuffer()
+      if (buffer.byteLength > MAX_IMPORTED_IMAGE_BYTES) throw new Error(`第 ${index + 1} 张 1688 商品图片超过 10 MB。`)
+
+      const extension = getExtensionFromMediaType(mimeType)
+      return new File([buffer], `1688-reference-${index + 1}.${extension}`, { type: mimeType })
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') throw new Error(`第 ${index + 1} 张 1688 商品图片读取超时。`)
+      throw error
+    } finally {
+      clearTimeout(timeout)
+    }
+  }))
 }
 
 export async function uploadReferenceImagesForGeneration(params: {

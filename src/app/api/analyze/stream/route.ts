@@ -1,16 +1,18 @@
 import { NextRequest } from 'next/server'
 import { completeAiOperation, getAiOperationExpiryDate, startAiOperation } from '@/lib/ai-operations'
+import { verify1688SelectionToken } from '@/lib/1688-selection-token'
 import { requireApiUser } from '@/lib/auth'
 import { analyzeProduct } from '@/lib/anthropic'
 import { AMAZON_REFERENCE_IMAGE_LIMIT, StoredReferenceImage } from '@/lib/amazon-workflow'
 import { ensureSufficientPointsForAnalysisByScene, saveSuccessfulAnalysisWithCharge } from '@/lib/points'
 import { prisma } from '@/lib/prisma'
-import { createReferenceImagePayloadsFromFiles, uploadReferenceImagesForAnalysis } from '@/lib/reference-images'
+import { createReferenceImagePayloadsFromFiles, downloadReferenceImageFiles, uploadReferenceImagesForAnalysis } from '@/lib/reference-images'
 
 export const dynamic = 'force-dynamic'
 
 type StreamEvent =
   | { type: 'analysis-created'; analysisId: string }
+  | { type: 'references-stored'; referenceImages: StoredReferenceImage[] }
   | { type: 'stage'; stage: 'preparing' | 'analyzing' | 'prompting' | 'completed'; label: string; progress: number }
   | { type: 'partial-analysis'; data: Awaited<ReturnType<typeof analyzeProduct>> }
   | { type: 'warning'; message: string }
@@ -84,10 +86,36 @@ export async function POST(request: NextRequest) {
         const additionalRequirements = ((formData.get('additionalRequirements') as string) || '').trim()
         const category = formData.get('category') as string
         const targetAudience = formData.get('targetAudience') as string
-        const referenceImages = [
+        const uploadedReferenceImages = [
           ...formData.getAll('referenceImages'),
           ...(!formData.get('referenceImage') ? [] : [formData.get('referenceImage')]),
         ].filter((item): item is File => item instanceof File)
+        const source1688Token = String(formData.get('source1688Token') || '')
+        const source1688ImageIndexesValue = String(formData.get('source1688ImageIndexes') || '[]')
+        let importedReferenceImages: File[] = []
+        let source1688OfferId: string | null = null
+
+        if (source1688Token) {
+          const sourceProduct = verify1688SelectionToken(source1688Token, user.id)
+          source1688OfferId = sourceProduct.offerId
+          let selectedIndexes: number[]
+          try {
+            const parsedIndexes = JSON.parse(source1688ImageIndexesValue) as unknown
+            selectedIndexes = Array.isArray(parsedIndexes)
+              ? Array.from(new Set(parsedIndexes.filter((item): item is number => Number.isInteger(item) && item >= 0 && item < sourceProduct.images.length))).slice(0, AMAZON_REFERENCE_IMAGE_LIMIT)
+              : []
+          } catch {
+            selectedIndexes = []
+          }
+          if (!selectedIndexes.length) throw new Error('请至少选择一张 1688 商品图片。')
+          importedReferenceImages = await downloadReferenceImageFiles(
+            selectedIndexes.map((index) => sourceProduct.images[index]),
+            AMAZON_REFERENCE_IMAGE_LIMIT,
+          )
+        }
+
+        const referenceImages = [...importedReferenceImages, ...uploadedReferenceImages]
+          .slice(0, AMAZON_REFERENCE_IMAGE_LIMIT)
 
         operationId = (await startAiOperation({
           userId: user.id,
@@ -100,6 +128,8 @@ export async function POST(request: NextRequest) {
             category: category || 'General',
             targetAudience: targetAudience || 'General consumers',
             referenceImageCount: referenceImages.length,
+            referenceSource: source1688OfferId ? '1688' : 'upload',
+            source1688OfferId,
           },
           requestSnapshot: {
             productName,
@@ -107,6 +137,8 @@ export async function POST(request: NextRequest) {
             additionalRequirements,
             category: category || 'General',
             targetAudience: targetAudience || 'General consumers',
+            referenceSource: source1688OfferId ? '1688' : 'upload',
+            source1688OfferId,
             referenceImages: referenceImages.map((image, index) => ({
               index,
               name: image.name,
@@ -170,6 +202,7 @@ export async function POST(request: NextRequest) {
           files: referenceImages,
           maxImages: AMAZON_REFERENCE_IMAGE_LIMIT,
         })
+        push({ type: 'references-stored', referenceImages: storedReferenceImages })
         const imagePayloads = await createReferenceImagePayloadsFromFiles(referenceImages, AMAZON_REFERENCE_IMAGE_LIMIT)
 
         await prisma.analysisRecord.update({

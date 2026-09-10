@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import ImageModelSelector from '@/components/ImageModelSelector'
-import ProductInput from '@/components/ProductInput'
+import ProductInput, { type ProductInputInitialSource } from '@/components/ProductInput'
 import LoadingSpinner, { SkeletonBlock } from '@/components/LoadingSpinner'
 import {
   APlusPromptGenerationResult,
@@ -109,8 +109,9 @@ function formatElapsedTime(durationMs: number) {
 }
 
 interface AnalyzeStreamEvent {
-  type: 'analysis-created' | 'stage' | 'partial-analysis' | 'warning' | 'error' | 'done'
+  type: 'analysis-created' | 'references-stored' | 'stage' | 'partial-analysis' | 'warning' | 'error' | 'done'
   analysisId?: string
+  referenceImages?: StoredReferenceImage[]
   stage?: Exclude<AnalysisStage, 'idle' | 'error'>
   label?: string
   progress?: number
@@ -124,6 +125,8 @@ interface AnalyzeFormInput {
   description: string
   additionalRequirements: string
   referenceImages: File[]
+  source1688Token?: string
+  source1688ImageIndexes?: number[]
 }
 
 const imageTypeOptions: ImageTypeOption[] = [
@@ -516,10 +519,14 @@ export default function AmazonPage({
   initialResumeState,
   initialPointsBalance,
   imageModels,
+  initialSourceProduct = null,
+  onBackToSource,
 }: {
   initialResumeState: AmazonResumeState | null
   initialPointsBalance: number
   imageModels: ImageModelOption[]
+  initialSourceProduct?: ProductInputInitialSource | null
+  onBackToSource?: () => void
 }) {
   const [referenceImages, setReferenceImages] = useState<File[]>([])
   const [storedReferenceImages, setStoredReferenceImages] = useState<StoredReferenceImage[]>(initialResumeState?.referenceImages || [])
@@ -1260,6 +1267,10 @@ export default function AmazonPage({
       data.referenceImages.slice(0, AMAZON_REFERENCE_IMAGE_LIMIT).forEach((image) => {
         formData.append('referenceImages', image)
       })
+      if (data.source1688Token && data.source1688ImageIndexes?.length) {
+        formData.append('source1688Token', data.source1688Token)
+        formData.append('source1688ImageIndexes', JSON.stringify(data.source1688ImageIndexes))
+      }
 
       const response = await fetch('/api/analyze/stream', {
         method: 'POST',
@@ -1293,6 +1304,12 @@ export default function AmazonPage({
           if (event.type === 'analysis-created' && event.analysisId) {
             analysisId = event.analysisId
             setAnalysisId(event.analysisId)
+            continue
+          }
+
+          if (event.type === 'references-stored' && event.referenceImages) {
+            setStoredReferenceImages(event.referenceImages)
+            if (data.source1688Token) setReferenceImages([])
             continue
           }
 
@@ -1820,6 +1837,9 @@ export default function AmazonPage({
               <h1 className="text-xl font-semibold text-slate-950">Amazon 图片工作流</h1>
             </div>
           </div>
+          {onBackToSource && (
+            <button type="button" onClick={onBackToSource} className="cursor-pointer rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition-colors hover:border-violet-300 hover:text-violet-700">返回选择 1688 图片</button>
+          )}
         </div>
       </header>
 
@@ -1859,7 +1879,7 @@ export default function AmazonPage({
         <div>
           <section className="space-y-6">
             {currentStep === 'input' && (
-              <ProductInput onAnalyze={handleAnalyze} isLoading={isAnalyzing} analysisCostText={amazonAnalysisCostText} />
+              <ProductInput initialSource={initialSourceProduct} onAnalyze={handleAnalyze} isLoading={isAnalyzing} analysisCostText={amazonAnalysisCostText} />
             )}
 
             {currentStep === 'analysis' && (

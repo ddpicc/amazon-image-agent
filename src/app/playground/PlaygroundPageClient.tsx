@@ -386,9 +386,9 @@ export default function PlaygroundPage({
                     key={option.value}
                     type="button"
                     onClick={() => setSize(option.value)}
-                    className={`rounded-2xl border p-4 text-left transition ${size === option.value ? 'border-amazon-orange bg-orange-50 shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+                    className={`whitespace-nowrap rounded-2xl border px-3 py-2.5 text-center text-sm font-medium transition ${size === option.value ? 'border-amazon-orange bg-orange-50 shadow-sm text-amazon-orange' : 'border-slate-200 bg-white text-slate-800 hover:border-slate-300'}`}
                   >
-                    <div className="text-sm font-medium text-slate-800">{option.label}</div>
+                    {option.label}
                   </button>
                 ))}
               </div>
