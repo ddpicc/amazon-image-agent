@@ -32,6 +32,14 @@ async function main() {
   const apiKey = requireEnv('PROVIDER_API_KEY')
   const priority = Number(process.env.PROVIDER_PRIORITY || '100')
   const enabled = (process.env.PROVIDER_ENABLED || 'true') === 'true'
+  const configuredRoutingRole = process.env.PROVIDER_ROUTING_ROLE
+  const allowedRoutingRoles = new Set(['AUTO', 'FALLBACK', 'FORCED_FALLBACK'])
+  if (configuredRoutingRole && !allowedRoutingRoles.has(configuredRoutingRole)) {
+    throw new Error('PROVIDER_ROUTING_ROLE must be AUTO, FALLBACK, or FORCED_FALLBACK')
+  }
+  const routingRole = model.trim().toLowerCase() === 'glm-5.3-flash'
+    ? 'FORCED_FALLBACK'
+    : configuredRoutingRole || null
 
   const provider = await prisma.textProvider.upsert({
     where: { name },
@@ -42,6 +50,7 @@ async function main() {
       priority,
       enabled,
       apiKeyCiphertext: encryptSecret(apiKey),
+      ...(routingRole ? { routingRole } : {}),
     },
     create: {
       name,
@@ -51,6 +60,7 @@ async function main() {
       priority,
       enabled,
       apiKeyCiphertext: encryptSecret(apiKey),
+      routingRole: routingRole || 'AUTO',
     },
   })
 

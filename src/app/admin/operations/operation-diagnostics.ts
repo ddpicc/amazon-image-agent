@@ -89,10 +89,10 @@ function getDiagnosticHint(error: string | null, stage: string, status: string) 
 export function getOperationDiagnostic(operation: DiagnosticOperation, now = Date.now()): OperationDiagnostic {
   const failedAttempts = operation.attempts.filter((attempt) => attempt.status === 'FAILED')
   const lastFailedAttempt = failedAttempts.length > 0 ? failedAttempts[failedAttempts.length - 1] : null
-  const error = operation.errorMessage
+  const error = lastFailedAttempt?.errorMessage
+    || operation.errorMessage
     || operation.imageGenerationRequest?.errorMessage
     || operation.analysisRecord?.errorMessage
-    || lastFailedAttempt?.errorMessage
     || null
   const stage = getFailureStage(operation, lastFailedAttempt)
   const createdAt = new Date(operation.createdAt).getTime()

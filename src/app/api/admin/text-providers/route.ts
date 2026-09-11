@@ -17,6 +17,7 @@ export async function POST(request: NextRequest) {
       model: typeof body.model === 'string' ? body.model : '',
       priority: Number(body.priority),
       enabled: Boolean(body.enabled),
+      routingRole: typeof body.routingRole === 'string' ? body.routingRole : undefined,
       apiKey: typeof body.apiKey === 'string' ? body.apiKey : '',
     })
 
@@ -25,6 +26,7 @@ export async function POST(request: NextRequest) {
       name: provider.name,
       priority: provider.priority,
       enabled: provider.enabled,
+      routingRole: provider.routingRole,
     })
   } catch (error) {
     return NextResponse.json(

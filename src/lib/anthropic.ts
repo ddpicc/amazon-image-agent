@@ -1,18 +1,14 @@
 import OpenAI from 'openai'
-import { requestTextJsonCompletion } from '@/lib/text-model'
+import {
+  requestTextJsonCompletion,
+  type TextModelStatusEvent,
+  type TextOperationContext,
+} from '@/lib/text-model'
 import { AMAZON_DEFAULT_RENDER_SIZE } from '@/lib/image-options'
 import {
   AMAZON_REFERENCE_IMAGE_LIMIT,
   AmazonAnalysisStageResult,
 } from '@/lib/amazon-workflow'
-
-interface TextOperationContext {
-  operationId?: string
-  sourcePage?: string
-  entryPoint?: string
-  phase?: string
-  totalTimeoutMs?: number
-}
 
 export type AmazonImageType = 'main-white' | 'lifestyle' | 'infographic' | 'detail' | 'size'
 export type RecommendedPlanType =
@@ -38,6 +34,7 @@ export interface AnalyzeProductInput {
   operationId?: string
   sourcePage?: string
   entryPoint?: string
+  onTextModelStatus?: (event: TextModelStatusEvent) => void
 }
 
 export interface RecommendedImagePlanItem {
@@ -281,6 +278,7 @@ export async function analyzeProduct(input: AnalyzeProductInput): Promise<Analyz
     operationId,
     sourcePage = 'amazon',
     entryPoint = '/api/analyze/stream',
+    onTextModelStatus,
   } = input
 
   const content: any[] = [
@@ -336,6 +334,7 @@ export async function analyzeProduct(input: AnalyzeProductInput): Promise<Analyz
     operationId,
     sourcePage,
     entryPoint,
+    onStatus: onTextModelStatus,
   })
 
   try {

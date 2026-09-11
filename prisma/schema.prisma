@@ -84,6 +84,12 @@ enum AiProviderType {
   IMAGE
 }
 
+enum TextProviderRoutingRole {
+  AUTO
+  FALLBACK
+  FORCED_FALLBACK
+}
+
 model User {
   id                      String                   @id @default(cuid())
   email                   String                   @unique
@@ -172,6 +178,7 @@ model TextProvider {
   model            String
   priority         Int      @default(100)
   enabled          Boolean  @default(true)
+  routingRole      TextProviderRoutingRole @default(AUTO)
   apiKeyCiphertext String
   failureCount     Int      @default(0)
   lastFailureAt    DateTime?

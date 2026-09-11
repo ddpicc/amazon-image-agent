@@ -229,6 +229,45 @@ export async function POST(request: NextRequest) {
           operationId: operationId ?? undefined,
           sourcePage: 'amazon',
           entryPoint: '/api/analyze/stream',
+          onTextModelStatus: (event) => {
+            if (event.type === 'attempt-started') {
+              push({
+                type: 'stage',
+                stage: 'analyzing',
+                label: event.routePhase === 'fallback'
+                  ? `正在用 ${event.model} 备用模型分析商品和参考图`
+                  : `正在用 ${event.model} 分析商品和参考图`,
+                progress: event.routePhase === 'fallback' ? 60 : 45,
+              })
+              return
+            }
+
+            if (event.type === 'provider-switch') {
+              push({
+                type: 'stage',
+                stage: 'analyzing',
+                label: `${event.fromModel} 调用失败，正在尝试 ${event.toModel}`,
+                progress: 52,
+              })
+              return
+            }
+
+            const fallbackLabel = event.reason === 'primary-timeout'
+              ? `${event.fromModel || '主模型'} 分析超时，正在切换 ${event.toModel}`
+              : `前序模型均调用失败，正在切换 ${event.toModel}`
+            push({
+              type: 'stage',
+              stage: 'analyzing',
+              label: fallbackLabel,
+              progress: 58,
+            })
+            push({
+              type: 'warning',
+              message: event.reason === 'primary-timeout'
+                ? `${event.fromModel || '主模型'} 分析超过 5 分钟，已切换 ${event.toModel} 备用模型。`
+                : `前序模型均调用失败，已切换 ${event.toModel} 备用模型。`,
+            })
+          },
         })
 
         await saveSuccessfulAnalysisWithCharge({

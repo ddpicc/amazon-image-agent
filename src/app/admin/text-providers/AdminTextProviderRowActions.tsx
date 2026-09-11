@@ -7,8 +7,10 @@ interface AdminTextProviderRowActionsProps {
   provider: {
     id: string
     name: string
+    model: string
     priority: number
     enabled: boolean
+    routingRole: 'AUTO' | 'FALLBACK' | 'FORCED_FALLBACK'
   }
   canMoveUp: boolean
   canMoveDown: boolean
@@ -16,11 +18,14 @@ interface AdminTextProviderRowActionsProps {
 
 export default function AdminTextProviderRowActions({ provider, canMoveUp, canMoveDown }: AdminTextProviderRowActionsProps) {
   const router = useRouter()
+  const isForcedFallbackModel = provider.model.trim().toLowerCase() === 'glm-5.3-flash'
   const [priority, setPriority] = useState(String(provider.priority))
+  const [routingRole, setRoutingRole] = useState(provider.routingRole)
   const [newApiKey, setNewApiKey] = useState('')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [isSavingPriority, setIsSavingPriority] = useState(false)
+  const [isSavingRoutingRole, setIsSavingRoutingRole] = useState(false)
   const [isMovingUp, setIsMovingUp] = useState(false)
   const [isMovingDown, setIsMovingDown] = useState(false)
   const [isTogglingEnabled, setIsTogglingEnabled] = useState(false)
@@ -78,6 +83,30 @@ export default function AdminTextProviderRowActions({ provider, canMoveUp, canMo
       setError(err instanceof Error ? err.message : '移动 provider 失败')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleRoutingRoleSave = async () => {
+    setIsSavingRoutingRole(true)
+    resetFeedback()
+
+    try {
+      const response = await fetch(`/api/admin/text-providers/${provider.id}/routing-role`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ routingRole }),
+      })
+      const payload = await response.json()
+      if (!response.ok) {
+        throw new Error(payload.error || '更新路由角色失败')
+      }
+
+      setMessage('路由角色已更新')
+      router.refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '更新路由角色失败')
+    } finally {
+      setIsSavingRoutingRole(false)
     }
   }
 
@@ -182,6 +211,17 @@ export default function AdminTextProviderRowActions({ provider, canMoveUp, canMo
           <button type="button" onClick={handlePrioritySave} disabled={isSavingPriority} className="inline-flex rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-900 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400">
             {isSavingPriority ? '保存中...' : '保存优先级'}
           </button>
+          <label className="min-w-[180px] flex-1">
+            <div className="mb-1 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">Routing role</div>
+            <select value={routingRole} onChange={(e) => setRoutingRole(e.target.value as typeof routingRole)} className="input-field" disabled={isForcedFallbackModel}>
+              <option value="AUTO">按优先级执行</option>
+              <option value="FALLBACK">普通备用</option>
+              <option value="FORCED_FALLBACK" disabled={!isForcedFallbackModel}>强制备用</option>
+            </select>
+          </label>
+          <button type="button" onClick={handleRoutingRoleSave} disabled={isSavingRoutingRole || isForcedFallbackModel} className="inline-flex rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-900 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400">
+            {isSavingRoutingRole ? '保存中...' : '保存角色'}
+          </button>
           <button type="button" onClick={handleEnabledToggle} disabled={isTogglingEnabled} className={`inline-flex rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:bg-slate-400 ${provider.enabled ? 'bg-slate-700 hover:bg-slate-800' : 'bg-amazon-blue hover:bg-blue-600'}`}>
             {isTogglingEnabled ? '处理中...' : (provider.enabled ? '禁用' : '启用')}
           </button>
@@ -204,6 +244,18 @@ export default function AdminTextProviderRowActions({ provider, canMoveUp, canMo
           {isRotatingKey ? '更新中...' : '轮换 API Key'}
         </button>
       </div>
+
+      {isForcedFallbackModel && (
+        <div className="rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-800">
+          `glm-5.3-flash` 由系统固定作为强制备用，不能改为普通路由角色。
+        </div>
+      )}
+
+      {!isForcedFallbackModel && (
+        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs leading-5 text-slate-500">
+          AUTO 与普通备用都按 Priority 排序参与主阶段；只有强制备用会在主阶段 5 分钟预算耗尽后执行。
+        </div>
+      )}
 
       {message && <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{message}</div>}
       {error && <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
