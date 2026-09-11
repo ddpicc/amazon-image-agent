@@ -126,7 +126,9 @@ export async function createQueuedImageGenerationRequest(params: {
 }) {
   const resolvedModel = await resolveImageModelForGeneration(params.model, params.billingScene)
   await ensureSufficientPointsForGeneration(params.userId, resolvedModel.costInternal)
-  const executionPrompt = `${params.prompt}\n\n${IMAGE_TEXT_CONSTRAINT}`
+  const executionPrompt = params.sourcePage === 'playground'
+    ? params.prompt
+    : `${params.prompt}\n\n${IMAGE_TEXT_CONSTRAINT}`
 
   const operation = await startAiOperation({
     userId: params.userId,
