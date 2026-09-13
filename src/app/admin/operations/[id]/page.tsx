@@ -47,19 +47,19 @@ function formatBudget(value: unknown) {
 
 function formatRoutePhase(value: unknown) {
   if (value === 'primary') return '主路由'
-  if (value === 'fallback') return 'GLM 备用路由'
+  if (value === 'fallback') return '备用路由'
   return '未记录'
 }
 
 function formatTimeoutScope(value: unknown) {
   if (value === 'primary-phase-total') return '主路由总预算'
-  if (value === 'fallback-phase-total') return 'GLM 备用总预算'
+  if (value === 'fallback-phase-total') return '备用路由总预算'
   return '未记录'
 }
 
 function formatNextAction(value: unknown) {
-  if (value === 'try-next-primary-provider') return '继续下一个 GPT Provider'
-  if (value === 'switch-to-glm-fallback') return '切换到 GLM 备用模型'
+  if (value === 'try-next-primary-provider') return '继续下一个普通 Provider'
+  if (value === 'switch-to-fallback' || value === 'switch-to-glm-fallback') return '切换到备用 Provider'
   if (value === 'complete') return '调用成功，完成请求'
   if (value === 'fail-request') return '无可用后续路由，结束请求'
   return '未记录'
@@ -147,6 +147,7 @@ export default async function AdminOperationDetailPage({
         select: {
           name: true,
           model: true,
+          routingRole: true,
         },
       })
     : []
@@ -168,12 +169,12 @@ export default async function AdminOperationDetailPage({
     : currentTextProviders.map((provider) => ({
         providerName: provider.name,
         model: provider.model,
-        role: provider.model.toLowerCase() === 'glm-5.3-flash' ? 'fallback' : 'primary',
+        role: provider.routingRole === 'FALLBACK' ? 'fallback' : 'primary',
       }))
-  const currentFallbackProvider = currentTextProviders.find((provider) => provider.model.toLowerCase() === 'glm-5.3-flash') || null
+  const currentFallbackProvider = currentTextProviders.find((provider) => provider.routingRole === 'FALLBACK') || null
   const fallbackAttempt = textAttempts.find((attempt) => {
     const routing = getRoutingSnapshot(attempt)
-    return routing?.routePhase === 'fallback' || attempt.model?.toLowerCase() === 'glm-5.3-flash'
+    return routing?.routePhase === 'fallback'
   }) || null
   const primaryTimedOut = textAttempts.some((attempt) => {
     const routing = getRoutingSnapshot(attempt)
@@ -183,16 +184,16 @@ export default async function AdminOperationDetailPage({
     /abort|timeout/i.test(attempt.errorMessage || '') && (attempt.durationMs || 0) >= 295000
   ))
   const textRouteOutcome = fallbackAttempt?.status === 'SUCCEEDED'
-    ? '主路由失败或超时后，GLM 备用模型调用成功'
+    ? '主路由失败或超时后，备用 Provider 调用成功'
     : fallbackAttempt?.status === 'FAILED'
-      ? '已切换 GLM 备用模型，但备用调用也失败'
+      ? '已切换备用 Provider，但备用调用也失败'
       : primaryTimedOut
-        ? '主路由总预算已耗尽，未记录到后续 GLM Attempt'
+        ? '主路由总预算已耗尽，未记录到后续备用 Attempt'
         : legacyFiveMinuteAbort
           ? '推断为主路由调用达到 5 分钟后被中止；旧记录没有保存后续路由原因'
           : textAttempts.some((attempt) => attempt.status === 'SUCCEEDED')
-            ? '主路由文本模型调用成功，未启用 GLM 备用模型'
-            : '文本模型调用失败，未记录到 GLM 备用 Attempt'
+            ? '主路由文本模型调用成功，未启用备用 Provider'
+            : '文本模型调用失败，未记录到备用 Provider Attempt'
   const linkedStatus = operation.imageGenerationRequest?.status || operation.analysisRecord?.status || null
   const normalizedLinkedStatus = linkedStatus === 'QUEUED' || linkedStatus === 'PROCESSING' ? 'STARTED' : linkedStatus
   const statusMismatch = normalizedLinkedStatus !== null && normalizedLinkedStatus !== operation.status
@@ -341,8 +342,8 @@ export default async function AdminOperationDetailPage({
               <div>
                 <dt className="text-slate-500">路由策略</dt>
                 <dd className="mt-1 font-medium text-slate-900">
-                  {firstTextRouting?.strategy === 'primary-budget-then-glm-fallback'
-                    ? '主路由共用总预算 → GLM 强制备用'
+                  {firstTextRouting?.strategy === 'primary-budget-then-fallback' || firstTextRouting?.strategy === 'primary-budget-then-glm-fallback'
+                    ? '普通 Provider 共用总预算 → 备用 Provider'
                     : '旧记录，未保存路由策略'}
                 </dd>
               </div>
@@ -361,7 +362,7 @@ export default async function AdminOperationDetailPage({
                 </dd>
               </div>
               <div>
-                <dt className="text-slate-500">GLM 备用</dt>
+                <dt className="text-slate-500">备用 Provider</dt>
                 <dd className="mt-1 font-medium text-slate-900">
                   {typeof firstTextRouting?.fallbackModel === 'string'
                     ? `${firstTextRouting.fallbackModel}（另有 ${formatBudget(firstTextRouting.phaseBudgetMs)}）`
@@ -390,11 +391,7 @@ export default async function AdminOperationDetailPage({
                 <div className="mt-3 flex flex-wrap gap-2">
                   {displayedCandidateProviders.map((candidate, index) => {
                     const isFallback = candidate.role === 'fallback' || candidate.role === 'forced-fallback'
-                    const roleLabel = candidate.role === 'forced-fallback'
-                      ? '（强制备用）'
-                      : candidate.role === 'fallback'
-                        ? '（普通备用）'
-                        : ''
+                    const roleLabel = isFallback ? '（备用）' : ''
                     return (
                       <span key={`${String(candidate.providerName)}-${index}`} className={`rounded-full px-3 py-1.5 text-xs font-medium ${isFallback ? 'bg-violet-50 text-violet-700 ring-1 ring-inset ring-violet-200' : 'bg-slate-100 text-slate-700'}`}>
                         {index + 1}. {String(candidate.providerName || '-')} · {String(candidate.model || '-')} {roleLabel}

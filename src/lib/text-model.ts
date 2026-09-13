@@ -4,12 +4,11 @@ import {
   listCandidateTextProviders,
   markTextProviderFailure,
   markTextProviderSuccess,
-  getEffectiveTextProviderRoutingRole,
 } from '@/lib/text-providers'
 import { completeAiOperationAttempt, startAiOperationAttempt } from '@/lib/ai-operations'
 
 const DEFAULT_TEXT_PROVIDER_TOTAL_TIMEOUT_MS = 5 * 60 * 1000
-const TEXT_PROVIDER_ROUTE_STRATEGY = 'primary-budget-then-glm-fallback'
+const TEXT_PROVIDER_ROUTE_STRATEGY = 'primary-budget-then-fallback'
 
 const TEXT_SERVICE_UNAVAILABLE_MESSAGE = '网站暂不可用，请稍后再试。'
 let textRequestSequence = 0
@@ -106,13 +105,9 @@ export async function requestTextJsonCompletion(
   const startedAt = Date.now()
   const failures: string[] = []
   const totalTimeoutMs = operationContext?.totalTimeoutMs || DEFAULT_TEXT_PROVIDER_TOTAL_TIMEOUT_MS
-  const providersWithEffectiveRoles = providers.map((provider) => ({
-    ...provider,
-    routingRole: getEffectiveTextProviderRoutingRole(provider),
-  }))
-  const forcedFallbackProviders = providersWithEffectiveRoles.filter((provider) => provider.routingRole === TextProviderRoutingRole.FORCED_FALLBACK)
-  const fallbackProvider = forcedFallbackProviders[0]
-  const primaryProviders = providersWithEffectiveRoles.filter((provider) => provider.routingRole !== TextProviderRoutingRole.FORCED_FALLBACK)
+  const primaryProviders = providers.filter((provider) => provider.routingRole === TextProviderRoutingRole.AUTO)
+  const fallbackProviders = providers.filter((provider) => provider.routingRole === TextProviderRoutingRole.FALLBACK)
+  const fallbackProvider = fallbackProviders[0]
   const imagePartCount = content.filter((part) => part.type === 'image_url').length
   const textCharCount = content
     .filter((part): part is OpenAI.Chat.Completions.ChatCompletionContentPartText => part.type === 'text')
@@ -188,7 +183,7 @@ export async function requestTextJsonCompletion(
         candidateProviders: providers.map((candidate) => ({
           providerName: candidate.name,
           model: candidate.model,
-          role: candidate.routingRole === TextProviderRoutingRole.FORCED_FALLBACK ? 'forced-fallback' : candidate.routingRole === TextProviderRoutingRole.FALLBACK ? 'fallback' : 'auto',
+          role: candidate.routingRole === TextProviderRoutingRole.FALLBACK ? 'fallback' : 'primary',
         })),
         phaseBudgetMs: totalTimeoutMs,
         remainingPhaseBudgetMs,
@@ -314,7 +309,7 @@ export async function requestTextJsonCompletion(
         const nextAction = nextProvider
           ? 'try-next-primary-provider'
           : willSwitchToFallback
-            ? 'switch-to-glm-fallback'
+            ? 'switch-to-fallback'
             : 'fail-request'
 
         console.warn('[text-model] attempt:failed', {
@@ -393,7 +388,7 @@ export async function requestTextJsonCompletion(
       })
     }
 
-    const fallbackResult = await runProviderPhase(forcedFallbackProviders, 'fallback')
+    const fallbackResult = await runProviderPhase(fallbackProviders, 'fallback')
     if (fallbackResult.response !== null) return fallbackResult.response
   }
 

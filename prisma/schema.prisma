@@ -87,7 +87,6 @@ enum AiProviderType {
 enum TextProviderRoutingRole {
   AUTO
   FALLBACK
-  FORCED_FALLBACK
 }
 
 model User {

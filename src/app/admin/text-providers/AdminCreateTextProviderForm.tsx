@@ -10,13 +10,12 @@ export default function AdminCreateTextProviderForm() {
   const [baseUrl, setBaseUrl] = useState('')
   const [model, setModel] = useState('gpt-5.4')
   const [priority, setPriority] = useState('100')
-  const [routingRole, setRoutingRole] = useState<'AUTO' | 'FALLBACK' | 'FORCED_FALLBACK'>('AUTO')
+  const [routingRole, setRoutingRole] = useState<'AUTO' | 'FALLBACK'>('AUTO')
   const [enabled, setEnabled] = useState(true)
   const [apiKey, setApiKey] = useState('')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const isForcedFallbackModel = model.trim().toLowerCase() === 'glm-5.3-flash'
 
   const handleSubmit = async () => {
     setIsSubmitting(true)
@@ -79,9 +78,6 @@ export default function AdminCreateTextProviderForm() {
           onChange={(e) => {
             const nextModel = e.target.value
             setModel(nextModel)
-            if (nextModel.trim().toLowerCase() !== 'glm-5.3-flash' && routingRole === 'FORCED_FALLBACK') {
-              setRoutingRole('AUTO')
-            }
           }}
           className="input-field"
           placeholder="模型，例如 gpt-5.4"
@@ -90,9 +86,8 @@ export default function AdminCreateTextProviderForm() {
         <label>
           <div className="mb-1 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">Routing role</div>
           <select value={routingRole} onChange={(e) => setRoutingRole(e.target.value as typeof routingRole)} className="input-field">
-            <option value="AUTO">按优先级执行</option>
-            <option value="FALLBACK">普通备用</option>
-            <option value="FORCED_FALLBACK" disabled={!isForcedFallbackModel}>强制备用（仅 glm-5.3-flash）</option>
+            <option value="AUTO">普通 Provider</option>
+            <option value="FALLBACK">备用 Provider</option>
           </select>
         </label>
         <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
@@ -103,7 +98,7 @@ export default function AdminCreateTextProviderForm() {
           <input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} className="input-field" placeholder="输入 API key（保存后不可回看）" autoComplete="new-password" />
         </div>
       </div>
-      <p className="mt-3 text-xs leading-5 text-slate-500">AUTO、普通备用都会在 5 分钟主阶段内按 Priority（数字越小越优先）依次尝试；只有 `glm-5.3-flash` 会在主阶段结束后作为强制备用。</p>
+      <p className="mt-3 text-xs leading-5 text-slate-500">普通 Provider 按 Priority（数字越小越优先）依次尝试；主路由 5 分钟超时或全部快速失败后，切换备用 Provider。</p>
       <button type="button" onClick={handleSubmit} disabled={isSubmitting} className="mt-4 inline-flex rounded-full bg-amazon-orange px-4 py-2 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-slate-400">
         {isSubmitting ? '创建中...' : '创建 Provider'}
       </button>

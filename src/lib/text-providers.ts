@@ -8,8 +8,6 @@ const PROVIDER_VENDOR_MAX_LENGTH = 64
 const PROVIDER_MODEL_MAX_LENGTH = 128
 const PROVIDER_PRIORITY_MAX = 100000
 const PROVIDER_API_KEY_MAX_LENGTH = 4096
-const FORCED_FALLBACK_MODEL = 'glm-5.3-flash'
-
 export interface TextProviderClientConfig {
   id?: string
   name: string
@@ -20,11 +18,7 @@ export interface TextProviderClientConfig {
   routingRole: TextProviderRoutingRole
 }
 
-export function isForcedTextFallbackModel(model: string) {
-  return model.trim().toLowerCase() === FORCED_FALLBACK_MODEL
-}
-
-function normalizeRoutingRole(value: unknown, model: string): TextProviderRoutingRole {
+function normalizeRoutingRole(value: unknown): TextProviderRoutingRole {
   const normalizedValue = typeof value === 'string' ? value.trim().toUpperCase() : ''
   const role = normalizedValue === ''
     ? TextProviderRoutingRole.AUTO
@@ -36,20 +30,7 @@ function normalizeRoutingRole(value: unknown, model: string): TextProviderRoutin
     throw new Error('routingRole is invalid')
   }
 
-  if (role === TextProviderRoutingRole.FORCED_FALLBACK && !isForcedTextFallbackModel(model)) {
-    throw new Error('只有 glm-5.3-flash 可以设置为强制备用 Provider')
-  }
-
-  return isForcedTextFallbackModel(model) ? TextProviderRoutingRole.FORCED_FALLBACK : role
-}
-
-export function getEffectiveTextProviderRoutingRole(provider: {
-  model: string
-  routingRole: TextProviderRoutingRole
-}) {
-  return isForcedTextFallbackModel(provider.model)
-    ? TextProviderRoutingRole.FORCED_FALLBACK
-    : provider.routingRole
+  return role
 }
 
 function getCooldownUntil() {
@@ -144,7 +125,7 @@ export async function listCandidateTextProviders(): Promise<TextProviderClientCo
     baseURL: provider.baseUrl,
     model: provider.model,
     apiKey: decryptSecret(provider.apiKeyCiphertext),
-    routingRole: getEffectiveTextProviderRoutingRole(provider),
+    routingRole: provider.routingRole,
   }))
 }
 
@@ -163,7 +144,7 @@ export async function createTextProvider(input: {
   const baseUrl = normalizeBaseUrl(input.baseUrl)
   const model = normalizeText(input.model, 'model', PROVIDER_MODEL_MAX_LENGTH)
   const priority = normalizePriority(input.priority)
-  const routingRole = normalizeRoutingRole(input.routingRole, model)
+  const routingRole = normalizeRoutingRole(input.routingRole)
   const apiKeyCiphertext = encryptSecret(normalizeApiKey(input.apiKey))
   const enabled = Boolean(input.enabled)
 
@@ -191,7 +172,7 @@ export async function updateTextProviderRoutingRole(providerId: string, routingR
     throw new Error('Provider not found')
   }
 
-  const routingRole = normalizeRoutingRole(routingRoleValue, provider.model)
+  const routingRole = normalizeRoutingRole(routingRoleValue)
   const updated = await prisma.textProvider.update({
     where: { id: providerId },
     data: { routingRole },
@@ -199,7 +180,7 @@ export async function updateTextProviderRoutingRole(providerId: string, routingR
 
   return {
     id: updated.id,
-    routingRole: getEffectiveTextProviderRoutingRole(updated),
+    routingRole: updated.routingRole,
   }
 }
 

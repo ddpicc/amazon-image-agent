@@ -6,7 +6,6 @@ import AdminTextProviderRowActions from '@/app/admin/text-providers/AdminTextPro
 import { requireAdmin } from '@/lib/auth'
 import { formatNullableDateTimeInBeijing } from '@/lib/date'
 import { prisma } from '@/lib/prisma'
-import { getEffectiveTextProviderRoutingRole } from '@/lib/text-providers'
 
 function getProviderState(provider: {
   enabled: boolean
@@ -48,7 +47,7 @@ function ProviderSection(props: {
     model: string
     priority: number
     enabled: boolean
-    routingRole: 'AUTO' | 'FALLBACK' | 'FORCED_FALLBACK'
+    routingRole: 'AUTO' | 'FALLBACK'
     failureCount: number
     lastFailureAt: Date | null
     lastSuccessAt: Date | null
@@ -60,7 +59,7 @@ function ProviderSection(props: {
     recentErrorMessage: string | null
   }>
   createForm: ReactNode
-  rowActions: (provider: { id: string; name: string; model: string; priority: number; enabled: boolean; routingRole: 'AUTO' | 'FALLBACK' | 'FORCED_FALLBACK' }, canMoveUp: boolean, canMoveDown: boolean) => ReactNode
+  rowActions: (provider: { id: string; name: string; model: string; priority: number; enabled: boolean; routingRole: 'AUTO' | 'FALLBACK' }, canMoveUp: boolean, canMoveDown: boolean) => ReactNode
 }) {
   const { title, description, emptyText, providers, createForm, rowActions } = props
 
@@ -84,7 +83,7 @@ function ProviderSection(props: {
         <div className="flex items-center justify-between gap-4">
           <div>
             <h3 className="text-lg font-semibold text-slate-900">线路列表</h3>
-            <p className="mt-1 text-sm text-slate-500">优先级数字越小越优先；AUTO、普通备用按排序进入主阶段，`glm-5.3-flash` 固定为主阶段超时后的强制备用；如需删除，请先禁用该 provider。</p>
+            <p className="mt-1 text-sm text-slate-500">普通 Provider 按 Priority 顺序调用；主路由 5 分钟超时或全部快速失败后，切换到备用 Provider；如需删除，请先禁用该 provider。</p>
           </div>
         </div>
 
@@ -108,8 +107,8 @@ function ProviderSection(props: {
                         <span className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white">
                           Priority {provider.priority}
                         </span>
-                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${provider.routingRole === 'FORCED_FALLBACK' ? 'bg-violet-50 text-violet-700 ring-1 ring-inset ring-violet-200' : provider.routingRole === 'FALLBACK' ? 'bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200' : 'bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-200'}`}>
-                          {provider.routingRole === 'FORCED_FALLBACK' ? '强制备用' : provider.routingRole === 'FALLBACK' ? '普通备用' : '按优先级执行'}
+                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${provider.routingRole === 'FALLBACK' ? 'bg-violet-50 text-violet-700 ring-1 ring-inset ring-violet-200' : 'bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-200'}`}>
+                          {provider.routingRole === 'FALLBACK' ? '备用 Provider' : '普通 Provider'}
                         </span>
                       </div>
 
@@ -230,7 +229,7 @@ export default async function AdminProvidersPage() {
 
     return {
       ...provider,
-      routingRole: getEffectiveTextProviderRoutingRole(provider),
+      routingRole: provider.routingRole,
       requestCount24h: relatedAttempts.length,
       successCount24h: relatedAttempts.filter((item) => item.status === AttemptStatus.SUCCEEDED).length,
       avgDurationMs24h: (() => {
