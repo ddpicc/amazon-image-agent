@@ -4,7 +4,6 @@ import {
   type TextModelStatusEvent,
   type TextOperationContext,
 } from '@/lib/text-model'
-import { AMAZON_DEFAULT_RENDER_SIZE } from '@/lib/image-options'
 import {
   AMAZON_REFERENCE_IMAGE_LIMIT,
   AmazonAnalysisStageResult,
@@ -90,17 +89,10 @@ export interface GeneratePromptsOutput {
     title: string
     visualForm: string
     prompt: string
-    displayPrompt: string
-    size: string
-    enabled: boolean
   }>
 }
 
-export interface GenerateAPlusPromptOutput extends GeneratePromptsOutput {
-  imageSpec: {
-    size: '1536x960'
-  }
-}
+export type GenerateAPlusPromptOutput = GeneratePromptsOutput
 
 export interface PromptGenerationProgress {
   key: string
@@ -330,7 +322,7 @@ export async function analyzeProduct(input: AnalyzeProductInput): Promise<Analyz
     })
   }
 
-  const responseText = await requestJsonChatCompletion(content, 2048, {
+  const responseText = await requestJsonChatCompletion(content, 5000, {
     operationId,
     sourcePage,
     entryPoint,
@@ -726,10 +718,10 @@ export async function generateAPlusPrompt(
   analysisSummary = '',
   operationId?: string,
   amazonGallery?: {
-    items?: Array<{ slotId: string; title: string; visualForm: string; enabled: boolean }>
+    items?: Array<{ slotId: string; title: string; visualForm: string }>
   } | null,
 ): Promise<GenerateAPlusPromptOutput> {
-  const amazonGallerySummary = amazonGallery?.items?.filter((item) => item.enabled).map((item) =>
+  const amazonGallerySummary = amazonGallery?.items?.map((item) =>
     `${item.slotId}｜${item.title}｜${item.visualForm}`,
   ).join('\n') || 'Amazon 图组编排信息不可用，请基于前置分析保守生成。'
   const content: any[] = [
@@ -830,9 +822,6 @@ A+ 应该与这些副图属于同一套视觉系统，但承担更深的解释�
         'aplus-grid': gridPrompt,
         'aplus-lifestyle': lifestylePrompt,
       },
-      imageSpec: {
-        size: '1536x960',
-      },
     }
   } catch {
     return {
@@ -842,9 +831,6 @@ A+ 应该与这些副图属于同一套视觉系统，但承担更深的解释�
         'aplus-transform': APLUS_DEFAULT_PROMPTS['aplus-transform'],
         'aplus-grid': APLUS_DEFAULT_PROMPTS['aplus-grid'],
         'aplus-lifestyle': APLUS_DEFAULT_PROMPTS['aplus-lifestyle'],
-      },
-      imageSpec: {
-        size: '1536x960',
       },
     }
   }
@@ -943,9 +929,6 @@ interface AdaptiveGalleryItem {
   title: string
   visualForm: string
   prompt: string
-  displayPrompt: string
-  size: string
-  enabled: boolean
 }
 
 const ADAPTIVE_SECONDARY_SLOTS: AdaptiveGallerySlotId[] = [
@@ -965,81 +948,54 @@ const ADAPTIVE_FALLBACK_ITEMS: AdaptiveGalleryItem[] = [
     title: '白底主图',
     visualForm: 'white-background-product-shot',
     prompt: '为 Amazon listing 生成白底主图，只展示参考图中真实存在的售卖主体，纯白背景，商品完整清晰、比例自然、边缘干净，保留真实颜色、结构、数量和配件，不添加文字、人物、道具、价格、促销标签、水印或虚构功能。',
-    displayPrompt: '生成一张 Amazon 商品详情页白底主图，只展示参考图中真实存在的商品主体。使用纯白背景，商品完整清晰、比例自然、边缘干净，保留真实颜色、结构、数量和配件。不添加文字、人物、道具、价格、促销标签、水印或虚构功能。',
-    size: AMAZON_DEFAULT_RENDER_SIZE,
-    enabled: true,
   },
   {
     slotId: 'secondary-1',
     title: '核心利益与使用场景',
     visualForm: 'benefit-led-lifestyle',
     prompt: '为 Amazon listing 生成一张有生活感、真实可信的核心利益与使用场景图：先让用户看懂产品适合谁、解决什么问题，再用一个自然的场景和明确的使用动作表现这个结果。产品必须保持参考图中的外观、颜色、结构和数量，并且是清晰的视觉主角；如果商品的真实使用对象需要出现在画面中，可以自然加入相应的用户、婴儿、儿童或照护者，让人物帮助说明尺度、动作和情绪，不要把人物默认设为禁用。不得虚构功能、配件、参数或安全效果；图片内不得出现中文，如需文字只能使用简短准确英文，无法保证英文准确时不要放文字。',
-    displayPrompt: '生成一张有生活感、真实可信的 Amazon 商品核心利益与使用场景图：先让用户看懂产品适合谁、解决什么问题，再用一个自然的场景和明确的使用动作表现这个结果。产品必须保持参考图中的外观、颜色、结构和数量，并且是清晰的视觉主角。如果商品的真实使用对象需要出现在画面中，可以自然加入相应的用户、婴儿、儿童或照护者，让人物帮助说明尺度、动作和情绪，不要把人物默认设为禁用。不得虚构功能、配件、参数或安全效果；图片内不得出现中文，如需文字只能使用简短准确英文，无法保证英文准确时不要放文字。',
-    size: AMAZON_DEFAULT_RENDER_SIZE,
-    enabled: true,
   },
   {
     slotId: 'secondary-2',
     title: '关键细节',
     visualForm: 'detail-close-up',
     prompt: '为 Amazon listing 生成一张产品细节展示图，突出参考图中可以确认的材质、纹理、做工或结构，保持产品真实比例和外观，不虚构接口、按钮、材料或性能，画面清晰克制，图片内不得出现中文，如需文字只使用简短准确英文。',
-    displayPrompt: '生成一张 Amazon 商品细节展示图，突出参考图中可以确认的材质、纹理、做工或结构。保持产品真实比例和外观，不虚构接口、按钮、材料或性能，画面清晰克制；图片内不得出现中文，如需文字只使用简短准确英文。',
-    size: AMAZON_DEFAULT_RENDER_SIZE,
-    enabled: true,
   },
   {
     slotId: 'secondary-3',
     title: '尺寸与比例',
     visualForm: 'size-context',
     prompt: '为 Amazon listing 生成一张尺寸与比例认知图，只使用已知或可从参考图确认的尺寸信息；如果没有精确尺寸，不要添加数字标注，改用自然且保守的摆放关系帮助理解大小，避免误导性比例，图片内不得出现中文，如需文字只使用简短准确英文。',
-    displayPrompt: '生成一张 Amazon 商品尺寸与比例认知图，只使用已知或能从参考图确认的尺寸信息。如果没有精确尺寸，不要添加数字标注，改用自然、保守的摆放关系帮助理解大小，避免误导性比例；图片内不得出现中文，如需文字只使用简短准确英文。',
-    size: AMAZON_DEFAULT_RENDER_SIZE,
-    enabled: true,
   },
   {
     slotId: 'secondary-4',
     title: '功能卖点',
     visualForm: 'feature-infographic',
     prompt: '为 Amazon listing 生成一张克制清晰的功能利益图：把商品描述或参考图能够支持的一个核心功能翻译成用户能感知的使用结果，最多保留两个辅助信息。产品仍是视觉中心，信息留白充足，不添加未经证实的参数、认证、效果或兼容性，图片内不得出现中文，如需文字只使用简短准确英文。',
-    displayPrompt: '生成一张克制清晰的 Amazon 商品功能利益图：把商品描述或参考图能够支持的一个核心功能翻译成用户能感知的使用结果，最多保留两个辅助信息。产品仍是视觉中心，信息留白充足，不添加未经证实的参数、认证、效果或兼容性；图片内不得出现中文，如需文字只使用简短准确英文。',
-    size: AMAZON_DEFAULT_RENDER_SIZE,
-    enabled: true,
   },
   {
     slotId: 'secondary-5',
     title: '包装与配件',
     visualForm: 'package-contents',
     prompt: '为 Amazon listing 生成一张包装内容展示图，只展示参考图或商品描述中明确存在的商品、配件和包装内容，排列清楚、背景简洁，不增加未确认的配件和数量，图片内不得出现中文，如需文字只使用简短准确英文。',
-    displayPrompt: '生成一张 Amazon 商品包装内容展示图，只展示参考图或商品描述中明确存在的商品、配件和包装内容。排列清楚、背景简洁，不增加未确认的配件和数量；图片内不得出现中文，如需文字只使用简短准确英文。',
-    size: AMAZON_DEFAULT_RENDER_SIZE,
-    enabled: false,
   },
   {
     slotId: 'secondary-6',
     title: '补充使用方式',
     visualForm: 'alternate-use',
     prompt: '为 Amazon listing 生成一张补充利益与使用方式图，展示与其他图片不同且能帮助用户理解商品的真实使用方式、关键动作、适用环境或可被事实支持的使用收益。产品保持参考图中的真实外观并且是视觉主角；如果目标用户需要出现在场景中，可以自然加入相应的用户、婴儿、儿童或照护者。画面要有明确叙事，不重复已有卖点，不虚构功能、参数或安全效果；图片内不得出现中文，如需文字只使用简短准确英文。',
-    displayPrompt: '生成一张 Amazon 商品补充利益与使用方式图，展示与其他图片不同且能帮助用户理解商品的真实使用方式、关键动作、适用环境或有事实依据的使用收益。产品保持参考图中的真实外观并且是视觉主角；如果目标用户需要出现在场景中，可以自然加入相应的用户、婴儿、儿童或照护者。画面要有明确叙事，不重复已有卖点，不虚构功能、参数或安全效果；图片内不得出现中文，如需文字只使用简短准确英文。',
-    size: AMAZON_DEFAULT_RENDER_SIZE,
-    enabled: false,
   },
   {
     slotId: 'secondary-7',
     title: '选择与适用信息',
     visualForm: 'choice-and-fit',
     prompt: '为 Amazon listing 生成一张选择与适用信息图，只表达商品描述或参考图明确支持的变体、规格、适用环境或选择建议，帮助用户快速选对。产品保持真实外观，信息层级清晰，图片内不得出现中文，如需文字只使用简短准确英文。',
-    displayPrompt: '生成一张 Amazon 商品选择与适用信息图，只表达商品描述或参考图明确支持的变体、规格、适用环境或选择建议，帮助用户快速选对。产品保持真实外观，信息层级清晰；图片内不得出现中文，如需文字只使用简短准确英文。',
-    size: AMAZON_DEFAULT_RENDER_SIZE,
-    enabled: false,
   },
   {
     slotId: 'secondary-8',
     title: '信任与包装收束',
     visualForm: 'trust-and-contents',
     prompt: '为 Amazon listing 生成一张信任与包装收束图，只展示参考图或商品描述明确支持的包装内容、配件、服务或品牌承诺，帮助用户完成购买前确认。画面克制真实，不添加未经证实的信息，图片内不得出现中文，如需文字只使用简短准确英文。',
-    displayPrompt: '生成一张 Amazon 商品信任与包装收束图，只展示参考图或商品描述明确支持的包装内容、配件、服务或品牌承诺，帮助用户完成购买前确认。画面克制真实，不添加未经证实的信息；图片内不得出现中文，如需文字只使用简短准确英文。',
-    size: AMAZON_DEFAULT_RENDER_SIZE,
-    enabled: false,
   },
 ]
 
@@ -1068,15 +1024,21 @@ function isLifestylePromptItem(item: AdaptiveGalleryItem) {
 }
 
 function buildAdaptiveFallbackResult(requiresTwoLifestyleScenes = false): GeneratePromptsOutput {
-  const items = ADAPTIVE_FALLBACK_ITEMS.map((item) => ({
-    ...item,
-    enabled: item.slotId === 'secondary-6' ? requiresTwoLifestyleScenes : item.enabled,
-  }))
+  const fallbackSlotIds: AdaptiveGallerySlotId[] = [
+    'main-white',
+    'secondary-1',
+    'secondary-2',
+    'secondary-3',
+    'secondary-4',
+    ...(requiresTwoLifestyleScenes ? ['secondary-6' as const] : []),
+  ]
+  const items = ADAPTIVE_FALLBACK_ITEMS
+    .filter((item) => fallbackSlotIds.includes(item.slotId))
+    .map(({ slotId, title, visualForm, prompt }) => ({ slotId, title, visualForm, prompt }))
   const suggestedPrompts = Object.fromEntries(
-    items.filter((item) => item.enabled).map((item) => [item.slotId, item.prompt]),
+    items.map((item) => [item.slotId, item.prompt]),
   )
   const recommendedImagePlan = items
-    .filter((item) => item.enabled)
     .map((item, index) => ({
       type: adaptiveTypeFromVisualForm(item.visualForm, item.slotId),
       index: item.slotId === 'main-white' ? 1 : index,
@@ -1126,14 +1088,14 @@ async function generateAdaptiveAmazonPrompts(
 用户补充要求：${additionalRequirements || '无'}
 前置分析结果：${analysisSummary || '无'}
 
-输出 1 张主图和 4-8 张副图。主图 slotId 必须是 main-white；副图依次使用 secondary-1 到 secondary-8。副图数量由你决定，但必须至少启用 4 张、最多启用 8 张。只有能增加新的购买信息时才启用更多副图。
+输出 1 张主图和 4-8 张副图。主图 slotId 必须是 main-white；副图依次使用 secondary-1 到 secondary-8。副图数量由你决定，但必须至少返回 4 张、最多返回 8 张。每个返回项都代表一张要生成的图片。
 
 先从真实信息中提炼：最值得点击的产品识别点、一个最强购买理由及其使用结果、买家最可能担心的尺寸/使用/质量/选择问题、商品适合的用户和场景，以及能够被图片证明的功能、细节和信任信息。
 
 编排要求：
 - 用买家从“愿意点击”到“理解价值、代入使用、消除疑虑、放心购买”的路径安排图片。主图负责产品识别和点击；副图优先依次覆盖最强利益点/使用结果、真实场景、痛点与解决方式、功能到利益点、细节证明、尺寸比例、变体选择或包装/信任信息。
-- 只要商品存在真实可理解的使用语境，secondary-1 必须是“核心利益与使用场景图”，enabled 必须为 true；不要用纯产品摆拍或纯功能卡片替代。如果商品确实不适合真实使用场景，可以把副图重点放在尺寸、细节、结构、卖点或包装信息上。
-- 如果商品的核心使用对象或购买理解依赖婴儿、儿童、家长、照护者或其他人物，secondary-6 必须是与 secondary-1 不同的“补充使用场景图”，enabled 必须为 true；例如婴儿旅行床应分别表现核心使用结果和另一种真实使用/照护场景。
+- 只要商品存在真实可理解的使用语境，secondary-1 必须是“核心利益与使用场景图”；不要用纯产品摆拍或纯功能卡片替代。如果商品确实不适合真实使用场景，可以把副图重点放在尺寸、细节、结构、卖点或包装信息上。
+- 如果商品的核心使用对象或购买理解依赖婴儿、儿童、家长、照护者或其他人物，必须返回 secondary-6 作为与 secondary-1 不同的“补充使用场景图”；例如婴儿旅行床应分别表现核心使用结果和另一种真实使用/照护场景。
 - 以上是角色优先级，不是固定模板。根据商品事实和购买疑问，从中选择最有价值的 4-8 张副图；没有依据的角色不要硬做，已有信息也不要重复。
 - 每张图只解决一个主要购买疑问，只保留一个核心结论和最多两个辅助信息。
 - 副图可以选择 hero 利益图、真实使用场景、痛点/解决方式、功能利益图、尺寸比例、结构细节、材质工艺、包装内容、变体选择或适用限制等表达形式；当多种功能或场景共同回答一个购买问题时，可以选择 2-4 格受控拼图、分区或连续动作画面，提高信息密度。
@@ -1149,7 +1111,7 @@ async function generateAdaptiveAmazonPrompts(
 - 拼图或分区不是默认模板：只有在多个功能、场景或动作能共同帮助用户比较和理解时才使用；控制在 2-4 个信息单元，保持一个共同购买问题、明确视觉主次、统一产品外观和足够留白。
 - 用户补充要求只能影响风格、场景和表达重点，不能覆盖真实性和上述限制。
 
-每项必须输出：slotId、title、visualForm、prompt、displayPrompt、size、enabled。prompt 是实际发送给生图模型的执行 Prompt，保持 main 风格的自然中文表达；图片内可见文字必须是准确简短英文，无法保证英文准确时不要放文字。displayPrompt 是给用户阅读和编辑的自然中文版本，必须完整保留产品事实和执行约束，不要省略或改变含义。不要输出策略解释、参考图使用建议或其他字段。普通 Amazon 图片 size 固定为 1600x1600。
+每项只输出：slotId、title、visualForm、prompt。prompt 是实际发送给 Worker 的唯一 Prompt，也是给用户阅读和编辑的 Prompt，保持自然中文表达；图片内可见文字必须是准确简短英文，无法保证英文准确时不要放文字。不要输出 enabled、size、displayPrompt、策略解释、参考图使用建议或其他字段。AI 返回几项，系统就生成几张图片。
 
 只输出 JSON：{"items":[...]}。`,
   }]
@@ -1162,7 +1124,7 @@ async function generateAdaptiveAmazonPrompts(
   }
 
   try {
-    const responseText = await requestJsonChatCompletion(content, 5000, {
+    const responseText = await requestJsonChatCompletion(content, 8000, {
       operationId,
       sourcePage: 'amazon',
       entryPoint,
@@ -1188,23 +1150,19 @@ async function generateAdaptiveAmazonPrompts(
         title: typeof item.title === 'string' && item.title.trim() ? item.title.trim() : 'Amazon 商品图',
         visualForm: typeof item.visualForm === 'string' && item.visualForm.trim() ? item.visualForm.trim() : 'product-focused composition',
         prompt: typeof item.prompt === 'string' ? item.prompt.trim() : '',
-        displayPrompt: typeof item.displayPrompt === 'string' && item.displayPrompt.trim()
-          ? item.displayPrompt.trim()
-          : (typeof item.prompt === 'string' ? item.prompt.trim() : ''),
-        size: AMAZON_DEFAULT_RENDER_SIZE,
-        enabled: item.slotId === 'main-white' ? true : item.enabled !== false,
       }))
       .filter((item) => item.prompt.length > 0)
 
     const main = rawItems.find((item) => item.slotId === 'main-white')
     const secondary = ADAPTIVE_SECONDARY_SLOTS
       .map((slotId) => rawItems.find((item) => item.slotId === slotId))
-      .filter((item): item is AdaptiveGalleryItem => Boolean(item && item.enabled))
+      .filter((item): item is AdaptiveGalleryItem => Boolean(item))
 
     const primaryScene = secondary.find((item) => item.slotId === 'secondary-1' && isLifestylePromptItem(item))
     const supportingScene = secondary.find((item) => item.slotId === 'secondary-6' && isLifestylePromptItem(item))
 
-    if (!main || secondary.length < 4 || secondary.length > 8 || (requiresLifestyleScene && !primaryScene) || (requiresTwoLifestyleScenes && !supportingScene)) {
+    const hasDuplicateSlotIds = new Set(rawItems.map((item) => item.slotId)).size !== rawItems.length
+    if (!main || hasDuplicateSlotIds || secondary.length < 4 || secondary.length > 8 || (requiresLifestyleScene && !primaryScene) || (requiresTwoLifestyleScenes && !supportingScene)) {
       throw new Error('Adaptive gallery count is invalid')
     }
 

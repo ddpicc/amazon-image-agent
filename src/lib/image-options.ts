@@ -26,9 +26,6 @@ export type RenderSize =
   | '1360x2048'
   | '1536x960'
 
-export const HIDDEN_APLUS_RENDER_SIZE = '1536x960' as const
-const HIDDEN_APLUS_PROMPT_REQUIREMENT = '补充执行要求：输出为 1536x960 的横版画面，保持 8:5 构图。'
-
 export interface SizeOption {
   value: RenderSize
   label: string
@@ -75,15 +72,4 @@ export const SIZE_OPTIONS: SizeOption[] = [
 
 export function isRenderSize(value: string | null): value is RenderSize {
   return SIZE_OPTIONS.some((option) => option.value === value)
-}
-
-export function appendHiddenAPlusSizeRequirement(prompt: string): string {
-  const trimmedPrompt = prompt.trim()
-  if (!trimmedPrompt) return HIDDEN_APLUS_PROMPT_REQUIREMENT
-  if (trimmedPrompt.includes(HIDDEN_APLUS_PROMPT_REQUIREMENT)) return trimmedPrompt
-  return `${trimmedPrompt}\n\n${HIDDEN_APLUS_PROMPT_REQUIREMENT}`
-}
-
-export function stripHiddenAPlusSizeRequirement(prompt: string): string {
-  return prompt.replace(`\n\n${HIDDEN_APLUS_PROMPT_REQUIREMENT}`, '').replace(HIDDEN_APLUS_PROMPT_REQUIREMENT, '').trim()
 }

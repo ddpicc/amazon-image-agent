@@ -22,7 +22,7 @@ import {
   isPromptGenerationComplete,
 } from '@/lib/amazon-workflow'
 import { formatDateTimeInBeijing } from '@/lib/date'
-import { AMAZON_DEFAULT_RENDER_SIZE, getImageModelCost, HIDDEN_APLUS_RENDER_SIZE, type ImageModelOption, RenderSize } from '@/lib/image-options'
+import { AMAZON_DEFAULT_RENDER_SIZE, getImageModelCost, type ImageModelOption, RenderSize } from '@/lib/image-options'
 import { formatPoints, GenerationBillingScene, getAnalysisCostDisplay } from '@/lib/points-config'
 import { usePoints } from '@/components/PointsProvider'
 
@@ -205,7 +205,7 @@ function createImageId() {
 }
 
 function getDefaultSizeForType(type: PromptKey): RenderSize {
-  return type.startsWith('aplus-') ? HIDDEN_APLUS_RENDER_SIZE : AMAZON_DEFAULT_RENDER_SIZE
+  return AMAZON_DEFAULT_RENDER_SIZE
 }
 
 function getBillingSceneForPromptType(type: PromptKey): GenerationBillingScene {
@@ -242,7 +242,7 @@ function getSuggestedPrompt(result: PromptGenerationResult | APlusPromptGenerati
     ? result.items?.find((item) => item.slotId === type)
     : null
 
-  return adaptiveItem?.displayPrompt || adaptiveItem?.prompt || result.suggestedPrompts[type]
+  return adaptiveItem?.prompt || result.suggestedPrompts[type]
     || (type.startsWith('aplus-') ? aplusFallbackPrompts[type as APlusPromptImageType] : fallbackPrompts[type as PromptImageType])
 }
 
@@ -255,13 +255,12 @@ function getPromptForGeneration(
   const visible = visiblePrompt.trim()
   if (!item) return visible
 
-  const defaultVisiblePrompt = (item.displayPrompt || item.prompt).trim()
-  return visible && visible === defaultVisiblePrompt ? item.prompt : visible
+  return visible || item.prompt
 }
 
 function getAmazonGalleryItems(result: PromptGenerationResult | null): AmazonGalleryPromptItem[] {
   if (result?.items?.length) {
-    return result.items.filter((item) => item.enabled)
+    return result.items
   }
 
   return imageTypeOptions.map((option, index) => ({
@@ -269,8 +268,6 @@ function getAmazonGalleryItems(result: PromptGenerationResult | null): AmazonGal
     title: option.label,
     visualForm: option.description,
     prompt: result?.suggestedPrompts[option.value] || fallbackPrompts[option.value as PromptImageType],
-    size: AMAZON_DEFAULT_RENDER_SIZE,
-    enabled: true,
   }))
 }
 
@@ -939,7 +936,7 @@ export default function AmazonPage({
       ? {
           ...resolvedPromptResult.suggestedPrompts,
           ...(resolvedPromptResult.items || []).reduce<Record<string, string>>((accumulator, item) => {
-            accumulator[item.slotId] = item.displayPrompt || item.prompt
+            accumulator[item.slotId] = item.prompt
             return accumulator
           }, {}),
         }
@@ -1497,7 +1494,7 @@ export default function AmazonPage({
         setEditedPrompts({
           ...amazonResult.suggestedPrompts,
           ...(amazonResult.items || []).reduce<Record<string, string>>((accumulator, item) => {
-            accumulator[item.slotId] = item.displayPrompt || item.prompt
+            accumulator[item.slotId] = item.prompt
             return accumulator
           }, {}),
         })
@@ -1667,7 +1664,7 @@ export default function AmazonPage({
         const prompt = getPromptForGeneration(
           currentPromptResult as PromptGenerationResult,
           item.slotId,
-          editedPrompts[item.slotId] || item.displayPrompt || item.prompt,
+          editedPrompts[item.slotId] || item.prompt,
         )
         try {
           const result = await requestGenerate(
@@ -2093,19 +2090,19 @@ export default function AmazonPage({
                               getPromptForGeneration(
                                 amazonPromptResult,
                                 selectedAmazonPromptItem.slotId,
-                                editedPrompts[selectedAmazonPromptItem.slotId] || selectedAmazonPromptItem.displayPrompt || selectedAmazonPromptItem.prompt,
+                                editedPrompts[selectedAmazonPromptItem.slotId] || selectedAmazonPromptItem.prompt,
                               ),
                               AMAZON_DEFAULT_RENDER_SIZE,
                               false,
                             )}
-                            disabled={isGenerating || !selectedModelOption || !(editedPrompts[selectedAmazonPromptItem.slotId] || selectedAmazonPromptItem.displayPrompt || selectedAmazonPromptItem.prompt).trim()}
+                            disabled={isGenerating || !selectedModelOption || !(editedPrompts[selectedAmazonPromptItem.slotId] || selectedAmazonPromptItem.prompt).trim()}
                             className="rounded-xl bg-amazon-blue px-4 py-2 text-xs font-semibold text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-slate-400"
                           >
                             生成此图
                           </button>
                         </div>
                         <textarea
-                          value={editedPrompts[selectedAmazonPromptItem.slotId] || selectedAmazonPromptItem.displayPrompt || selectedAmazonPromptItem.prompt}
+                          value={editedPrompts[selectedAmazonPromptItem.slotId] || selectedAmazonPromptItem.prompt}
                           onChange={(event) => setPromptValue(selectedAmazonPromptItem.slotId, event.target.value)}
                           rows={6}
                           className="input-field mt-4 min-h-[148px] resize-y"

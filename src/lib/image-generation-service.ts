@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client'
 import { completeAiOperation, getAiOperationExpiryDate, startAiOperation } from '@/lib/ai-operations'
 import { AMAZON_REFERENCE_IMAGE_LIMIT, StoredReferenceImage } from '@/lib/amazon-workflow'
-import { PLAYGROUND_REFERENCE_IMAGE_LIMIT, RenderSize, ImageModel } from '@/lib/image-options'
+import { AMAZON_DEFAULT_RENDER_SIZE, PLAYGROUND_REFERENCE_IMAGE_LIMIT, RenderSize, ImageModel } from '@/lib/image-options'
 import { resolveImageModelForGeneration } from '@/lib/image-model-config'
 import { PersistedImageGenerationPayload, RouteSummary, type ImageGenerationRequestStatus } from '@/lib/image-generation'
 import { fetchRemoteImageTask, RemoteTaskRecord, submitRemoteImageTask } from '@/lib/image-worker-client'
@@ -126,6 +126,9 @@ export async function createQueuedImageGenerationRequest(params: {
 }) {
   const resolvedModel = await resolveImageModelForGeneration(params.model, params.billingScene)
   await ensureSufficientPointsForGeneration(params.userId, resolvedModel.costInternal)
+  const effectiveSize: RenderSize = params.sourcePage === 'amazon'
+    ? AMAZON_DEFAULT_RENDER_SIZE
+    : params.size
   const executionPrompt = params.sourcePage === 'playground'
     ? params.prompt
     : `${params.prompt}\n\n${IMAGE_TEXT_CONSTRAINT}`
@@ -142,7 +145,7 @@ export async function createQueuedImageGenerationRequest(params: {
       imageType: params.imageType ?? null,
       containsSyntheticPerformer: Boolean(params.containsSyntheticPerformer),
       model: resolvedModel.model,
-      size: params.size,
+      size: effectiveSize,
       referenceImageCount: params.referenceImages.length,
       referenceMediaTypes: params.referenceImages.map((image) => image.mimeType),
     },
@@ -154,7 +157,7 @@ export async function createQueuedImageGenerationRequest(params: {
       imageType: params.imageType ?? null,
       containsSyntheticPerformer: Boolean(params.containsSyntheticPerformer),
       model: resolvedModel.model,
-      size: params.size,
+      size: effectiveSize,
       referenceImages: params.referenceImages.map((image, index) => ({
         index,
         url: image.url,
@@ -173,7 +176,7 @@ export async function createQueuedImageGenerationRequest(params: {
     imageType: params.imageType ?? null,
     containsSyntheticPerformer: Boolean(params.containsSyntheticPerformer),
     model: resolvedModel.model,
-    size: params.size,
+    size: effectiveSize,
     referenceImages: params.referenceImages,
   })
 
@@ -191,7 +194,7 @@ export async function createQueuedImageGenerationRequest(params: {
       model: resolvedModel.model,
       billingCost: resolvedModel.costInternal,
       containsSyntheticPerformer: Boolean(params.containsSyntheticPerformer),
-      size: params.size,
+      size: effectiveSize,
       referenceImageCount: params.referenceImages.length,
       referenceImagesJson: params.referenceImages as unknown as Prisma.InputJsonValue,
       requestPayloadJson: requestPayload as unknown as Prisma.InputJsonValue,

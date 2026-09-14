@@ -2,12 +2,8 @@ import { NextRequest } from 'next/server'
 import { requireApiUser } from '@/lib/auth'
 import { createQueuedImageGenerationRequest, submitQueuedImageGenerationRequest } from '@/lib/image-generation-service'
 import {
-  appendHiddenAPlusSizeRequirement,
   AMAZON_DEFAULT_RENDER_SIZE,
-  HIDDEN_APLUS_RENDER_SIZE,
   RenderSize,
-  SIZE_OPTIONS,
-  stripHiddenAPlusSizeRequirement,
   isRenderSize,
   PLAYGROUND_REFERENCE_IMAGE_LIMIT,
 } from '@/lib/image-options'
@@ -32,10 +28,6 @@ type StreamEvent =
   | { type: 'queued'; data: { requestId: string; operationId: string; status: string; statusMessage: string; model: string; billingCost: number } }
 
 function getValidSize(size: string | null): RenderSize {
-  if (size === HIDDEN_APLUS_RENDER_SIZE) {
-    return HIDDEN_APLUS_RENDER_SIZE
-  }
-
   if (isRenderSize(size)) {
     return size
   }
@@ -106,7 +98,6 @@ export async function POST(request: NextRequest) {
             .filter((item: unknown): item is string => typeof item === 'string' && item.length > 0)
             .slice(0, referenceImageLimit)
           : []
-        const isAPlus = sourcePage === 'amazon' && imageType.startsWith('aplus-')
         const containsSyntheticPerformer = sourcePage === 'amazon' && formData.get('containsSyntheticPerformer') === 'true'
 
         if (!prompt?.trim()) {
@@ -116,12 +107,8 @@ export async function POST(request: NextRequest) {
         }
 
         const trimmedPrompt = prompt.trim()
-        const validSize = isAPlus
-          ? HIDDEN_APLUS_RENDER_SIZE
-          : sourcePage === 'amazon'
-            ? AMAZON_DEFAULT_RENDER_SIZE
-            : getValidSize(size)
-        const upstreamPrompt = isAPlus ? appendHiddenAPlusSizeRequirement(trimmedPrompt) : trimmedPrompt
+        const validSize = sourcePage === 'amazon' ? AMAZON_DEFAULT_RENDER_SIZE : getValidSize(size)
+        const upstreamPrompt = trimmedPrompt
 
         let persistedRefImages: Awaited<ReturnType<typeof uploadReferenceImagesForGeneration>>
 

@@ -68,9 +68,6 @@ export interface AmazonGalleryPromptItem {
   title: string
   visualForm: string
   prompt: string
-  displayPrompt?: string
-  size: string
-  enabled: boolean
 }
 
 export interface ReferenceImageAdvice {
@@ -117,11 +114,7 @@ export interface PromptGenerationResult {
   items?: AmazonGalleryPromptItem[]
 }
 
-export interface APlusPromptGenerationResult extends PromptGenerationResult {
-  imageSpec: {
-    size: '1536x960'
-  }
-}
+export type APlusPromptGenerationResult = PromptGenerationResult
 
 export interface PromptResults {
   amazonSet: PromptGenerationResult | null
@@ -355,7 +348,42 @@ function isPromptResults(value: unknown): value is PromptResults {
 
 export function normalizePromptResults(value: unknown): PromptResults {
   if (isPromptResults(value)) {
-    return value
+    const normalizeResult = (candidate: unknown): PromptGenerationResult | null => {
+      if (!candidate || typeof candidate !== 'object') return null
+
+      const raw = candidate as Record<string, unknown>
+      if (!Array.isArray(raw.recommendedImagePlan) || !raw.suggestedPrompts || typeof raw.suggestedPrompts !== 'object') {
+        return null
+      }
+
+      const rawItems = Array.isArray(raw.items) ? raw.items : null
+      const items = rawItems
+        ? rawItems
+          .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
+          // 兼容旧版已经保存的 enabled=false 项，但新协议不再暴露 enabled 字段。
+          .filter((item) => item.enabled !== false)
+          .filter((item) => typeof item.slotId === 'string' && typeof item.prompt === 'string' && item.prompt.trim().length > 0)
+          .map((item) => ({
+            slotId: item.slotId as GallerySlotId,
+            title: typeof item.title === 'string' && item.title.trim() ? item.title.trim() : 'Amazon 商品图',
+            visualForm: typeof item.visualForm === 'string' && item.visualForm.trim() ? item.visualForm.trim() : 'product-focused composition',
+            prompt: (item.prompt as string).trim(),
+          }))
+        : undefined
+
+      return {
+        status: raw.status === 'completed' ? 'completed' : 'idle',
+        recommendedImagePlan: raw.recommendedImagePlan as RecommendedImagePlanItem[],
+        suggestedPrompts: raw.suggestedPrompts as Record<string, string>,
+        ...(items ? { items } : {}),
+        ...(raw.workflowVersion === 2 ? { workflowVersion: 2 as const } : {}),
+      }
+    }
+
+    return {
+      amazonSet: normalizeResult(value.amazonSet),
+      aplus: normalizeResult(value.aplus) as APlusPromptGenerationResult | null,
+    }
   }
 
   if (isLegacyPromptGenerationResult(value)) {
@@ -379,7 +407,7 @@ export function isPromptGenerationComplete(result: PromptGenerationResult | null
   return Boolean(
     result
       && result.recommendedImagePlan.length > 0
-      && (result.items?.some((item) => item.enabled) || Object.keys(result.suggestedPrompts).length > 0),
+      && ((result.items?.length ?? 0) > 0 || Object.keys(result.suggestedPrompts).length > 0),
   )
 }
 
