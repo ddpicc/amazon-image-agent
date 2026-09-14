@@ -1348,7 +1348,7 @@ export default function AmazonPage({
             setIsStreamCompleted(true)
             setIsAnalyzing(false)
             setAnalysisStage('completed')
-            setAnalysisStageLabel('分析完成，正在生成 Amazon 图组 Prompt')
+            setAnalysisStageLabel('基础商品分析完成')
             setAnalysisProgress(100)
             setSelectedAmazonPromptType('main-white')
             setSelectedImageType('main-white')
@@ -1365,7 +1365,7 @@ export default function AmazonPage({
           setIsStreamCompleted(true)
           setIsAnalyzing(false)
           setAnalysisStage('completed')
-          setAnalysisStageLabel('分析完成，正在生成 Amazon 图组 Prompt')
+          setAnalysisStageLabel('基础商品分析完成')
           setAnalysisProgress(100)
         }
       }
@@ -1889,11 +1889,11 @@ export default function AmazonPage({
                 <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                   <div>
                     <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-                      正在准备图片 Prompt
+                      正在分析商品
                     </span>
-                    <h3 className="mt-3 text-2xl font-semibold text-slate-950">AI 正在整理整套 Amazon 图片</h3>
+                    <h3 className="mt-3 text-2xl font-semibold text-slate-950">AI 正在分析商品信息</h3>
                     <p className="mt-2 text-sm text-slate-500">
-                      系统会自动根据商品信息和参考图生成主图与副图 Prompt，完成后直接展示给你编辑。
+                      系统会先理解商品信息和参考图，完成基础分析后再单独生成 Amazon 图组 Prompt。
                     </p>
                     <div className="mt-4 flex flex-wrap gap-2 text-xs font-medium text-slate-600">
                       <span className="rounded-full bg-slate-100 px-3 py-1">单次 AI 商品分析</span>
@@ -1903,18 +1903,17 @@ export default function AmazonPage({
                 </div>
 
                 <TaskStatusPanel
-                  title="准备状态"
+                  title="基础分析状态"
                   stage={analysisStage}
                   label={analysisStageLabel}
                   progress={analysisProgress}
                   warnings={analysisWarnings}
-                  helperText="AI 会先理解商品信息和参考图，再自动生成可编辑的 Amazon 图组 Prompt。"
+                  helperText="AI 正在理解商品信息和参考图，基础分析完成后会进入独立的 Amazon 图组 Prompt 任务。"
                   elapsedText={formatElapsedTime(analysisElapsedMs)}
                   steps={[
                     { key: 'preparing', label: '读取商品信息' },
                     { key: 'analyzing', label: 'AI 商品分析' },
-                    { key: 'prompting', label: '生成图组 Prompt' },
-                    { key: 'completed', label: '完成' },
+                    { key: 'completed', label: '分析完成' },
                   ]}
                 />
 
@@ -1929,7 +1928,7 @@ export default function AmazonPage({
                     elapsedText={formatElapsedTime(branchPromptElapsedMs)}
                     steps={[
                       { key: 'preparing', label: '读取分析' },
-                      { key: 'analyzing', label: '生成 A+ Prompt' },
+                      { key: 'analyzing', label: '生成 Amazon 图组 Prompt' },
                       { key: 'saving', label: '保存结果' },
                       { key: 'completed', label: '完成' },
                     ]}

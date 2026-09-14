@@ -293,7 +293,7 @@ export async function POST(request: NextRequest) {
         push({
           type: 'stage',
           stage: 'completed',
-          label: '分析完成，正在准备 Amazon 图组 Prompt',
+          label: '基础商品分析完成',
           progress: 100,
         })
         if (operationId) {
