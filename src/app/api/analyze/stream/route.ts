@@ -10,6 +10,11 @@ import { createReferenceImagePayloadsFromFiles, downloadReferenceImageFiles, upl
 
 export const dynamic = 'force-dynamic'
 
+// The browser shows 10% as soon as it starts this request. Keep the server-side
+// preflight bounded too, so a malformed or stalled multipart body cannot leave
+// the user waiting indefinitely without an operation record or an error.
+const FORM_DATA_PARSE_TIMEOUT_MS = 2 * 60 * 1000
+
 type StreamEvent =
   | { type: 'analysis-created'; analysisId: string }
   | { type: 'references-stored'; referenceImages: StoredReferenceImage[] }
@@ -21,6 +26,23 @@ type StreamEvent =
 
 function formatEvent(event: StreamEvent) {
   return `${JSON.stringify(event)}\n`
+}
+
+async function parseFormDataWithinTimeout(request: NextRequest) {
+  let timeout: ReturnType<typeof setTimeout> | undefined
+
+  try {
+    return await Promise.race([
+      request.formData(),
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => {
+          reject(new Error('上传内容解析超过 2 分钟未完成，请检查网络和图片后重试。'))
+        }, FORM_DATA_PARSE_TIMEOUT_MS)
+      }),
+    ])
+  } finally {
+    if (timeout) clearTimeout(timeout)
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -72,6 +94,24 @@ export async function POST(request: NextRequest) {
       let operationCompletedSuccessfully = false
 
       try {
+        // Create the diagnostic operation before parsing multipart data or
+        // downloading 1688 images. These were previously done first, which
+        // meant a request visibly stuck at 10% had no database trace at all.
+        operationId = (await startAiOperation({
+          userId: user.id,
+          kind: 'ANALYSIS',
+          sourcePage: 'amazon',
+          entryPoint: '/api/analyze/stream',
+          inputSummary: {
+            stage: 'preparing',
+            detail: '等待解析上传内容',
+          },
+          requestSnapshot: {
+            stage: 'preparing',
+          },
+          expiresAt: getAiOperationExpiryDate(),
+        })).id
+
         push({
           type: 'stage',
           stage: 'preparing',
@@ -79,7 +119,7 @@ export async function POST(request: NextRequest) {
           progress: 10,
         })
 
-        const formData = await request.formData()
+        const formData = await parseFormDataWithinTimeout(request)
 
         const productName = formData.get('productName') as string
         const description = formData.get('description') as string
@@ -94,6 +134,36 @@ export async function POST(request: NextRequest) {
         const source1688ImageIndexesValue = String(formData.get('source1688ImageIndexes') || '[]')
         let importedReferenceImages: File[] = []
         let source1688OfferId: string | null = null
+
+        await prisma.aiOperation.update({
+          where: { id: operationId },
+          data: {
+            inputSummaryJson: {
+              productName,
+              additionalRequirements,
+              category: category || 'General',
+              targetAudience: targetAudience || 'General consumers',
+              uploadedReferenceImageCount: uploadedReferenceImages.length,
+              referenceSource: source1688Token ? '1688' : 'upload',
+              stage: 'preparing',
+              detail: source1688Token ? '正在下载 1688 参考图' : '上传内容解析完成',
+            },
+            requestSnapshotJson: {
+              productName,
+              description,
+              additionalRequirements,
+              category: category || 'General',
+              targetAudience: targetAudience || 'General consumers',
+              referenceSource: source1688Token ? '1688' : 'upload',
+              uploadedReferenceImages: uploadedReferenceImages.map((image, index) => ({
+                index,
+                name: image.name,
+                mimeType: image.type || 'image/jpeg',
+                sizeBytes: image.size,
+              })),
+            },
+          },
+        })
 
         if (source1688Token) {
           const sourceProduct = verify1688SelectionToken(source1688Token, user.id)
@@ -117,37 +187,37 @@ export async function POST(request: NextRequest) {
         const referenceImages = [...importedReferenceImages, ...uploadedReferenceImages]
           .slice(0, AMAZON_REFERENCE_IMAGE_LIMIT)
 
-        operationId = (await startAiOperation({
-          userId: user.id,
-          kind: 'ANALYSIS',
-          sourcePage: 'amazon',
-          entryPoint: '/api/analyze/stream',
-          inputSummary: {
-            productName,
-            additionalRequirements,
-            category: category || 'General',
-            targetAudience: targetAudience || 'General consumers',
-            referenceImageCount: referenceImages.length,
-            referenceSource: source1688OfferId ? '1688' : 'upload',
-            source1688OfferId,
+        await prisma.aiOperation.update({
+          where: { id: operationId },
+          data: {
+            inputSummaryJson: {
+              productName,
+              additionalRequirements,
+              category: category || 'General',
+              targetAudience: targetAudience || 'General consumers',
+              referenceImageCount: referenceImages.length,
+              referenceSource: source1688OfferId ? '1688' : 'upload',
+              source1688OfferId,
+              stage: 'preparing',
+              detail: '参考图已就绪，准备创建分析记录',
+            },
+            requestSnapshotJson: {
+              productName,
+              description,
+              additionalRequirements,
+              category: category || 'General',
+              targetAudience: targetAudience || 'General consumers',
+              referenceSource: source1688OfferId ? '1688' : 'upload',
+              source1688OfferId,
+              referenceImages: referenceImages.map((image, index) => ({
+                index,
+                name: image.name,
+                mimeType: image.type || 'image/jpeg',
+                sizeBytes: image.size,
+              })),
+            },
           },
-          requestSnapshot: {
-            productName,
-            description,
-            additionalRequirements,
-            category: category || 'General',
-            targetAudience: targetAudience || 'General consumers',
-            referenceSource: source1688OfferId ? '1688' : 'upload',
-            source1688OfferId,
-            referenceImages: referenceImages.map((image, index) => ({
-              index,
-              name: image.name,
-              mimeType: image.type || 'image/jpeg',
-              sizeBytes: image.size,
-            })),
-          },
-          expiresAt: getAiOperationExpiryDate(),
-        })).id
+        })
 
         if (!productName || !description || referenceImages.length === 0) {
           if (operationId) {
