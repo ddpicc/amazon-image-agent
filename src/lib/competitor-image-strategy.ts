@@ -1,3 +1,4 @@
+import { validateStrategyResult } from '@/lib/workflow-result-validation'
 import sharp from 'sharp'
 import { requestTextJsonCompletion } from '@/lib/text-model'
 import type {
@@ -111,7 +112,7 @@ function normalizeRepeatedSellingPoints(value: unknown, imageCount: number): Rep
       claim: asString(record.claim, '未命名卖点'),
       imageIndexes,
       evidence: asString(record.evidence, '需要结合图片人工复核。'),
-      frequency: Math.max(imageIndexes.length, asInteger(record.frequency, imageIndexes.length || 1)),
+      frequency: imageIndexes.length,
     }
   })
 }
@@ -196,6 +197,7 @@ interface StrategySourceInput {
   productTitle: string | null
   images: StrategyImagePayload[]
   imageUrls: string[]
+  originalImageIndexes?: number[]
 }
 
 function buildPrompt(input: {
@@ -256,6 +258,7 @@ export async function analyzeCompetitorImageStrategy(input: {
   competitor: StrategySourceInput
   own: StrategySourceInput | null
   operationId?: string
+  signal?: AbortSignal
 }): Promise<CompetitorStrategyResult> {
   const prompt = buildPrompt({ competitor: input.competitor, own: input.own })
   const content: any[] = [{ type: 'text', text: prompt }]
@@ -270,15 +273,16 @@ export async function analyzeCompetitorImageStrategy(input: {
 
   const responseText = await requestTextJsonCompletion(content, 5200, {
     operationId: input.operationId,
+    signal: input.signal,
     sourcePage: 'competitor-strategy',
     entryPoint: '/api/competitor-strategy/analyze',
     phase: 'visual-sales-strategy',
   })
   let parsed: Record<string, unknown>
   try {
-    parsed = JSON.parse(responseText) as Record<string, unknown>
+    parsed = validateStrategyResult(JSON.parse(responseText), input.competitor.images.length)
   } catch {
-    throw new Error('AI 返回的竞品图片策略格式无效，请稍后重试。')
+    throw new Error('AI 策略结果格式无效或内容不完整，本次未完成，请重试。')
   }
 
   const sequence = asRecord(parsed.sequenceAnalysis)
@@ -297,6 +301,7 @@ export async function analyzeCompetitorImageStrategy(input: {
         productTitle: input.competitor.productTitle,
         imageCount: input.competitor.images.length,
         imageUrls: input.competitor.imageUrls,
+        originalImageIndexes: input.competitor.originalImageIndexes,
       },
       own: input.own ? {
         mode: input.own.mode,
@@ -305,6 +310,7 @@ export async function analyzeCompetitorImageStrategy(input: {
         productTitle: input.own.productTitle,
         imageCount: input.own.images.length,
         imageUrls: input.own.imageUrls,
+        originalImageIndexes: input.own.originalImageIndexes,
       } : null,
     },
     executiveSummary: asString(parsed.executiveSummary, '已完成逐图销售任务与整套图序分析。'),

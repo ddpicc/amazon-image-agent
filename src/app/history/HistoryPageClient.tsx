@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import WorkflowReportHistory from '@/components/WorkflowReportHistory'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { formatDateTimeInBeijing } from '@/lib/date'
 import { formatPoints } from '@/lib/points-config'
@@ -277,6 +278,8 @@ export default function HistoryPageClient({ initialData }: { initialData: Histor
             </p>
           </div>
         </div>
+
+        <WorkflowReportHistory />
 
         {actionMessage && (
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">

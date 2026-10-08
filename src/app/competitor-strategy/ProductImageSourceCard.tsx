@@ -1,12 +1,24 @@
 'use client'
 
+import { useRef, useState } from 'react'
 import ReferenceImageUploader from '@/components/ReferenceImageUploader'
 import type { AmazonMarketplace, ProductImageSourceMode } from '@/lib/competitor-strategy-types'
 import { MARKETPLACE_LABELS } from '@/lib/competitor-strategy-types'
 
 const MARKETPLACES = (Object.entries(MARKETPLACE_LABELS) as Array<[AmazonMarketplace, string]>).map(([value, label]) => ({ value, label }))
 
+export interface StrategyProductPreview {
+  asin: string
+  marketplace: AmazonMarketplace
+  title: string
+  images: string[]
+  selectionToken: string
+  indexes: number[]
+  confirmed: boolean
+}
 interface ProductImageSourceCardProps {
+  preview: StrategyProductPreview | null
+  onPreviewChange: (preview: StrategyProductPreview | null) => void
   kind: 'competitor' | 'own'
   mode: ProductImageSourceMode
   marketplace: AmazonMarketplace
@@ -19,7 +31,31 @@ interface ProductImageSourceCardProps {
   onRemove?: () => void
 }
 
-export default function ProductImageSourceCard({ kind, mode, marketplace, asin, images, onModeChange, onMarketplaceChange, onAsinChange, onImagesChange, onRemove }: ProductImageSourceCardProps) {
+export default function ProductImageSourceCard({ kind, mode, marketplace, asin, images, onModeChange, onMarketplaceChange, onAsinChange, onImagesChange, onRemove, preview, onPreviewChange }: ProductImageSourceCardProps) {
+  const [fetching, setFetching] = useState(false)
+  const [error, setError] = useState('')
+  const requestVersion = useRef(0)
+  const currentSource = useRef('')
+  currentSource.current = `${marketplace}:${asin}`
+  const fetchPreview = async () => {
+    const version = ++requestVersion.current
+    const source = currentSource.current
+    setFetching(true); setError('')
+    try {
+      const response = await fetch('/api/competitor-strategy/product', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ asin, marketplace }) })
+      const data = await response.json()
+      if (version !== requestVersion.current || source !== currentSource.current) return
+      if (!response.ok || !data.product) throw new Error(data.error || '获取图片失败')
+      onPreviewChange({ ...data.product, indexes: data.product.images.map((_: string, i: number) => i), confirmed: false })
+    } catch (failure) { if (version === requestVersion.current && source === currentSource.current) setError(failure instanceof Error ? failure.message : '获取失败') }
+    finally { if (version === requestVersion.current) setFetching(false) }
+  }
+  const move = (position: number, direction: number) => {
+    if (!preview) return
+    const indexes = [...preview.indexes]
+    ;[indexes[position], indexes[position + direction]] = [indexes[position + direction], indexes[position]]
+    onPreviewChange({ ...preview, indexes, confirmed: false })
+  }
   const isCompetitor = kind === 'competitor'
   const title = isCompetitor ? '竞品' : '我方商品'
   const tone = isCompetitor ? 'bg-slate-950 text-white' : 'bg-amazon-blue text-white'
@@ -54,7 +90,10 @@ export default function ProductImageSourceCard({ kind, mode, marketplace, asin, 
       {mode === 'asin' ? <div className="mt-5 space-y-4">
         <label className="block"><span className="text-xs font-semibold text-slate-700">Amazon 站点</span><select value={marketplace} onChange={(event) => onMarketplaceChange(event.target.value as AmazonMarketplace)} className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3.5 py-3 text-sm text-slate-800 outline-none transition focus:border-amazon-blue focus:ring-4 focus:ring-blue-100">{MARKETPLACES.map((item) => <option key={item.value} value={item.value}>{item.label}站 · {item.value}</option>)}</select></label>
         <label className="block"><span className="text-xs font-semibold text-slate-700">{title} ASIN</span><input value={asin} onChange={(event) => onAsinChange(event.target.value)} placeholder="10 位 ASIN，或粘贴 Amazon 商品链接" autoCapitalize="characters" spellCheck={false} className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3.5 py-3 text-sm uppercase text-slate-900 outline-none transition placeholder:normal-case placeholder:text-slate-400 focus:border-amazon-blue focus:ring-4 focus:ring-blue-100" /></label>
-      </div> : <div className="mt-5"><ReferenceImageUploader label={`${title}图片`} helperText="按商品页顺序上传 1–9 张 JPG、PNG 或 WEBP，第一张视为图 1。" accept="image/jpeg,image/png,image/webp" maxImages={9} previewColumns={4} emptySummaryText="顺序很重要：主图在前，其余图片按商品页顺序添加。" filledSummaryText={`已准备 ${images.length} 张图片，分析时会保留当前顺序。`} value={images} onChange={onImagesChange} /></div>}
+        <button type="button" disabled={fetching || !asin.trim()} onClick={fetchPreview} className="w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-40">{fetching ? '正在获取商品图片…' : preview ? '重新获取图片' : '获取图片并确认图序'}</button>
+        {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
+        {preview && <div className="space-y-3"><p className="text-sm font-semibold">{preview.title}</p><p className="text-xs text-slate-500">按下方顺序分析，可调整或移除图片。原图编号保持不变。</p><div className="grid grid-cols-2 gap-2">{preview.indexes.map((originalIndex, position) => <div key={originalIndex} className="rounded-xl border border-slate-200 p-2"><img src={preview.images[originalIndex]} alt={`原图 ${originalIndex + 1}`} className="aspect-square w-full object-contain" /><p className="my-2 text-xs">第 {position + 1} 位 · 原图 {originalIndex + 1}</p><div className="flex justify-between text-xs"><button type="button" aria-label={`原图 ${originalIndex + 1} 前移`} disabled={position === 0} onClick={() => move(position, -1)} className="disabled:opacity-30">前移</button><button type="button" aria-label={`原图 ${originalIndex + 1} 后移`} disabled={position === preview.indexes.length - 1} onClick={() => move(position, 1)} className="disabled:opacity-30">后移</button><button type="button" onClick={() => onPreviewChange({ ...preview, indexes: preview.indexes.filter((i) => i !== originalIndex), confirmed: false })}>移除</button></div></div>)}</div>{preview.images.map((_, i) => !preview.indexes.includes(i) && <button type="button" key={i} onClick={() => onPreviewChange({ ...preview, indexes: [...preview.indexes, i], confirmed: false })} className="mr-2 rounded-lg border px-2 py-1 text-xs">加回原图 {i + 1}</button>)}<label className="flex gap-2 text-sm"><input type="checkbox" checked={preview.confirmed} disabled={!preview.indexes.length} onChange={(event) => onPreviewChange({ ...preview, confirmed: event.target.checked })} />已确认选图和分析顺序</label></div>}
+      </div> : <div className="mt-5"><ReferenceImageUploader label={`${title}图片`} helperText="按商品页顺序上传 1–9 张 JPG、PNG 或 WEBP，第一张视为图 1。" accept="image/jpeg,image/png,image/webp" maxImages={9} previewColumns={4} emptySummaryText="顺序很重要：主图在前，其余图片按商品页顺序添加。" filledSummaryText={`已准备 ${images.length} 张图片，分析时会保留当前顺序。`} value={images} onChange={onImagesChange} /><div className="mt-3 space-y-2">{images.map((file, i) => <div key={`${file.name}-${i}`} className="flex items-center gap-3 text-xs"><span className="min-w-0 flex-1 truncate">{i + 1}. {file.name}</span>{[-1, 1].map((direction) => <button type="button" key={direction} disabled={i + direction < 0 || i + direction >= images.length} onClick={() => { const next = [...images]; [next[i], next[i + direction]] = [next[i + direction], next[i]]; onImagesChange(next) }} className="disabled:opacity-30">{direction === -1 ? '前移' : '后移'}</button>)}</div>)}</div></div>}
     </section>
   )
 }

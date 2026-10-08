@@ -65,6 +65,7 @@ export default function CompetitorStrategyResults({
 
   return (
     <div className="space-y-8">
+      {competitorSource.mode === 'upload' && !uploadedImageUrls.length && <p className="rounded-xl bg-blue-50 p-4 text-sm text-blue-900">历史报告保留分析文字和原图序号；上传原图未保存，重新打开后不显示图片预览。</p>}
       <section className="overflow-hidden rounded-3xl bg-slate-950 text-white shadow-[0_24px_70px_rgba(15,23,42,0.22)]">
         <div className="grid gap-8 px-6 py-8 sm:px-8 lg:grid-cols-[minmax(0,1fr)_260px] lg:px-10 lg:py-10">
           <div>
@@ -125,7 +126,7 @@ export default function CompetitorStrategyResults({
             <article key={item.imageIndex} className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
               <div className="relative aspect-square bg-slate-100">
                 {imageUrls[item.imageIndex]
-                  ? <img src={imageUrls[item.imageIndex]} alt={`竞品图片 ${item.imageIndex + 1}`} className="h-full w-full object-contain" />
+                  ? <img src={imageUrls[item.imageIndex]} alt={`竞品图片 ${item.imageIndex + 1}，原图 ${(result.source.competitor.originalImageIndexes?.[item.imageIndex] ?? item.imageIndex) + 1}`} className="h-full w-full object-contain" />
                   : <div className="flex h-full items-center justify-center text-sm text-slate-400">图片预览不可用</div>}
                 <span className="absolute left-3 top-3 flex h-8 min-w-8 items-center justify-center rounded-full bg-slate-950/90 px-2 text-xs font-semibold text-white">{item.imageIndex + 1}</span>
                 <span className="absolute bottom-3 right-3 rounded-full bg-white/90 px-2.5 py-1 text-xs font-medium text-slate-700 shadow-sm backdrop-blur">信息 {item.informationDensity === 'high' ? '高' : item.informationDensity === 'low' ? '低' : '中'}</span>
@@ -133,7 +134,7 @@ export default function CompetitorStrategyResults({
               <div className="p-5">
                 <div className="flex flex-wrap gap-2"><RoleBadge role={item.primaryRole} />{item.secondaryRoles.map((role) => <RoleBadge key={role} role={role} />)}</div>
                 <h3 className="mt-4 text-lg font-semibold leading-7 text-slate-950">{item.salesTask}</h3>
-                <p className="mt-2 text-sm leading-6 text-slate-500">图序作用：{item.sequencePurpose}</p>
+                <p className="mt-2 text-sm leading-6 text-slate-500">原图 {(result.source.competitor.originalImageIndexes?.[item.imageIndex] ?? item.imageIndex) + 1} · 图序作用：{item.sequencePurpose}</p>
                 {item.visibleEvidence.length > 0 && <div className="mt-4 border-t border-slate-100 pt-4"><p className="text-xs font-semibold uppercase tracking-wide text-slate-400">可见证据</p><ul className="mt-2 space-y-2 text-sm leading-5 text-slate-600">{item.visibleEvidence.map((evidence) => <li key={evidence} className="flex gap-2"><span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-cyan-500" />{evidence}</li>)}</ul></div>}
               </div>
             </article>

@@ -59,6 +59,7 @@ export interface ComplianceScanImage {
 }
 
 export interface ComplianceScanResult {
+  comparisonId?: string | null
   platform: CompliancePlatform
   platformLabel: string
   targetMarket: ComplianceMarket

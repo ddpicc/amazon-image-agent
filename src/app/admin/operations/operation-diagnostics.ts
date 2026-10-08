@@ -163,6 +163,9 @@ export function formatOperationKind(kind: string) {
 export function formatOperationSource(sourcePage: string | null) {
   if (sourcePage === 'amazon') return '亚马逊图片工作流'
   if (sourcePage === 'playground') return '自由生图'
+  if (sourcePage === 'compliance-scan') return '平台合规体检'
+  if (sourcePage === '1688-product') return '商品链接做图 · 获取图片'
+  if (sourcePage === 'competitor-product') return '竞品策略 · 获取图片'
   if (sourcePage === 'competitor-strategy') return '竞品图片策略分析'
   return sourcePage || '-'
 }

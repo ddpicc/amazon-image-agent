@@ -22,6 +22,7 @@ export interface ProductImageSourceSummary {
   productTitle: string | null
   imageCount: number
   imageUrls: string[]
+  originalImageIndexes?: number[]
 }
 
 export interface CompetitorImageAnalysis {

@@ -2,6 +2,10 @@
 
 import { FormEvent, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useWorkflowRun } from '@/hooks/useWorkflowRun'
+import WorkflowProgress from '@/components/WorkflowProgress'
+import ReportActions from '@/components/ReportActions'
+import ComplianceFollowUp from '@/components/ComplianceFollowUp'
 import ReferenceImageUploader from '@/components/ReferenceImageUploader'
 import type { ComplianceImageRole, CompliancePlatform, ComplianceStatus } from '@/lib/compliance-check'
 import type { ComplianceMarket, ComplianceModuleResult, ComplianceRiskLevel, ComplianceScanResult } from '@/lib/compliance-scan-types'
@@ -93,51 +97,39 @@ function ModuleCard({ module }: { module: ComplianceModuleResult }) {
   )
 }
 
-export default function CompliancePageClient() {
+export default function CompliancePageClient({ userId }: { userId: string }) {
   const [platform, setPlatform] = useState<CompliancePlatform>('amazon')
   const [targetMarket, setTargetMarket] = useState<ComplianceMarket>('US')
   const [images, setImages] = useState<File[]>([])
   const [imageRoles, setImageRoles] = useState<ComplianceImageRole[]>([])
-  const [result, setResult] = useState<ComplianceScanResult | null>(null)
-  const [error, setError] = useState('')
-  const [isChecking, setIsChecking] = useState(false)
+  const run = useWorkflowRun<ComplianceScanResult>('compliance-scan', userId)
+  const { result, error, setError, busy: isChecking } = run
+  const [comparisonId, setComparisonId] = useState<string | null>(null)
 
   const selectedPlatform = useMemo(() => PLATFORM_OPTIONS.find((option) => option.value === platform) || PLATFORM_OPTIONS[0], [platform])
   const selectedMarket = useMemo(() => MARKET_OPTIONS.find((option) => option.value === targetMarket) || MARKET_OPTIONS[0], [targetMarket])
   const canSubmit = images.length >= 1 && images.length <= 6 && !isChecking
 
   const handleImagesChange = (nextImages: File[]) => {
+    if (isChecking) return
     setImages(nextImages)
-    setImageRoles(nextImages.map((_, index) => imageRoles[index] || (index === 0 ? 'main' : 'secondary')))
-    setResult(null)
+    setImageRoles(nextImages.map((image, index) => { const previousIndex = images.indexOf(image); return previousIndex >= 0 ? imageRoles[previousIndex] || 'secondary' : index === 0 ? 'main' : 'secondary' }))
+    run.clear()
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (isChecking) return
     if (!images.length) {
       setError('请先上传至少一张商品图片')
       return
     }
-    setError('')
-    setResult(null)
-    setIsChecking(true)
-    try {
-      const formData = new FormData()
-      formData.append('platform', platform)
-      formData.append('targetMarket', targetMarket)
-      images.forEach((image, index) => {
-        formData.append('images', image)
-        formData.append('imageRoles', imageRoles[index] || (index === 0 ? 'main' : 'secondary'))
-      })
-      const response = await fetch('/api/compliance/scan', { method: 'POST', body: formData })
-      const payload = await response.json() as { result?: ComplianceScanResult; error?: string }
-      if (!response.ok || !payload.result) throw new Error(payload.error || '图片体检失败，请稍后重试')
-      setResult(payload.result)
-    } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : '图片体检失败，请稍后重试')
-    } finally {
-      setIsChecking(false)
-    }
+    const formData = new FormData()
+    formData.append('platform', platform)
+    formData.append('targetMarket', targetMarket)
+    if (comparisonId) formData.append('comparisonId', comparisonId)
+    images.forEach((image, index) => { formData.append('images', image); formData.append('imageRoles', imageRoles[index] || (index === 0 ? 'main' : 'secondary')) })
+    await run.submit('/api/compliance/scan', formData)
   }
 
   return (
@@ -147,24 +139,28 @@ export default function CompliancePageClient() {
           <Link href="/" className="text-sm font-medium text-amazon-blue transition hover:text-blue-700">← 返回工作流入口</Link>
           <div className="mt-6 inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">图片工具 · 四类初筛</div>
           <h1 className="mt-5 text-4xl font-semibold tracking-[-0.04em] text-slate-950 sm:text-5xl">图片合规与 IP 风险体检</h1>
-          <p className="mt-4 max-w-3xl text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">只上传商品图片，系统自动检查平台图片规范、图片内文字与 Logo、外观设计专利相似性，以及版权和素材风险。</p>
+          <p className="mt-4 max-w-3xl text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">只上传商品图片，系统自动检查平台图片规范、图片内文字与 Logo、外观设计专利候选检索，以及版权和素材风险。</p>
         </header>
 
         <div className="mt-10 grid gap-6 xl:grid-cols-[minmax(0,430px)_minmax(0,1fr)]">
           <form onSubmit={handleSubmit} className="panel space-y-7 p-6 sm:p-8">
-            <div><div className="text-sm font-semibold text-slate-900">1. 选择平台</div><div className="mt-3 grid gap-3">{PLATFORM_OPTIONS.map((option) => <button key={option.value} type="button" onClick={() => { setPlatform(option.value); setResult(null) }} className={'cursor-pointer rounded-2xl border p-4 text-left transition-colors duration-200 ' + (platform === option.value ? 'border-amazon-orange bg-orange-50 shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300')}><div className="flex items-center justify-between gap-3"><span className="font-semibold text-slate-900">{option.label}</span>{platform === option.value && <span className="text-sm font-semibold text-amazon-orange">已选择</span>}</div><p className="mt-1 text-xs leading-5 text-slate-500">{option.description}</p></button>)}</div></div>
-            <div><div className="text-sm font-semibold text-slate-900">2. 选择目标市场</div><div className="mt-3 grid gap-3">{MARKET_OPTIONS.map((option) => <button key={option.value} type="button" onClick={() => { setTargetMarket(option.value); setResult(null) }} className={'cursor-pointer rounded-2xl border p-4 text-left transition-colors duration-200 ' + (targetMarket === option.value ? 'border-amazon-orange bg-orange-50 shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300')}><div className="flex items-center justify-between gap-3"><span className="font-semibold text-slate-900">{option.label}</span>{targetMarket === option.value && <span className="text-sm font-semibold text-amazon-orange">已选择</span>}</div><p className="mt-1 text-xs leading-5 text-slate-500">{option.description}</p></button>)}</div></div>
+            <fieldset disabled={isChecking} className="space-y-7 disabled:opacity-60">
+            <div><div className="text-sm font-semibold text-slate-900">1. 选择平台</div><div className="mt-3 grid gap-3">{PLATFORM_OPTIONS.map((option) => <button key={option.value} type="button" onClick={() => { setPlatform(option.value); run.clear(); setComparisonId(null) }} className={'cursor-pointer rounded-2xl border p-4 text-left transition-colors duration-200 ' + (platform === option.value ? 'border-amazon-orange bg-orange-50 shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300')}><div className="flex items-center justify-between gap-3"><span className="font-semibold text-slate-900">{option.label}</span>{platform === option.value && <span className="text-sm font-semibold text-amazon-orange">已选择</span>}</div><p className="mt-1 text-xs leading-5 text-slate-500">{option.description}</p></button>)}</div></div>
+            <div><div className="text-sm font-semibold text-slate-900">2. 选择目标市场</div><div className="mt-3 grid gap-3">{MARKET_OPTIONS.map((option) => <button key={option.value} type="button" onClick={() => { setTargetMarket(option.value); run.clear(); setComparisonId(null) }} className={'cursor-pointer rounded-2xl border p-4 text-left transition-colors duration-200 ' + (targetMarket === option.value ? 'border-amazon-orange bg-orange-50 shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300')}><div className="flex items-center justify-between gap-3"><span className="font-semibold text-slate-900">{option.label}</span>{targetMarket === option.value && <span className="text-sm font-semibold text-amazon-orange">已选择</span>}</div><p className="mt-1 text-xs leading-5 text-slate-500">{option.description}</p></button>)}</div></div>
             <div><div className="text-sm font-semibold text-slate-900">3. 上传同一商品图片</div><div className="mt-3"><ReferenceImageUploader label="待检查图片" helperText="上传 1–6 张同一商品图片，建议包含正面、背面、侧面或细节图。支持 JPG、PNG、WEBP，单张不超过 10 MB。" accept="image/jpeg,image/png,image/webp" maxImages={6} previewColumns={4} emptySummaryText="上传商品图片，不需要填写任何文字信息。" filledSummaryText="图片已准备好，可以开始四类风险体检。" value={images} onChange={handleImagesChange} /></div></div>
-            {images.length > 0 && <div><div className="text-sm font-semibold text-slate-900">4. 标记图片角色</div><div className="mt-3 space-y-2">{images.map((image, index) => <label key={image.name + index} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"><span className="min-w-0 truncate text-slate-700">图片 {index + 1} · {image.name}</span><select aria-label={'图片 ' + (index + 1) + '角色'} value={imageRoles[index] || (index === 0 ? 'main' : 'secondary')} onChange={(event) => { const nextRoles = [...imageRoles]; nextRoles[index] = event.target.value as ComplianceImageRole; setImageRoles(nextRoles); setResult(null) }} className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-700">{IMAGE_ROLE_OPTIONS.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}</select></label>)}</div></div>}
+            {images.length > 0 && <div><div className="text-sm font-semibold text-slate-900">4. 标记图片角色</div><div className="mt-3 space-y-2">{images.map((image, index) => <label key={image.name + index} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"><span className="min-w-0 truncate text-slate-700">图片 {index + 1} · {image.name}</span><select aria-label={'图片 ' + (index + 1) + '角色'} value={imageRoles[index] || (index === 0 ? 'main' : 'secondary')} onChange={(event) => { const nextRoles = [...imageRoles]; nextRoles[index] = event.target.value as ComplianceImageRole; setImageRoles(nextRoles); run.clear() }} className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-700">{IMAGE_ROLE_OPTIONS.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}</select></label>)}</div></div>}
             <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm leading-6 text-sky-800">当前检查：{selectedPlatform.label} · {selectedMarket.label}。系统只分析图片本身，不会要求输入品牌名、标题、关键词或产品描述。</div>
+            </fieldset>
+            {comparisonId && <p className="text-sm text-blue-700">正在复检：请重新上传修改后的图片，结果将与原报告对比。<button type="button" disabled={isChecking} onClick={() => setComparisonId(null)} className="ml-2 underline">取消对比</button></p>}
+            {isChecking && <WorkflowProgress stage={run.stage} operationId={run.operationId} onCancel={run.cancel} />}
             {error && <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-6 text-rose-700">{error}</div>}
             <button type="submit" disabled={!canSubmit} className="inline-flex w-full cursor-pointer items-center justify-center rounded-2xl bg-amazon-blue px-6 py-3.5 text-sm font-semibold text-white shadow-sm transition-colors duration-200 hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-400">{isChecking ? '正在分析图片...' : '开始四类体检'}</button>
           </form>
 
           <section aria-live="polite" className="space-y-6">
-            {!result && !isChecking && <div className="panel flex min-h-[520px] flex-col justify-center px-6 py-12 text-center sm:px-10"><div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-emerald-100 text-emerald-600"><svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.6} aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" /></svg></div><h2 className="mt-5 text-xl font-semibold text-slate-900">四类检查结果会显示在这里</h2><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">上传同一商品的多个角度，可以让外观专利相似性初筛更稳定。</p></div>}
+            {!result && !isChecking && <div className="panel flex min-h-[520px] flex-col justify-center px-6 py-12 text-center sm:px-10"><div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-emerald-100 text-emerald-600"><svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.6} aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" /></svg></div><h2 className="mt-5 text-xl font-semibold text-slate-900">四类检查结果会显示在这里</h2><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">上传同一商品的多个角度，可以让外观特征识别更稳定。</p></div>}
             {isChecking && <div className="panel flex min-h-[520px] flex-col items-center justify-center px-6 py-12 text-center"><div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-amazon-orange" aria-hidden="true" /><h2 className="mt-5 text-xl font-semibold text-slate-900">正在检查图片</h2><p className="mt-2 text-sm leading-6 text-slate-500">正在读取图片、识别视觉元素并查询可用的设计专利来源，请稍候。</p></div>}
-            {result && !isChecking && <><div className="panel p-6 sm:p-8"><div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start"><div className="min-w-0"><div className="text-sm font-semibold text-slate-500">{result.platformLabel} · {result.targetMarketLabel} · {result.images.length} 张图片</div><h2 className="mt-2 break-words text-xl font-normal tracking-tight text-slate-700 sm:text-2xl">{result.summary}</h2></div><div className="flex flex-wrap gap-2 lg:max-w-[220px] lg:justify-end"><StatusBadge status={result.overallStatus} /><RiskBadge riskLevel={result.overallRiskLevel} /></div></div><div className="mt-6 grid gap-3 sm:grid-cols-3"><div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><div className="text-xs font-semibold uppercase tracking-wide text-slate-400">综合置信度</div><div className="mt-1 text-sm font-semibold text-slate-800">{result.confidence}</div></div><div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><div className="text-xs font-semibold uppercase tracking-wide text-slate-400">检查模块</div><div className="mt-1 text-sm font-semibold text-slate-800">4 类</div></div><div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><div className="text-xs font-semibold uppercase tracking-wide text-slate-400">图片数量</div><div className="mt-1 text-sm font-semibold text-slate-800">{result.images.length} 张</div></div></div></div><div className="grid gap-6"><ModuleCard module={result.modules.platform} /><ModuleCard module={result.modules.textLogo} /><ModuleCard module={result.modules.designPatent} /><ModuleCard module={result.modules.copyright} /></div><div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600"><span className="font-semibold text-slate-800">免责说明：</span>{result.limitation}</div><button type="button" onClick={() => setResult(null)} className="w-full cursor-pointer rounded-2xl border border-slate-300 bg-white px-6 py-3 text-sm font-semibold text-slate-700 transition-colors hover:border-slate-400 hover:text-slate-950">重新检查</button></>}
+            {result && !isChecking && <><ReportActions title="平台合规体检报告" result={result} operationId={run.operationId} /><ComplianceFollowUp result={result} onRecheck={() => { setComparisonId(run.operationId); setPlatform(result.platform); setTargetMarket(result.targetMarket); setImages([]); setImageRoles([]); run.clear(); window.scrollTo({ top: 0, behavior: 'smooth' }) }} /><div className="panel p-6 sm:p-8"><div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start"><div className="min-w-0"><div className="text-sm font-semibold text-slate-500">{result.platformLabel} · {result.targetMarketLabel} · {result.images.length} 张图片</div><h2 className="mt-2 break-words text-xl font-normal tracking-tight text-slate-700 sm:text-2xl">{result.summary}</h2></div><div className="flex flex-wrap gap-2 lg:max-w-[220px] lg:justify-end"><StatusBadge status={result.overallStatus} /><RiskBadge riskLevel={result.overallRiskLevel} /></div></div><div className="mt-6 grid gap-3 sm:grid-cols-3"><div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><div className="text-xs font-semibold uppercase tracking-wide text-slate-400">综合置信度</div><div className="mt-1 text-sm font-semibold text-slate-800">{result.confidence}</div></div><div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><div className="text-xs font-semibold uppercase tracking-wide text-slate-400">检查模块</div><div className="mt-1 text-sm font-semibold text-slate-800">4 类</div></div><div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><div className="text-xs font-semibold uppercase tracking-wide text-slate-400">图片数量</div><div className="mt-1 text-sm font-semibold text-slate-800">{result.images.length} 张</div></div></div></div><div className="grid gap-6"><ModuleCard module={result.modules.platform} /><ModuleCard module={result.modules.textLogo} /><ModuleCard module={result.modules.designPatent} /><ModuleCard module={result.modules.copyright} /></div><div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600"><span className="font-semibold text-slate-800">免责说明：</span>{result.limitation}</div><button type="button" onClick={() => { run.clear(); setComparisonId(null) }} className="w-full cursor-pointer rounded-2xl border border-slate-300 bg-white px-6 py-3 text-sm font-semibold text-slate-700 transition-colors hover:border-slate-400 hover:text-slate-950">重新检查</button></>}
           </section>
         </div>
       </div>

@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client'
 import { completeAiOperation, getAiOperationExpiryDate, startAiOperation } from '@/lib/ai-operations'
 import { AMAZON_REFERENCE_IMAGE_LIMIT, StoredReferenceImage } from '@/lib/amazon-workflow'
-import { AMAZON_DEFAULT_RENDER_SIZE, PLAYGROUND_REFERENCE_IMAGE_LIMIT, RenderSize, ImageModel } from '@/lib/image-options'
+import { getAmazonRenderSize, PLAYGROUND_REFERENCE_IMAGE_LIMIT, RenderSize, ImageModel } from '@/lib/image-options'
 import { resolveImageModelForGeneration } from '@/lib/image-model-config'
 import { PersistedImageGenerationPayload, RouteSummary, type ImageGenerationRequestStatus } from '@/lib/image-generation'
 import { fetchRemoteImageTask, RemoteTaskRecord, submitRemoteImageTask } from '@/lib/image-worker-client'
@@ -127,7 +127,7 @@ export async function createQueuedImageGenerationRequest(params: {
   const resolvedModel = await resolveImageModelForGeneration(params.model, params.billingScene)
   await ensureSufficientPointsForGeneration(params.userId, resolvedModel.costInternal)
   const effectiveSize: RenderSize = params.sourcePage === 'amazon'
-    ? AMAZON_DEFAULT_RENDER_SIZE
+    ? getAmazonRenderSize(params.imageType)
     : params.size
   const executionPrompt = params.sourcePage === 'playground'
     ? params.prompt

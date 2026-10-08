@@ -142,6 +142,7 @@ function buildLocarnoFilter(profile: DesignSearchProfile) {
 export async function searchDesignPatentCandidates(input: {
   market: ComplianceMarket
   profile: DesignSearchProfile
+  signal?: AbortSignal
 }): Promise<DesignPatentSearchResult> {
   const marketConfig = WIPO_MARKET_SOURCES[input.market]
   const result: DesignPatentSearchResult = {
@@ -163,7 +164,11 @@ export async function searchDesignPatentCandidates(input: {
     return result
   }
 
+  input.signal?.throwIfAborted()
   const controller = new AbortController()
+  const abort = () => controller.abort()
+  input.signal?.addEventListener('abort', abort, { once: true })
+  if (input.signal?.aborted) controller.abort()
   const timeout = setTimeout(() => controller.abort(), WIPO_REQUEST_TIMEOUT_MS)
   try {
     const response = await fetch(WIPO_TRO_API_URL, {
@@ -193,6 +198,9 @@ export async function searchDesignPatentCandidates(input: {
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
 
     const payload = asRecord(await response.json())
+    if (!payload || (payload.code !== undefined && String(payload.code) !== '0')) {
+      throw new Error('专利检索业务请求失败')
+    }
     const payloadData = asRecord(payload?.data)
     const nestedPayloadData = asRecord(payloadData?.data)
     const hits = Array.isArray(nestedPayloadData?.hits)
@@ -201,7 +209,8 @@ export async function searchDesignPatentCandidates(input: {
         ? payloadData.hits
         : Array.isArray(payload?.hits)
           ? payload.hits
-          : []
+          : null
+    if (!hits) throw new Error('专利检索结果结构无效')
     result.candidates = hits
       .slice(0, MAX_CANDIDATES)
       .flatMap((hit) => {
@@ -210,6 +219,10 @@ export async function searchDesignPatentCandidates(input: {
       })
       .filter((candidate): candidate is DesignPatentCandidate => Boolean(candidate))
       .filter((candidate, index, all) => all.findIndex((item) => item.identifier.toLowerCase() === candidate.identifier.toLowerCase()) === index)
+
+    if (hits.length > 0 && result.candidates.length === 0) {
+      throw new Error('专利候选数据无法解析')
+    }
 
     result.sourceCoverage.push(`外观专利：公开数据库关键词/分类候选 ${result.candidates.length} 条`)
   } catch (error) {
@@ -220,6 +233,7 @@ export async function searchDesignPatentCandidates(input: {
     result.sourceCoverage.push('外观专利：公开检索未完成')
   } finally {
     clearTimeout(timeout)
+    input.signal?.removeEventListener('abort', abort)
   }
 
   result.complete = result.messages.length === 0

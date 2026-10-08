@@ -54,6 +54,7 @@ export interface TextOperationContext {
   sourcePage?: string
   entryPoint?: string
   phase?: string
+  signal?: AbortSignal
   totalTimeoutMs?: number
   onStatus?: (event: TextModelStatusEvent) => void
 }
@@ -100,6 +101,7 @@ export async function requestTextJsonCompletion(
   maxTokens: number,
   operationContext?: TextOperationContext,
 ): Promise<string> {
+  operationContext?.signal?.throwIfAborted()
   const providers = await listCandidateTextProviders()
   const requestId = `text_${Date.now()}_${textRequestSequence += 1}`
   const startedAt = Date.now()
@@ -167,7 +169,11 @@ export async function requestTextJsonCompletion(
 
       attemptIndex += 1
       const openai = getOpenAIClient(provider)
+      operationContext?.signal?.throwIfAborted()
       const controller = new AbortController()
+      const abort = () => controller.abort()
+      operationContext?.signal?.addEventListener('abort', abort, { once: true })
+      if (operationContext?.signal?.aborted) controller.abort()
       // This is the remaining budget for the whole route phase, not a per-provider timeout.
       const timeoutMs = remainingPhaseBudgetMs
       const timeout = setTimeout(() => controller.abort(), timeoutMs)
@@ -254,6 +260,7 @@ export async function requestTextJsonCompletion(
         }, {
           signal: controller.signal,
         })
+        operationContext?.signal?.throwIfAborted()
         const responseContent = message.choices[0]?.message?.content || ''
         const finishReason = message.choices[0]?.finish_reason ?? null
 
@@ -297,7 +304,7 @@ export async function requestTextJsonCompletion(
         const aborted = isAbortLikeError(error)
         failures.push(`${provider.name}: ${message}`)
 
-        if (provider.id) {
+        if (provider.id && !operationContext?.signal?.aborted) {
           await markTextProviderFailure(provider.id).catch(() => undefined)
         }
 
@@ -347,6 +354,7 @@ export async function requestTextJsonCompletion(
           }).catch(() => undefined)
         }
 
+        operationContext?.signal?.throwIfAborted()
         if (phaseTimedOut) timedOut = true
 
         if (nextProvider) {
@@ -364,6 +372,7 @@ export async function requestTextJsonCompletion(
         break
       } finally {
         clearTimeout(timeout)
+        operationContext?.signal?.removeEventListener('abort', abort)
       }
     }
 

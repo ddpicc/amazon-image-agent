@@ -1,3 +1,5 @@
+import sharp from 'sharp'
+
 export type CompliancePlatform = 'amazon' | 'temu'
 export type ComplianceImageRole = 'main' | 'secondary'
 export type ComplianceStatus = 'pass' | 'warning' | 'fail' | 'unknown'
@@ -67,65 +69,13 @@ export function getComplianceImageRoleLabel(imageRole: ComplianceImageRole) {
   return IMAGE_ROLE_LABELS[imageRole]
 }
 
-function parseImageDimensions(buffer: Buffer, mimeType: string): { width: number | null; height: number | null } {
-  if (mimeType === 'image/png' && buffer.length >= 24 && buffer.toString('ascii', 0, 8) === '\x89PNG\r\n\x1a\n') {
-    return {
-      width: buffer.readUInt32BE(16),
-      height: buffer.readUInt32BE(20),
-    }
+export async function inspectImageBuffer(buffer: Buffer, mimeType: string): Promise<ComplianceTechnicalInfo> {
+  const metadata = await sharp(buffer, { failOn: 'warning' }).metadata()
+  const formats: Record<string, string> = { jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' }
+  const actualMime = formats[metadata.format || '']
+  if (!actualMime || actualMime !== mimeType || !metadata.width || !metadata.height) {
+    throw new Error('图片内容与格式不匹配，或无法读取尺寸，请重新导出为 JPG、PNG 或 WEBP。')
   }
-
-  if (mimeType === 'image/webp' && buffer.length >= 30 && buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP') {
-    const chunk = buffer.toString('ascii', 12, 16)
-    if (chunk === 'VP8X') {
-      return {
-        width: 1 + buffer[24] + (buffer[25] << 8) + (buffer[26] << 16),
-        height: 1 + buffer[27] + (buffer[28] << 8) + (buffer[29] << 16),
-      }
-    }
-  }
-
-  if (mimeType === 'image/jpeg' && buffer.length >= 4 && buffer[0] === 0xff && buffer[1] === 0xd8) {
-    let offset = 2
-    while (offset + 9 < buffer.length) {
-      if (buffer[offset] !== 0xff) {
-        offset += 1
-        continue
-      }
-
-      const marker = buffer[offset + 1]
-      offset += 2
-      if (marker === 0xd8 || marker === 0xd9 || (marker >= 0xd0 && marker <= 0xd7)) {
-        continue
-      }
-      if (offset + 2 > buffer.length) break
-
-      const segmentLength = buffer.readUInt16BE(offset)
-      if (segmentLength < 2 || offset + segmentLength > buffer.length) break
-      const isStartOfFrame = marker >= 0xc0 && marker <= 0xc3
-        || marker >= 0xc5 && marker <= 0xc7
-        || marker >= 0xc9 && marker <= 0xcb
-        || marker >= 0xcd && marker <= 0xcf
-
-      if (isStartOfFrame && offset + 7 <= buffer.length) {
-        return {
-          height: buffer.readUInt16BE(offset + 3),
-          width: buffer.readUInt16BE(offset + 5),
-        }
-      }
-
-      offset += segmentLength
-    }
-  }
-
-  return { width: null, height: null }
-}
-
-export function inspectImageBuffer(buffer: Buffer, mimeType: string): ComplianceTechnicalInfo {
-  const dimensions = parseImageDimensions(buffer, mimeType)
-  return {
-    mimeType,
-    bytes: buffer.byteLength,
-    ...dimensions,
-  }
+  if ((metadata.pages || 1) > 1) throw new Error('请上传静态图片，不支持动画图片。')
+  return { mimeType: actualMime, bytes: buffer.byteLength, width: metadata.width, height: metadata.height }
 }

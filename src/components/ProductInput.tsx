@@ -6,6 +6,7 @@ import ReferenceImageUploader from '@/components/ReferenceImageUploader'
 export interface ProductInputInitialSource {
   productName: string
   description?: string
+  additionalRequirements?: string
   sourceLabel: string
   selectionToken: string
   referenceImages: Array<{
@@ -31,7 +32,8 @@ interface ProductInputProps {
 export default function ProductInput({ onAnalyze, isLoading, analysisCostText, initialSource }: ProductInputProps) {
   const [productName, setProductName] = useState(initialSource?.productName || '')
   const [description, setDescription] = useState(initialSource?.description || '')
-  const [additionalRequirements, setAdditionalRequirements] = useState('')
+  const [additionalRequirements, setAdditionalRequirements] = useState(initialSource?.additionalRequirements || '')
+  const [factsConfirmed, setFactsConfirmed] = useState(false)
   const [referenceImages, setReferenceImages] = useState<File[]>([])
   const [sourceReferenceImages, setSourceReferenceImages] = useState(initialSource?.referenceImages || [])
   const totalReferenceImageCount = sourceReferenceImages.length + referenceImages.length
@@ -39,7 +41,7 @@ export default function ProductInput({ onAnalyze, isLoading, analysisCostText, i
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!productName.trim() || !description.trim() || totalReferenceImageCount === 0) return
+    if (!productName.trim() || !description.trim() || totalReferenceImageCount === 0 || (initialSource && !factsConfirmed)) return
 
     onAnalyze({
       productName: productName.trim(),
@@ -67,6 +69,7 @@ export default function ProductInput({ onAnalyze, isLoading, analysisCostText, i
         </div>
       </div>
 
+      {initialSource && <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm"><p className="font-semibold">{initialSource.sourceLabel}</p><p className="mt-1 text-blue-900">请核对商品名称、材质、规格和实际包含的配件；补充要求中的策略可以直接编辑。</p><label className="mt-3 flex gap-2"><input type="checkbox" required checked={factsConfirmed} onChange={(event) => setFactsConfirmed(event.target.checked)} />我已确认下方商品事实，制作只使用我方真实商品与可核验证据。</label></div>}
       <div className="grid gap-5 lg:grid-cols-2">
         <div className="space-y-5 lg:col-span-2">
           <div>
@@ -77,7 +80,7 @@ export default function ProductInput({ onAnalyze, isLoading, analysisCostText, i
               id="productName"
               type="text"
               value={productName}
-              onChange={(e) => setProductName(e.target.value)}
+              onChange={(e) => { setProductName(e.target.value); setFactsConfirmed(false) }}
               placeholder="例如：无线蓝牙耳机"
               className="input-field"
               required
@@ -91,7 +94,7 @@ export default function ProductInput({ onAnalyze, isLoading, analysisCostText, i
             <textarea
               id="description"
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              onChange={(e) => { setDescription(e.target.value); setFactsConfirmed(false) }}
               placeholder="请简单描述商品功能、材质、核心卖点、适用场景或尺寸信息..."
               rows={5}
               className="input-field min-h-[132px] resize-none"
@@ -151,7 +154,7 @@ export default function ProductInput({ onAnalyze, isLoading, analysisCostText, i
 
       <button
         type="submit"
-        disabled={isLoading || !productName.trim() || !description.trim() || totalReferenceImageCount === 0}
+        disabled={isLoading || !productName.trim() || !description.trim() || totalReferenceImageCount === 0 || Boolean(initialSource && !factsConfirmed)}
         className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-amazon-orange px-6 py-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-slate-400"
       >
         {isLoading ? (

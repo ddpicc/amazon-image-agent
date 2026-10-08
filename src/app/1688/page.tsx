@@ -9,5 +9,5 @@ export default async function EightEightPage() {
     getUserPointsBalance(user.id),
     listEnabledImageModelOptions(),
   ])
-  return <EightEightPageClient initialPointsBalance={pointsBalance} imageModels={imageModels} />
+  return <EightEightPageClient initialPointsBalance={pointsBalance} imageModels={imageModels} userId={user.id} />
 }

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireApiUser } from '@/lib/auth'
 import { createQueuedImageGenerationRequest, submitQueuedImageGenerationRequest } from '@/lib/image-generation-service'
 import {
-  AMAZON_DEFAULT_RENDER_SIZE,
+  getAmazonRenderSize,
   RenderSize,
   isRenderSize,
   PLAYGROUND_REFERENCE_IMAGE_LIMIT,
@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
     }
 
     const trimmedPrompt = prompt.trim()
-    const validSize = sourcePage === 'amazon' ? AMAZON_DEFAULT_RENDER_SIZE : getValidSize(size)
+    const validSize = sourcePage === 'amazon' ? getAmazonRenderSize(imageType) : getValidSize(size)
     const upstreamPrompt = trimmedPrompt
 
     console.info('[api/generate] upstream dispatch', {

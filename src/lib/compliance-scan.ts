@@ -1,3 +1,4 @@
+import { validateComplianceResult } from '@/lib/workflow-result-validation'
 import { createHash } from 'crypto'
 import { getComplianceImageRoleLabel, getCompliancePlatformLabel, getComplianceRuleBasis } from '@/lib/compliance-check'
 import type { ComplianceCheckItem, ComplianceImageRole, CompliancePlatform, ComplianceStatus } from '@/lib/compliance-check'
@@ -119,15 +120,16 @@ function normalizeProfile(value: unknown): DesignSearchProfile | null {
 }
 
 function confidenceFromFindings(findings: ComplianceVisualFinding[]): ComplianceConfidence {
-  if (findings.some((finding) => finding.confidence === 'high')) return 'high'
-  if (findings.some((finding) => finding.confidence === 'medium')) return 'medium'
+  if (findings.some((finding) => finding.confidence === 'unknown')) return 'unknown'
   if (findings.some((finding) => finding.confidence === 'low')) return 'low'
-  return 'unknown'
+  if (findings.some((finding) => finding.confidence === 'medium')) return 'medium'
+  return findings.length ? 'high' : 'unknown'
 }
 
 function riskFromFindings(findings: ComplianceVisualFinding[]): ComplianceRiskLevel {
   if (findings.some((finding) => finding.riskLevel === 'high')) return 'high'
   if (findings.some((finding) => finding.riskLevel === 'medium')) return 'medium'
+  if (findings.some((finding) => finding.riskLevel === 'unknown')) return 'unknown'
   if (findings.some((finding) => finding.riskLevel === 'low')) return 'low'
   return 'unknown'
 }
@@ -284,6 +286,8 @@ export async function scanImageCompliance(input: {
     technical: { width: number | null; height: number | null; mimeType: string; bytes: number }
   }>
   operationId?: string
+  signal?: AbortSignal
+  onStage?: (label: string) => Promise<void>
 }): Promise<ComplianceScanResult> {
   const backgroundAnalyses = await Promise.all(input.images.map((image) => analyzeBackgroundColor(image.buffer)))
   const content: any[] = [{ type: 'text', text: buildPrompt(input) }]
@@ -294,17 +298,19 @@ export async function scanImageCompliance(input: {
     })
   })
 
+  await input.onStage?.('正在识别图片规范、文字和视觉素材')
   const responseText = await requestTextJsonCompletion(content, 3200, {
     operationId: input.operationId,
+    signal: input.signal,
     sourcePage: 'compliance-scan',
     entryPoint: '/api/compliance/scan',
   })
 
   let parsed: Record<string, unknown>
   try {
-    parsed = JSON.parse(responseText) as Record<string, unknown>
+    parsed = validateComplianceResult(JSON.parse(responseText), input.images.length)
   } catch {
-    throw new Error('AI 返回的图片体检结果格式无效，请稍后重试')
+    throw new Error('AI 体检结果格式无效或内容不完整，本次未形成完整结论，请重试。')
   }
 
   const visualFindings = normalizeVisualFindings(parsed.visualFindings)
@@ -348,7 +354,7 @@ export async function scanImageCompliance(input: {
     messages: [],
   }
 
-  const copyrightFindings = visualFindings.filter((finding) => ['character', 'artwork', 'celebrity', 'sports', 'stock'].includes(finding.category))
+  const copyrightFindings = visualFindings.filter((finding) => ['character', 'artwork', 'celebrity', 'sports', 'stock', 'other'].includes(finding.category))
   const copyrightModule: ComplianceModuleResult = {
     key: 'copyright',
     title: '图片版权与素材',
@@ -371,21 +377,23 @@ export async function scanImageCompliance(input: {
     messages: ['本次外观设计专利检索未完成，无法从图片形成足够稳定的检索画像。'],
     complete: false,
   }
-  if (profile) {
-    patentSearch = await searchDesignPatentCandidates({ market: input.targetMarket, profile })
+  if (profile && profile.imageQuality !== 'unknown' && profile.searchTerms.length > 0) {
+    await input.onStage?.('正在检索外观设计专利候选')
+    patentSearch = await searchDesignPatentCandidates({ market: input.targetMarket, profile, signal: input.signal })
+    input.signal?.throwIfAborted()
   }
   const patentSearchCompleted = Boolean(profile && patentSearch.complete)
   const hasPatentCandidates = patentSearch.candidates.length > 0
   const patentModule: ComplianceModuleResult = {
     key: 'designPatent',
-    title: '外观设计专利相似性',
+    title: '外观设计专利候选检索',
     status: hasPatentCandidates ? 'warning' : patentSearchCompleted ? 'pass' : 'unknown',
     riskLevel: hasPatentCandidates ? 'medium' : patentSearchCompleted ? 'low' : 'unknown',
     confidence: patentSearchCompleted ? 'medium' : 'low',
     summary: hasPatentCandidates
       ? '发现 ' + patentSearch.candidates.length + ' 条需要人工比对的外观设计候选。'
       : patentSearchCompleted
-        ? '本次公开检索未发现相似专利。'
+        ? '本次关键词及分类检索未发现候选，尚未进行图像相似度比对。'
         : '本次外观设计专利检索未完成，当前无法形成结论。',
     items: patentSearch.candidates.slice(0, 8).map((candidate) => ({
       key: 'patent-' + candidate.jurisdiction + '-' + candidate.identifier,

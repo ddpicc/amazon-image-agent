@@ -22,7 +22,7 @@ import {
   isPromptGenerationComplete,
 } from '@/lib/amazon-workflow'
 import { formatDateTimeInBeijing } from '@/lib/date'
-import { AMAZON_DEFAULT_RENDER_SIZE, getImageModelCost, type ImageModelOption, RenderSize } from '@/lib/image-options'
+import { AMAZON_DEFAULT_RENDER_SIZE, getAmazonRenderSize, getImageModelCost, type ImageModelOption, RenderSize } from '@/lib/image-options'
 import { formatPoints, GenerationBillingScene, getAnalysisCostDisplay } from '@/lib/points-config'
 import { usePoints } from '@/components/PointsProvider'
 
@@ -205,7 +205,7 @@ function createImageId() {
 }
 
 function getDefaultSizeForType(type: PromptKey): RenderSize {
-  return AMAZON_DEFAULT_RENDER_SIZE
+  return getAmazonRenderSize(type)
 }
 
 function getBillingSceneForPromptType(type: PromptKey): GenerationBillingScene {

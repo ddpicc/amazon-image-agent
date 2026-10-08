@@ -15,6 +15,11 @@ export function getImageModelCost(option: ImageModelOption | null | undefined, s
 }
 export const PLAYGROUND_REFERENCE_IMAGE_LIMIT = 5
 export const AMAZON_DEFAULT_RENDER_SIZE = '1600x1600' as const
+export const APLUS_DEFAULT_RENDER_SIZE = '1536x960' as const
+
+export function getAmazonRenderSize(imageType?: string | null): RenderSize {
+  return imageType?.startsWith('aplus-') ? APLUS_DEFAULT_RENDER_SIZE : AMAZON_DEFAULT_RENDER_SIZE
+}
 
 export type RenderSize =
   | '1024x1024'

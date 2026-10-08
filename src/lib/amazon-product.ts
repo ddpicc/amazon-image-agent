@@ -82,7 +82,7 @@ function normalizeImageUrl(value: unknown): string | null {
     const parsed = new URL(candidate.startsWith('//') ? `https:${candidate}` : candidate)
     if (parsed.protocol !== 'https:') return null
     const host = parsed.hostname.toLowerCase()
-    if (!host.endsWith('media-amazon.com') && !host.endsWith('ssl-images-amazon.com')) return null
+    if (!['media-amazon.com', 'ssl-images-amazon.com'].some((domain) => host === domain || host.endsWith(`.${domain}`))) return null
     if (!parsed.pathname.includes('/images/I/')) return null
     if (/play-button-overlay|video/i.test(parsed.pathname)) return null
     parsed.pathname = parsed.pathname.replace(/\.(?:_?[A-Z]{1,8}[^.]*)_\.(jpe?g|png|webp)$/i, '.$1')

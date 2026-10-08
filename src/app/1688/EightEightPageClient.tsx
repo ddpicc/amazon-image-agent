@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useState } from 'react'
+import { FormEvent, useEffect, useState } from 'react'
 import AmazonPageClient from '@/app/amazon/AmazonPageClient'
 import type { ProductInputInitialSource } from '@/components/ProductInput'
 import { AMAZON_REFERENCE_IMAGE_LIMIT } from '@/lib/amazon-workflow'
@@ -12,27 +12,58 @@ interface Product1688Result {
   images: string[]
   sourceUrl: string
   selectionToken: string
+  fetchedAt?: number
 }
 
 export default function EightEightPageClient({
   initialPointsBalance,
   imageModels,
+  userId,
 }: {
   initialPointsBalance: number
+  userId: string
   imageModels: ImageModelOption[]
 }) {
   const [source, setSource] = useState('')
+  const [productDescription, setProductDescription] = useState('')
+  const [draftReady, setDraftReady] = useState(false)
+  const [draftNotice, setDraftNotice] = useState('')
   const [result, setResult] = useState<Product1688Result | null>(null)
   const [selectedIndexes, setSelectedIndexes] = useState<number[]>([])
   const [workflowSource, setWorkflowSource] = useState<ProductInputInitialSource | null>(null)
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
 
+  const draftKey = `product-link-draft:${userId}`
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(draftKey)
+      if (raw) {
+        const draft = JSON.parse(raw)
+        if (typeof draft.source === 'string') setSource(draft.source)
+        if (typeof draft.description === 'string') setProductDescription(draft.description)
+        if (draft.result && typeof draft.result.selectionToken === 'string' && Array.isArray(draft.result.images) && draft.result.images.every((url: unknown) => typeof url === 'string') && typeof draft.result.title === 'string') {
+          setResult(draft.result)
+          setSelectedIndexes(Array.isArray(draft.selectedIndexes) ? draft.selectedIndexes.filter((i: unknown) => Number.isInteger(i) && Number(i) >= 0 && Number(i) < draft.result.images.length).slice(0, AMAZON_REFERENCE_IMAGE_LIMIT) : [])
+          setDraftNotice('已恢复上次选图草稿；图片选择过期时会重新获取并保留仍可用的选择。')
+        }
+      }
+    } catch { setDraftNotice('上次草稿无法读取，请重新获取商品。') }
+    setDraftReady(true)
+  }, [draftKey])
+  useEffect(() => {
+    if (!draftReady) return
+    try { localStorage.setItem(draftKey, JSON.stringify({ source, description: productDescription, result, selectedIndexes })) }
+    catch { setDraftNotice('浏览器无法保存草稿，请在离开前完成本次操作。') }
+  }, [draftReady, draftKey, source, productDescription, result, selectedIndexes])
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setError('')
     setResult(null)
     setSelectedIndexes([])
+    setProductDescription('')
+    setDraftNotice('')
     setIsLoading(true)
 
     try {
@@ -43,7 +74,7 @@ export default function EightEightPageClient({
       })
       const payload = await response.json() as { result?: Product1688Result; error?: string }
       if (!response.ok || !payload.result) throw new Error(payload.error || '1688 商品图片获取失败，请稍后重试。')
-      setResult(payload.result)
+      setResult({ ...payload.result, fetchedAt: Date.now() })
       setSelectedIndexes(payload.result.images.slice(0, AMAZON_REFERENCE_IMAGE_LIMIT).map((_, index) => index))
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : '1688 商品图片获取失败，请稍后重试。')
@@ -64,17 +95,29 @@ export default function EightEightPageClient({
     })
   }
 
-  const startAmazonWorkflow = () => {
-    if (!result || !selectedIndexes.length) return
-    setWorkflowSource({
-      productName: result.title,
-      sourceLabel: `1688 · ${result.offerId}`,
-      selectionToken: result.selectionToken,
-      referenceImages: selectedIndexes.map((sourceIndex) => ({
-        sourceIndex,
-        url: result.images[sourceIndex],
-      })),
-    })
+  const startAmazonWorkflow = async () => {
+    if (!result || !selectedIndexes.length || isLoading) return
+    setError('')
+    let current = result
+    let indexes = selectedIndexes
+    if (!result.fetchedAt || Date.now() - result.fetchedAt >= 110 * 60 * 1000) {
+      setIsLoading(true)
+      try {
+        const response = await fetch('/api/1688/product', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source: result.offerId }) })
+        const payload = await response.json()
+        if (!response.ok || !payload.result) throw new Error(payload.error || '重新获取图片失败，请重试。')
+        current = { ...payload.result, title: result.title, fetchedAt: Date.now() }
+        indexes = selectedIndexes.map((i) => current.images.indexOf(result.images[i])).filter((i) => i >= 0)
+        setResult(current); setSelectedIndexes(indexes)
+        if (indexes.length !== selectedIndexes.length) {
+          setError('图片已更新，部分原选图已失效。已保留可用选择，请确认后继续。')
+          return
+        }
+        setDraftNotice('图片选择已更新，已保留原选图。')
+      } catch (failure) { setError(failure instanceof Error ? failure.message : '更新失败'); return }
+      finally { setIsLoading(false) }
+    }
+    setWorkflowSource({ productName: current.title, description: productDescription, sourceLabel: `1688 · ${current.offerId}`, selectionToken: current.selectionToken, referenceImages: indexes.map((sourceIndex) => ({ sourceIndex, url: current.images[sourceIndex] })) })
   }
 
   if (workflowSource) {
@@ -94,7 +137,7 @@ export default function EightEightPageClient({
       <div className="mx-auto max-w-7xl">
         <header className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px] lg:items-end">
           <div className="max-w-3xl">
-            <div className="inline-flex rounded-full bg-violet-100 px-3 py-1 text-xs font-semibold text-violet-700">1688 货源工作流</div>
+            <div className="inline-flex rounded-full bg-violet-100 px-3 py-1 text-xs font-semibold text-violet-700">商品链接做图</div>
             <h1 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">选择货源图片，继续制作 Amazon 图组</h1>
             <p className="mt-3 text-sm leading-6 text-slate-600 sm:text-base">输入 1688 商品链接或 offerid，获取商品图片后勾选需要使用的图片，再进入 Amazon 图片分析与生图流程。</p>
           </div>
@@ -107,7 +150,7 @@ export default function EightEightPageClient({
           <form onSubmit={handleSubmit} className="panel space-y-6 p-6 sm:p-8 xl:sticky xl:top-6">
             <div>
               <label htmlFor="1688-source" className="mb-2 block text-sm font-semibold text-slate-900">1688 商品链接或 offerid</label>
-              <input id="1688-source" type="text" value={source} onChange={(event) => setSource(event.target.value)} placeholder="粘贴商品链接，或直接输入 offerid" className="input-field" required />
+              <input id="1688-source" type="text" disabled={isLoading || !draftReady} value={source} onChange={(event) => setSource(event.target.value)} placeholder="粘贴商品链接，或直接输入 offerid" className="input-field" required />
               <p className="mt-2 text-xs leading-5 text-slate-500">链接和纯数字 offerid 均可识别。</p>
             </div>
 
@@ -122,6 +165,7 @@ export default function EightEightPageClient({
           </form>
 
           <section aria-live="polite" className="min-w-0">
+            {draftNotice && <p className="mb-4 rounded-xl bg-blue-50 p-4 text-sm text-blue-900">{draftNotice}</p>}
             {!result && !isLoading && (
               <div className="panel flex min-h-[460px] flex-col items-center justify-center px-6 py-12 text-center sm:px-10">
                 <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-violet-100 text-violet-600" aria-hidden="true"><svg className="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6}><path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 19.5h16.5A1.5 1.5 0 0 0 21.75 18V6A1.5 1.5 0 0 0 20.25 4.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Z" /></svg></div>
@@ -140,6 +184,7 @@ export default function EightEightPageClient({
 
             {result && !isLoading && (
               <div className="space-y-4">
+                <div className="panel space-y-3 p-5 sm:p-6"><label className="block text-sm font-semibold">确认商品名称<input value={result.title} onChange={(event) => setResult({ ...result, title: event.target.value })} className="input-field mt-2" /></label><label className="block text-sm font-semibold">商品事实与规格<textarea value={productDescription} onChange={(event) => setProductDescription(event.target.value)} placeholder="填写实际材质、尺寸、功能及包含的配件，可在下一步继续补充。" className="input-field mt-2 min-h-[100px]" /></label><a href={result.sourceUrl} target="_blank" rel="noreferrer" className="text-sm text-amazon-blue">核对原商品页面 ↗</a></div>
                 <div className="panel p-5 sm:p-6">
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div><p className="text-sm font-semibold text-slate-950">已获取 {result.images.length} 张商品图片</p><p className="mt-1 text-xs text-slate-500">已选择 {selectedIndexes.length} / {AMAZON_REFERENCE_IMAGE_LIMIT} 张</p></div>
@@ -166,7 +211,7 @@ export default function EightEightPageClient({
                   </div>
                 </div>
 
-                <button type="button" onClick={startAmazonWorkflow} disabled={!selectedIndexes.length} className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-amazon-orange px-6 py-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-slate-400">用选中图片开始 Amazon 图片工作流<svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14m-6-6 6 6-6 6" /></svg></button>
+                <button type="button" onClick={startAmazonWorkflow} disabled={!selectedIndexes.length || isLoading} className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-amazon-orange px-6 py-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-slate-400">用选中图片开始 Amazon 图片工作流<svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14m-6-6 6 6-6 6" /></svg></button>
               </div>
             )}
           </section>
