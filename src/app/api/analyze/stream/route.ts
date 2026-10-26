@@ -14,6 +14,10 @@ export const dynamic = 'force-dynamic'
 // preflight bounded too, so a malformed or stalled multipart body cannot leave
 // the user waiting indefinitely without an operation record or an error.
 const FORM_DATA_PARSE_TIMEOUT_MS = 2 * 60 * 1000
+// Text providers can take several minutes and a silent stream is easy for
+// proxies and browsers to drop. Emit a small event well below common 60s idle
+// timeouts so the connection stays alive while the model is working.
+const STREAM_HEARTBEAT_INTERVAL_MS = 15 * 1000
 
 type StreamEvent =
   | { type: 'analysis-created'; analysisId: string }
@@ -21,6 +25,7 @@ type StreamEvent =
   | { type: 'stage'; stage: 'preparing' | 'analyzing' | 'prompting' | 'completed'; label: string; progress: number }
   | { type: 'partial-analysis'; data: Awaited<ReturnType<typeof analyzeProduct>> }
   | { type: 'warning'; message: string }
+  | { type: 'heartbeat' }
   | { type: 'error'; message: string; recoverable: boolean }
   | { type: 'done' }
 
@@ -59,6 +64,13 @@ export async function POST(request: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       let streamClosed = false
+      let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+      const stopHeartbeat = () => {
+        if (heartbeatTimer) {
+          clearInterval(heartbeatTimer)
+          heartbeatTimer = null
+        }
+      }
       const push = (event: StreamEvent) => {
         if (streamClosed) {
           return false
@@ -69,11 +81,13 @@ export async function POST(request: NextRequest) {
           return true
         } catch (error) {
           streamClosed = true
+          stopHeartbeat()
           console.warn('Analyze stream enqueue skipped after close:', error)
           return false
         }
       }
       const closeStream = () => {
+        stopHeartbeat()
         if (streamClosed) {
           return
         }
@@ -86,6 +100,11 @@ export async function POST(request: NextRequest) {
           streamClosed = true
         }
       }
+      heartbeatTimer = setInterval(() => {
+        if (!push({ type: 'heartbeat' })) {
+          stopHeartbeat()
+        }
+      }, STREAM_HEARTBEAT_INTERVAL_MS)
       let analysisRecordId: string | null = null
       let operationId: string | null = null
       let storedReferenceImages: StoredReferenceImage[] = []
@@ -425,6 +444,7 @@ export async function POST(request: NextRequest) {
     headers: {
       'Content-Type': 'text/plain; charset=utf-8',
       'Cache-Control': 'no-cache, no-transform',
+      'X-Accel-Buffering': 'no',
       Connection: 'keep-alive',
     },
   })

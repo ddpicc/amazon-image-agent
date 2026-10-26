@@ -16,6 +16,7 @@ export interface TextProviderClientConfig {
   model: string
   apiKey: string
   routingRole: TextProviderRoutingRole
+  coolingDown: boolean
 }
 
 function normalizeRoutingRole(value: unknown): TextProviderRoutingRole {
@@ -115,8 +116,11 @@ export async function listCandidateTextProviders(): Promise<TextProviderClientCo
   }
 
   const now = Date.now()
-  const ready = providers.filter((provider) => !provider.cooldownUntil || provider.cooldownUntil.getTime() <= now)
-  const coolingDown = providers.filter((provider) => provider.cooldownUntil && provider.cooldownUntil.getTime() > now)
+  const isCoolingDown = (provider: (typeof providers)[number]) => Boolean(
+    provider.cooldownUntil && provider.cooldownUntil.getTime() > now,
+  )
+  const ready = providers.filter((provider) => !isCoolingDown(provider))
+  const coolingDown = providers.filter(isCoolingDown)
 
   return [...ready, ...coolingDown].map((provider) => ({
     id: provider.id,
@@ -126,6 +130,7 @@ export async function listCandidateTextProviders(): Promise<TextProviderClientCo
     model: provider.model,
     apiKey: decryptSecret(provider.apiKeyCiphertext),
     routingRole: provider.routingRole,
+    coolingDown: isCoolingDown(provider),
   }))
 }
 

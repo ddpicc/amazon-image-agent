@@ -110,6 +110,16 @@ export async function requestTextJsonCompletion(
   const primaryProviders = providers.filter((provider) => provider.routingRole === TextProviderRoutingRole.AUTO)
   const fallbackProviders = providers.filter((provider) => provider.routingRole === TextProviderRoutingRole.FALLBACK)
   const fallbackProvider = fallbackProviders[0]
+  // Cooldown is tracked on every provider, but the earlier role split used to
+  // lose the ready-first ordering: a failed primary stayed first in its own
+  // list even while cooling down. Skip cooling primaries when a ready primary
+  // or fallback can serve the request instead.
+  const readyPrimaryProviders = primaryProviders.filter((provider) => !provider.coolingDown)
+  const primaryPhaseProviders = readyPrimaryProviders.length > 0
+    ? readyPrimaryProviders
+    : fallbackProvider
+      ? []
+      : primaryProviders
   const imagePartCount = content.filter((part) => part.type === 'image_url').length
   const textCharCount = content
     .filter((part): part is OpenAI.Chat.Completions.ChatCompletionContentPartText => part.type === 'text')
@@ -129,6 +139,8 @@ export async function requestTextJsonCompletion(
     totalTimeoutMs,
     routeStrategy: TEXT_PROVIDER_ROUTE_STRATEGY,
     primaryProviderCount: primaryProviders.length,
+    readyPrimaryProviderCount: readyPrimaryProviders.length,
+    skippedCoolingPrimaryCount: primaryProviders.length - readyPrimaryProviders.length,
     fallbackProvider: fallbackProvider?.name ?? null,
     fallbackModel: fallbackProvider?.model ?? null,
   })
@@ -190,6 +202,7 @@ export async function requestTextJsonCompletion(
           providerName: candidate.name,
           model: candidate.model,
           role: candidate.routingRole === TextProviderRoutingRole.FALLBACK ? 'fallback' : 'primary',
+          coolingDown: candidate.coolingDown,
         })),
         phaseBudgetMs: totalTimeoutMs,
         remainingPhaseBudgetMs,
@@ -380,8 +393,8 @@ export async function requestTextJsonCompletion(
   }
 
   let primaryResult: Awaited<ReturnType<typeof runProviderPhase>> | null = null
-  if (primaryProviders.length > 0) {
-    primaryResult = await runProviderPhase(primaryProviders, 'primary')
+  if (primaryPhaseProviders.length > 0) {
+    primaryResult = await runProviderPhase(primaryPhaseProviders, 'primary')
     if (primaryResult.response !== null) return primaryResult.response
   }
 

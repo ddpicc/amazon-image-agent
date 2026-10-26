@@ -20,6 +20,7 @@ interface HistoryAnalysisRecord {
   analysisJson: unknown
   promptPlanJson: unknown
   canResumeToPromptPage: boolean
+  canOpenAnalysis: boolean
   errorMessage: string | null
   createdAt: string
   updatedAt: string
@@ -298,7 +299,7 @@ export default function HistoryPageClient({ initialData }: { initialData: Histor
             <div>
               <h2 className="text-lg font-semibold text-slate-900">分析记录</h2>
               <p className="mt-2 text-sm text-slate-500">
-                只有已保存 Amazon 图组 Prompt 的记录才可以恢复，打开后直接进入图组 Prompt 页面。
+                已完成的记录可以直接打开；如果 Amazon 图组 Prompt 还没生成，打开后会自动补生成。
               </p>
             </div>
             <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
@@ -348,16 +349,20 @@ export default function HistoryPageClient({ initialData }: { initialData: Histor
                   )}
 
                   <div className="mt-4 flex flex-wrap gap-3">
-                    {record.canResumeToPromptPage ? (
+                    {record.canOpenAnalysis ? (
                       <Link
                         href={`/amazon?analysisId=${record.id}`}
                         className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-900"
                       >
-                        打开图组 Prompt
+                        {record.canResumeToPromptPage
+                          ? '打开图组 Prompt'
+                          : record.status === 'STARTED'
+                            ? '查看分析进度'
+                            : '打开并生成 Prompt'}
                       </Link>
                     ) : (
                       <span className="rounded-full border border-slate-200 bg-slate-100 px-4 py-2 text-sm text-slate-500">
-                        未生成 Amazon 图组 Prompt，无法恢复
+                        分析未完成，无法恢复
                       </span>
                     )}
                     {canDelete && (

@@ -2,7 +2,7 @@ import HistoryPageClient, { HistoryPageData } from './HistoryPageClient'
 import { requireNonAdminUser } from '@/lib/auth'
 import { toDisplayPoints } from '@/lib/points-config'
 import { prisma } from '@/lib/prisma'
-import { isPromptGenerationComplete, normalizePromptResults } from '@/lib/amazon-workflow'
+import { isBasicAnalysisResult, isPromptGenerationComplete, normalizePromptResults } from '@/lib/amazon-workflow'
 
 const ANALYSIS_PAGE_SIZE = 5
 const IMAGE_PAGE_SIZE = 12
@@ -69,12 +69,18 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
 
   const initialData: HistoryPageData = {
     analysisRecords: {
-      items: analysisRecords.map((record: AnalysisRecordItem) => ({
-        ...record,
-        canResumeToPromptPage: isPromptGenerationComplete(normalizePromptResults(record.promptPlanJson).amazonSet),
-        createdAt: record.createdAt.toISOString(),
-        updatedAt: record.updatedAt.toISOString(),
-      })),
+      items: analysisRecords.map((record: AnalysisRecordItem) => {
+        const canResumeToPromptPage = isPromptGenerationComplete(normalizePromptResults(record.promptPlanJson).amazonSet)
+        return {
+          ...record,
+          canResumeToPromptPage,
+          canOpenAnalysis: canResumeToPromptPage
+            || record.status === 'STARTED'
+            || (record.status === 'SUCCEEDED' && isBasicAnalysisResult(record.analysisJson)),
+          createdAt: record.createdAt.toISOString(),
+          updatedAt: record.updatedAt.toISOString(),
+        }
+      }),
       page: currentAnalysisPage,
       pageSize: ANALYSIS_PAGE_SIZE,
       total: analysisTotal,

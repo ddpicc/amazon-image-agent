@@ -13,6 +13,7 @@ import {
   PromptResults,
   normalizePromptResults,
   isBasicAnalysisResult,
+  isPromptGenerationComplete,
   parseStoredReferenceImages,
 } from '@/lib/amazon-workflow'
 import { ensureSufficientPointsForAnalysisByScene, saveSuccessfulAnalysisWithCharge } from '@/lib/points'
@@ -100,7 +101,7 @@ export async function POST(request: NextRequest) {
 
     const promptResults = normalizePromptResults(record.promptPlanJson)
     const existingResult = branch === 'amazon-set' ? promptResults.amazonSet : promptResults.aplus
-    if (existingResult) {
+    if (isPromptGenerationComplete(existingResult)) {
       return NextResponse.json({
         branch,
         result: existingResult,

@@ -4,7 +4,7 @@ import { syncActiveImageGenerationRequests } from '@/lib/image-generation-servic
 import { areReferenceImagesExpired } from '@/lib/reference-images'
 import { toDisplayPoints } from '@/lib/points-config'
 import { prisma } from '@/lib/prisma'
-import { isPromptGenerationComplete, normalizePromptResults } from '@/lib/amazon-workflow'
+import { isBasicAnalysisResult, isPromptGenerationComplete, normalizePromptResults } from '@/lib/amazon-workflow'
 
 const DEFAULT_ANALYSIS_PAGE_SIZE = 5
 const DEFAULT_IMAGE_PAGE_SIZE = 12
@@ -93,11 +93,17 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     analysisRecords: {
-      items: analysisRecords.map((record) => ({
-        ...record,
-        canResumeToPromptPage: isPromptGenerationComplete(normalizePromptResults(record.promptPlanJson).amazonSet),
-        referencesExpired: areReferenceImagesExpired(record.createdAt),
-      })),
+      items: analysisRecords.map((record) => {
+        const canResumeToPromptPage = isPromptGenerationComplete(normalizePromptResults(record.promptPlanJson).amazonSet)
+        return {
+          ...record,
+          canResumeToPromptPage,
+          canOpenAnalysis: canResumeToPromptPage
+            || record.status === 'STARTED'
+            || (record.status === 'SUCCEEDED' && isBasicAnalysisResult(record.analysisJson)),
+          referencesExpired: areReferenceImagesExpired(record.createdAt),
+        }
+      }),
       page: analysisPage,
       pageSize: analysisPageSize,
       total: analysisTotal,

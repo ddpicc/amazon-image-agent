@@ -114,7 +114,7 @@ function formatElapsedTime(durationMs: number) {
 }
 
 interface AnalyzeStreamEvent {
-  type: 'analysis-created' | 'references-stored' | 'stage' | 'partial-analysis' | 'warning' | 'error' | 'done'
+  type: 'analysis-created' | 'references-stored' | 'stage' | 'partial-analysis' | 'warning' | 'heartbeat' | 'error' | 'done'
   analysisId?: string
   referenceImages?: StoredReferenceImage[]
   stage?: Exclude<AnalysisStage, 'idle' | 'error'>
@@ -925,8 +925,8 @@ export default function AmazonPage({
     setBranchPromptLabel('')
     setBranchPromptProgress(0)
 
-    const canResumeToPromptPage = resumeState.canResumeToPromptPage
-      && isPromptGenerationComplete(resumeState.promptResults.amazonSet)
+    const hasCompletePrompt = isPromptGenerationComplete(resumeState.promptResults.amazonSet)
+    const canResumeToPromptPage = resumeState.canResumeToPromptPage && hasCompletePrompt
     const resolvedBranch = canResumeToPromptPage ? 'amazon-set' : null
 
     const resolvedPromptResult = resolvedBranch
@@ -964,6 +964,21 @@ export default function AmazonPage({
       setAnalysisStageLabel(options?.stageLabel || '已恢复 Amazon 图组 Prompt，可以继续编辑或生成图片')
       setAnalysisProgress(100)
       setCurrentStep('generate')
+      if (options?.resumeMessage) {
+        setResumeNotice(options.resumeMessage)
+      }
+      return
+    }
+
+    // The base analysis is already paid for and saved even when the client
+    // disconnected before the separate prompt request started. Keep it
+    // resumable and let the auto-generation effect below finish the job.
+    if (resumeState.status === 'SUCCEEDED' && resumeState.basicAnalysisResult && !hasCompletePrompt) {
+      setIsStreamCompleted(true)
+      setAnalysisStage('completed')
+      setAnalysisStageLabel(options?.stageLabel || '基础分析已完成，正在生成 Amazon 图组 Prompt')
+      setAnalysisProgress(100)
+      setCurrentStep('analysis')
       if (options?.resumeMessage) {
         setResumeNotice(options.resumeMessage)
       }
@@ -1192,14 +1207,19 @@ export default function AmazonPage({
       }
     })
 
+    const hasCompletePrompt = isPromptGenerationComplete(initialResumeState.promptResults.amazonSet)
     applyRecoveredAnalysisState(initialResumeState, {
       stageLabel: initialResumeState.status === 'SUCCEEDED'
-        ? '已从历史记录恢复 Amazon 图组 Prompt，可以继续编辑或生成图片'
+        ? hasCompletePrompt
+          ? '已从历史记录恢复 Amazon 图组 Prompt，可以继续编辑或生成图片'
+          : '基础分析已恢复，正在生成 Amazon 图组 Prompt'
         : initialResumeState.status === 'STARTED'
           ? '这次分析仍在服务端执行，正在尝试自动恢复结果'
           : initialResumeState.errorMessage || '历史分析记录未完成，暂时无法继续生图',
       resumeMessage: initialResumeState.status === 'SUCCEEDED'
-        ? `已从 ${formatDateTimeInBeijing(initialResumeState.createdAt)} 的分析记录恢复，当前继续使用已保存的参考图。`
+        ? hasCompletePrompt
+          ? `已从 ${formatDateTimeInBeijing(initialResumeState.createdAt)} 的分析记录恢复，当前继续使用已保存的参考图。`
+          : `已从 ${formatDateTimeInBeijing(initialResumeState.createdAt)} 的分析记录恢复基础分析，系统正在自动补生成 Amazon 图组 Prompt。`
         : initialResumeState.status === 'STARTED'
           ? '这次分析还在后台执行。系统会在当前页面自动轮询恢复结果。'
           : '这次历史分析没有完成，先查看错误信息后再决定是否重新分析。',
@@ -1526,7 +1546,7 @@ export default function AmazonPage({
       currentStep !== 'analysis'
       || !isStreamCompleted
       || !basicAnalysisResult
-      || promptResults.amazonSet
+      || isPromptGenerationComplete(promptResults.amazonSet)
       || autoAmazonPromptRequestRef.current
     ) {
       return
