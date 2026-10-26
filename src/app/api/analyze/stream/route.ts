@@ -4,7 +4,7 @@ import { verify1688SelectionToken } from '@/lib/1688-selection-token'
 import { requireApiUser } from '@/lib/auth'
 import { analyzeProduct } from '@/lib/anthropic'
 import { AMAZON_REFERENCE_IMAGE_LIMIT, StoredReferenceImage } from '@/lib/amazon-workflow'
-import { ensureSufficientPointsForAnalysisByScene, saveSuccessfulAnalysisWithCharge } from '@/lib/points'
+import { ensureSufficientPointsForAnalysisByScene, InsufficientPointsError, saveSuccessfulAnalysisWithCharge } from '@/lib/points'
 import { prisma } from '@/lib/prisma'
 import { createReferenceImagePayloadsFromFiles, downloadReferenceImageFiles, uploadReferenceImagesForAnalysis } from '@/lib/reference-images'
 
@@ -18,6 +18,9 @@ const FORM_DATA_PARSE_TIMEOUT_MS = 2 * 60 * 1000
 // proxies and browsers to drop. Emit a small event well below common 60s idle
 // timeouts so the connection stays alive while the model is working.
 const STREAM_HEARTBEAT_INTERVAL_MS = 15 * 1000
+// The client owns the analysis id so it can poll for the result even when the
+// streaming response never reaches it.
+const CLIENT_ANALYSIS_ID_PATTERN = /^[A-Za-z0-9_-]{8,64}$/
 
 type StreamEvent =
   | { type: 'analysis-created'; analysisId: string }
@@ -29,8 +32,25 @@ type StreamEvent =
   | { type: 'error'; message: string; recoverable: boolean }
   | { type: 'done' }
 
+class PreflightError extends Error {
+  status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = 'PreflightError'
+    this.status = status
+  }
+}
+
 function formatEvent(event: StreamEvent) {
   return `${JSON.stringify(event)}\n`
+}
+
+function jsonError(message: string, status: number, analysisId?: string) {
+  return new Response(JSON.stringify(analysisId ? { error: message, analysisId } : { error: message }), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  })
 }
 
 async function parseFormDataWithinTimeout(request: NextRequest) {
@@ -41,7 +61,7 @@ async function parseFormDataWithinTimeout(request: NextRequest) {
       request.formData(),
       new Promise<never>((_, reject) => {
         timeout = setTimeout(() => {
-          reject(new Error('上传内容解析超过 2 分钟未完成，请检查网络和图片后重试。'))
+          reject(new PreflightError('上传内容解析超过 2 分钟未完成，请检查网络和图片后重试。', 408))
         }, FORM_DATA_PARSE_TIMEOUT_MS)
       }),
     ])
@@ -50,15 +70,217 @@ async function parseFormDataWithinTimeout(request: NextRequest) {
   }
 }
 
+function toErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message === '网站暂不可用，请稍后再试。') {
+    return '网站暂不可用，请稍后再试。'
+  }
+  return error instanceof Error ? error.message : 'Failed to analyze product'
+}
+
 export async function POST(request: NextRequest) {
   const user = await requireApiUser(request)
   if (!user) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-      status: 401,
-      headers: { 'Content-Type': 'application/json' },
-    })
+    return jsonError('Unauthorized', 401)
   }
 
+  let operationId: string | null = null
+  let analysisRecordId: string | null = null
+  let analysisStartedAt: Date | null = null
+  let productName = ''
+  let description = ''
+  let additionalRequirements = ''
+  let category = 'General'
+  let targetAudience = 'General consumers'
+  let referenceImages: File[] = []
+  let source1688OfferId: string | null = null
+
+  // Everything that can fail with a plain HTTP error runs before the stream is
+  // created. That way the browser gets a real status code and message instead
+  // of a silently dead stream, and the analysis id is known up front.
+  try {
+    operationId = (await startAiOperation({
+      userId: user.id,
+      kind: 'ANALYSIS',
+      sourcePage: 'amazon',
+      entryPoint: '/api/analyze/stream',
+      inputSummary: {
+        stage: 'preparing',
+        detail: '等待解析上传内容',
+      },
+      requestSnapshot: {
+        stage: 'preparing',
+      },
+      expiresAt: getAiOperationExpiryDate(),
+    })).id
+
+    const formData = await parseFormDataWithinTimeout(request)
+
+    productName = String(formData.get('productName') || '')
+    description = String(formData.get('description') || '')
+    additionalRequirements = String(formData.get('additionalRequirements') || '').trim()
+    category = String(formData.get('category') || '') || 'General'
+    targetAudience = String(formData.get('targetAudience') || '') || 'General consumers'
+    const uploadedReferenceImages = [
+      ...formData.getAll('referenceImages'),
+      ...(!formData.get('referenceImage') ? [] : [formData.get('referenceImage')]),
+    ].filter((item): item is File => item instanceof File)
+    const source1688Token = String(formData.get('source1688Token') || '')
+    const source1688ImageIndexesValue = String(formData.get('source1688ImageIndexes') || '[]')
+    const requestedAnalysisId = String(formData.get('analysisId') || '').trim()
+    let importedReferenceImages: File[] = []
+
+    await prisma.aiOperation.update({
+      where: { id: operationId },
+      data: {
+        inputSummaryJson: {
+          productName,
+          additionalRequirements,
+          category,
+          targetAudience,
+          uploadedReferenceImageCount: uploadedReferenceImages.length,
+          referenceSource: source1688Token ? '1688' : 'upload',
+          stage: 'preparing',
+          detail: source1688Token ? '正在下载 1688 参考图' : '上传内容解析完成',
+        },
+        requestSnapshotJson: {
+          productName,
+          description,
+          additionalRequirements,
+          category,
+          targetAudience,
+          referenceSource: source1688Token ? '1688' : 'upload',
+          uploadedReferenceImages: uploadedReferenceImages.map((image, index) => ({
+            index,
+            name: image.name,
+            mimeType: image.type || 'image/jpeg',
+            sizeBytes: image.size,
+          })),
+        },
+      },
+    })
+
+    if (source1688Token) {
+      const sourceProduct = verify1688SelectionToken(source1688Token, user.id)
+      source1688OfferId = sourceProduct.offerId
+      let selectedIndexes: number[]
+      try {
+        const parsedIndexes = JSON.parse(source1688ImageIndexesValue) as unknown
+        selectedIndexes = Array.isArray(parsedIndexes)
+          ? Array.from(new Set(parsedIndexes.filter((item): item is number => Number.isInteger(item) && item >= 0 && item < sourceProduct.images.length))).slice(0, AMAZON_REFERENCE_IMAGE_LIMIT)
+          : []
+      } catch {
+        selectedIndexes = []
+      }
+      if (!selectedIndexes.length) throw new PreflightError('请至少选择一张 1688 商品图片。', 400)
+      importedReferenceImages = await downloadReferenceImageFiles(
+        selectedIndexes.map((index) => sourceProduct.images[index]),
+        AMAZON_REFERENCE_IMAGE_LIMIT,
+      )
+    }
+
+    referenceImages = [...importedReferenceImages, ...uploadedReferenceImages]
+      .slice(0, AMAZON_REFERENCE_IMAGE_LIMIT)
+
+    await prisma.aiOperation.update({
+      where: { id: operationId },
+      data: {
+        inputSummaryJson: {
+          productName,
+          additionalRequirements,
+          category,
+          targetAudience,
+          referenceImageCount: referenceImages.length,
+          referenceSource: source1688OfferId ? '1688' : 'upload',
+          source1688OfferId,
+          stage: 'preparing',
+          detail: '参考图已就绪，准备创建分析记录',
+        },
+        requestSnapshotJson: {
+          productName,
+          description,
+          additionalRequirements,
+          category,
+          targetAudience,
+          referenceSource: source1688OfferId ? '1688' : 'upload',
+          source1688OfferId,
+          referenceImages: referenceImages.map((image, index) => ({
+            index,
+            name: image.name,
+            mimeType: image.type || 'image/jpeg',
+            sizeBytes: image.size,
+          })),
+        },
+      },
+    })
+
+    if (!productName || !description || referenceImages.length === 0) {
+      throw new PreflightError('Product name, description, and at least one reference image are required', 400)
+    }
+
+    await ensureSufficientPointsForAnalysisByScene(user.id, 'amazon-analysis')
+
+    const existingRecord = CLIENT_ANALYSIS_ID_PATTERN.test(requestedAnalysisId)
+      ? await prisma.analysisRecord.findFirst({
+        where: { id: requestedAnalysisId, userId: user.id },
+        select: { id: true, createdAt: true, status: true },
+      })
+      : null
+
+    // A retried request (proxy resend, double submit) reuses the in-flight
+    // record. A finished one keeps its own id so results are never overwritten.
+    const analysisRecord = existingRecord && existingRecord.status === 'STARTED'
+      ? existingRecord
+      : await prisma.analysisRecord.create({
+        data: {
+          ...(CLIENT_ANALYSIS_ID_PATTERN.test(requestedAnalysisId) && !existingRecord ? { id: requestedAnalysisId } : {}),
+          userId: user.id,
+          operationId,
+          productName,
+          description,
+          additionalRequirements,
+          category,
+          targetAudience,
+          referenceImageCount: referenceImages.length,
+          status: 'STARTED',
+          requestSnapshotJson: {
+            productName,
+            description,
+            additionalRequirements,
+            category,
+            targetAudience,
+          },
+        },
+        select: { id: true, createdAt: true, status: true },
+      })
+
+    analysisRecordId = analysisRecord.id
+    analysisStartedAt = analysisRecord.createdAt
+  } catch (error) {
+    const errorMessage = toErrorMessage(error)
+    if (operationId) {
+      await completeAiOperation({
+        operationId,
+        status: 'FAILED',
+        errorMessage,
+        responseSnapshot: { errorMessage },
+      }).catch(() => undefined)
+    }
+
+    const status = error instanceof PreflightError
+      ? error.status
+      : error instanceof InsufficientPointsError
+        ? 402
+        : 500
+    console.error('Analyze preflight failed:', error)
+    return jsonError(errorMessage, status)
+  }
+
+  if (!analysisRecordId) {
+    return jsonError('Failed to create analysis record', 500)
+  }
+
+  const recordId = analysisRecordId
+  const recordStartedAt = analysisStartedAt
   const encoder = new TextEncoder()
 
   const stream = new ReadableStream({
@@ -105,189 +327,15 @@ export async function POST(request: NextRequest) {
           stopHeartbeat()
         }
       }, STREAM_HEARTBEAT_INTERVAL_MS)
-      let analysisRecordId: string | null = null
-      let operationId: string | null = null
-      let storedReferenceImages: StoredReferenceImage[] = []
-      let analysisStartedAt: Date | null = null
+
       let analysisPersistedSuccessfully = false
       let operationCompletedSuccessfully = false
 
       try {
-        // Create the diagnostic operation before parsing multipart data or
-        // downloading 1688 images. These were previously done first, which
-        // meant a request visibly stuck at 10% had no database trace at all.
-        operationId = (await startAiOperation({
-          userId: user.id,
-          kind: 'ANALYSIS',
-          sourcePage: 'amazon',
-          entryPoint: '/api/analyze/stream',
-          inputSummary: {
-            stage: 'preparing',
-            detail: '等待解析上传内容',
-          },
-          requestSnapshot: {
-            stage: 'preparing',
-          },
-          expiresAt: getAiOperationExpiryDate(),
-        })).id
+        push({ type: 'analysis-created', analysisId: recordId })
 
-        push({
-          type: 'stage',
-          stage: 'preparing',
-          label: '正在读取商品信息与参考图',
-          progress: 10,
-        })
-
-        const formData = await parseFormDataWithinTimeout(request)
-
-        const productName = formData.get('productName') as string
-        const description = formData.get('description') as string
-        const additionalRequirements = ((formData.get('additionalRequirements') as string) || '').trim()
-        const category = formData.get('category') as string
-        const targetAudience = formData.get('targetAudience') as string
-        const uploadedReferenceImages = [
-          ...formData.getAll('referenceImages'),
-          ...(!formData.get('referenceImage') ? [] : [formData.get('referenceImage')]),
-        ].filter((item): item is File => item instanceof File)
-        const source1688Token = String(formData.get('source1688Token') || '')
-        const source1688ImageIndexesValue = String(formData.get('source1688ImageIndexes') || '[]')
-        let importedReferenceImages: File[] = []
-        let source1688OfferId: string | null = null
-
-        await prisma.aiOperation.update({
-          where: { id: operationId },
-          data: {
-            inputSummaryJson: {
-              productName,
-              additionalRequirements,
-              category: category || 'General',
-              targetAudience: targetAudience || 'General consumers',
-              uploadedReferenceImageCount: uploadedReferenceImages.length,
-              referenceSource: source1688Token ? '1688' : 'upload',
-              stage: 'preparing',
-              detail: source1688Token ? '正在下载 1688 参考图' : '上传内容解析完成',
-            },
-            requestSnapshotJson: {
-              productName,
-              description,
-              additionalRequirements,
-              category: category || 'General',
-              targetAudience: targetAudience || 'General consumers',
-              referenceSource: source1688Token ? '1688' : 'upload',
-              uploadedReferenceImages: uploadedReferenceImages.map((image, index) => ({
-                index,
-                name: image.name,
-                mimeType: image.type || 'image/jpeg',
-                sizeBytes: image.size,
-              })),
-            },
-          },
-        })
-
-        if (source1688Token) {
-          const sourceProduct = verify1688SelectionToken(source1688Token, user.id)
-          source1688OfferId = sourceProduct.offerId
-          let selectedIndexes: number[]
-          try {
-            const parsedIndexes = JSON.parse(source1688ImageIndexesValue) as unknown
-            selectedIndexes = Array.isArray(parsedIndexes)
-              ? Array.from(new Set(parsedIndexes.filter((item): item is number => Number.isInteger(item) && item >= 0 && item < sourceProduct.images.length))).slice(0, AMAZON_REFERENCE_IMAGE_LIMIT)
-              : []
-          } catch {
-            selectedIndexes = []
-          }
-          if (!selectedIndexes.length) throw new Error('请至少选择一张 1688 商品图片。')
-          importedReferenceImages = await downloadReferenceImageFiles(
-            selectedIndexes.map((index) => sourceProduct.images[index]),
-            AMAZON_REFERENCE_IMAGE_LIMIT,
-          )
-        }
-
-        const referenceImages = [...importedReferenceImages, ...uploadedReferenceImages]
-          .slice(0, AMAZON_REFERENCE_IMAGE_LIMIT)
-
-        await prisma.aiOperation.update({
-          where: { id: operationId },
-          data: {
-            inputSummaryJson: {
-              productName,
-              additionalRequirements,
-              category: category || 'General',
-              targetAudience: targetAudience || 'General consumers',
-              referenceImageCount: referenceImages.length,
-              referenceSource: source1688OfferId ? '1688' : 'upload',
-              source1688OfferId,
-              stage: 'preparing',
-              detail: '参考图已就绪，准备创建分析记录',
-            },
-            requestSnapshotJson: {
-              productName,
-              description,
-              additionalRequirements,
-              category: category || 'General',
-              targetAudience: targetAudience || 'General consumers',
-              referenceSource: source1688OfferId ? '1688' : 'upload',
-              source1688OfferId,
-              referenceImages: referenceImages.map((image, index) => ({
-                index,
-                name: image.name,
-                mimeType: image.type || 'image/jpeg',
-                sizeBytes: image.size,
-              })),
-            },
-          },
-        })
-
-        if (!productName || !description || referenceImages.length === 0) {
-          if (operationId) {
-            await completeAiOperation({
-              operationId,
-              status: 'FAILED',
-              errorMessage: 'Product name, description, and at least one reference image are required',
-              responseSnapshot: {
-                errorMessage: 'Product name, description, and at least one reference image are required',
-              },
-            }).catch(() => undefined)
-          }
-          push({
-            type: 'error',
-            message: 'Product name, description, and at least one reference image are required',
-            recoverable: false,
-          })
-          closeStream()
-          return
-        }
-
-        await ensureSufficientPointsForAnalysisByScene(user.id, 'amazon-analysis')
-
-        const analysisRecord = await prisma.analysisRecord.create({
-          data: {
-            userId: user.id,
-            operationId,
-            productName,
-            description,
-            additionalRequirements,
-            category: category || 'General',
-            targetAudience: targetAudience || 'General consumers',
-            referenceImageCount: referenceImages.length,
-            status: 'STARTED',
-            requestSnapshotJson: {
-              productName,
-              description,
-              additionalRequirements,
-              category: category || 'General',
-              targetAudience: targetAudience || 'General consumers',
-            },
-          },
-        })
-        analysisRecordId = analysisRecord.id
-        analysisStartedAt = analysisRecord.createdAt
-        push({
-          type: 'analysis-created',
-          analysisId: analysisRecord.id,
-        })
-        storedReferenceImages = await uploadReferenceImagesForAnalysis({
-          recordId: analysisRecord.id,
+        const storedReferenceImages = await uploadReferenceImagesForAnalysis({
+          recordId,
           files: referenceImages,
           maxImages: AMAZON_REFERENCE_IMAGE_LIMIT,
         })
@@ -295,7 +343,7 @@ export async function POST(request: NextRequest) {
         const imagePayloads = await createReferenceImagePayloadsFromFiles(referenceImages, AMAZON_REFERENCE_IMAGE_LIMIT)
 
         await prisma.analysisRecord.update({
-          where: { id: analysisRecord.id },
+          where: { id: recordId },
           data: {
             referenceImagesJson: storedReferenceImages as any,
           },
@@ -312,8 +360,8 @@ export async function POST(request: NextRequest) {
           productName,
           description,
           additionalRequirements,
-          category: category || 'General',
-          targetAudience: targetAudience || 'General consumers',
+          category,
+          targetAudience,
           referenceImages: imagePayloads,
           operationId: operationId ?? undefined,
           sourcePage: 'amazon',
@@ -361,7 +409,7 @@ export async function POST(request: NextRequest) {
 
         await saveSuccessfulAnalysisWithCharge({
           userId: user.id,
-          analysisId: analysisRecord.id,
+          analysisId: recordId,
           scene: 'amazon-analysis',
           data: {
             status: 'SUCCEEDED',
@@ -369,7 +417,7 @@ export async function POST(request: NextRequest) {
             analysisJson: basicResult as any,
             responseSnapshotJson: basicResult as any,
             completedAt: new Date(),
-            durationMs: analysisStartedAt ? Date.now() - analysisStartedAt.getTime() : undefined,
+            durationMs: recordStartedAt ? Date.now() - recordStartedAt.getTime() : undefined,
           },
         })
         analysisPersistedSuccessfully = true
@@ -401,19 +449,15 @@ export async function POST(request: NextRequest) {
         push({ type: 'done' })
         closeStream()
       } catch (error) {
-        const errorMessage = error instanceof Error && error.message === '网站暂不可用，请稍后再试。'
-          ? '网站暂不可用，请稍后再试。'
-          : error instanceof Error
-            ? error.message
-            : 'Failed to analyze product'
-        if (analysisRecordId && !analysisPersistedSuccessfully) {
+        const errorMessage = toErrorMessage(error)
+        if (!analysisPersistedSuccessfully) {
           await prisma.analysisRecord.update({
-            where: { id: analysisRecordId },
+            where: { id: recordId },
             data: {
               status: 'FAILED',
               errorMessage,
               completedAt: new Date(),
-              durationMs: analysisStartedAt ? Date.now() - analysisStartedAt.getTime() : undefined,
+              durationMs: recordStartedAt ? Date.now() - recordStartedAt.getTime() : undefined,
             },
           }).catch(() => undefined)
         }
@@ -445,6 +489,7 @@ export async function POST(request: NextRequest) {
       'Content-Type': 'text/plain; charset=utf-8',
       'Cache-Control': 'no-cache, no-transform',
       'X-Accel-Buffering': 'no',
+      'X-Analysis-Id': recordId,
       Connection: 'keep-alive',
     },
   })

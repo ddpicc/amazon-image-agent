@@ -134,6 +134,11 @@ interface AnalyzeFormInput {
   source1688ImageIndexes?: number[]
 }
 
+// A dropped or half-closed stream used to leave the page spinning forever.
+// Analysis can legitimately stay silent for minutes, so only treat a fully
+// silent reader as dead (the server heartbeats every 15s).
+const ANALYZE_STREAM_IDLE_TIMEOUT_MS = 75 * 1000
+
 const imageTypeOptions: ImageTypeOption[] = [
   { value: 'main-white', label: '白底主图', description: '主图合规与点击优先' },
   { value: 'size', label: '尺寸图', description: '建立尺寸与比例认知' },
@@ -1280,9 +1285,20 @@ export default function AmazonPage({
     setEditedPrompts({})
     let receivedBasicAnalysis = false
     let streamFinished = false
+    let analysisStartRejected = false
 
     try {
+      // The client owns the analysis id: even if the streaming response never
+      // arrives (proxies and browsers do drop long-lived streams), the page can
+      // poll /api/analyze/{id} and recover the result.
+      const clientAnalysisId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `analysis${Date.now()}${Math.random().toString(36).slice(2, 10)}`
+      analysisId = clientAnalysisId
+      setAnalysisId(clientAnalysisId)
+
       const formData = new FormData()
+      formData.append('analysisId', clientAnalysisId)
       formData.append('productName', data.productName)
       formData.append('description', data.description)
       formData.append('additionalRequirements', data.additionalRequirements)
@@ -1301,15 +1317,51 @@ export default function AmazonPage({
       })
 
       if (!response.ok || !response.body) {
-        throw new Error('Failed to start analysis stream')
+        analysisStartRejected = true
+        let message = '分析启动失败，请稍后重试'
+        try {
+          const payload = await response.json() as { error?: string }
+          if (payload?.error) message = payload.error
+        } catch {
+          // keep the fallback message when the body is not JSON
+        }
+        throw new Error(message)
+      }
+
+      const headerAnalysisId = response.headers.get('X-Analysis-Id')
+      if (headerAnalysisId) {
+        analysisId = headerAnalysisId
+        setAnalysisId(headerAnalysisId)
       }
 
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
+      let streamIdleTimedOut = false
 
       while (true) {
-        const { value, done } = await reader.read()
+        let idleTimer: ReturnType<typeof setTimeout> | undefined
+        const readResult = await Promise.race([
+          reader.read(),
+          new Promise<null>((resolve) => {
+            idleTimer = setTimeout(() => resolve(null), ANALYZE_STREAM_IDLE_TIMEOUT_MS)
+          }),
+        ])
+        if (idleTimer) clearTimeout(idleTimer)
+
+        if (readResult === null) {
+          // A silent stream can hang forever when the connection is half closed.
+          // Treat it as interrupted and fall back to polling for the result.
+          streamIdleTimedOut = true
+          try {
+            await reader.cancel()
+          } catch {
+            // the reader may already be closed
+          }
+          break
+        }
+
+        const { value, done } = readResult
         if (done) break
         buffer += decoder.decode(value, { stream: true })
         const lines = buffer.split('\n')
@@ -1391,7 +1443,7 @@ export default function AmazonPage({
       }
 
       if (!streamFinished && analyzeRequestIdRef.current === requestId) {
-        throw new Error('分析流意外中断')
+        throw new Error(streamIdleTimedOut ? '分析流长时间没有响应' : '分析流意外中断')
       }
     } catch (error) {
       if (analyzeRequestIdRef.current !== requestId) return
@@ -1401,9 +1453,24 @@ export default function AmazonPage({
       console.error('Error analyzing product:', error)
       const message = error instanceof Error ? error.message : 'Failed to analyze product. Please check your API keys.'
 
-      if (!receivedBasicAnalysis && analysisId) {
+      if (!analysisStartRejected && !receivedBasicAnalysis && analysisId) {
         try {
-          const payload = await fetchAnalysisStatus(analysisId)
+          // The record is created during preflight, so a very early interruption
+          // can outrun it. Give it a few chances before giving up.
+          let payload: AnalysisStatusPayload | null = null
+          let lastRecoveryError: unknown = null
+          for (let attempt = 0; attempt < 4 && !payload; attempt += 1) {
+            if (attempt > 0) {
+              await new Promise((resolve) => setTimeout(resolve, 2000))
+            }
+            try {
+              payload = await fetchAnalysisStatus(analysisId)
+            } catch (recoveryError) {
+              lastRecoveryError = recoveryError
+            }
+          }
+          if (!payload) throw lastRecoveryError ?? new Error('分析记录仍未生成')
+
           applyRecoveredAnalysisState(payload, {
             stageLabel: payload.status === 'STARTED'
               ? '流式连接已中断，分析仍在服务端执行'
