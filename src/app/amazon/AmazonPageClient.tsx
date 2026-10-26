@@ -1439,7 +1439,10 @@ export default function AmazonPage({
     }
   }, [amazonAnalysisCost, amazonAnalysisCostText, applyRecoveredAnalysisState, fetchAnalysisStatus, markLocalAnalysisCharge, pointsBalance, startPollingAnalysis, stopAnalysisPolling])
 
-  const handleGenerateBranchPrompts = useCallback(async (branch: AmazonBranch) => {
+  const handleGenerateBranchPrompts = useCallback(async (
+    branch: AmazonBranch,
+    options?: { preserveImages?: boolean },
+  ) => {
     if (!analysisId) {
       setPromptGenerationError('缺少分析记录 ID，请重新分析后再试。')
       return
@@ -1454,7 +1457,7 @@ export default function AmazonPage({
     if (!isAppendingAPlus) {
       setSelectedBranch(branch)
     }
-    if (!isAppendingAPlus) {
+    if (!isAppendingAPlus && !options?.preserveImages) {
       setGeneratedImages([])
       setEditingImage(null)
     }
@@ -1978,6 +1981,28 @@ export default function AmazonPage({
 
             {currentStep === 'generate' && basicAnalysisResult && currentPromptResult && selectedBranch && (
               <>
+                {selectedBranch === 'amazon-set' && amazonPromptResult?.generatedByFallback && (
+                  <div className="rounded-3xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <span>本次 Prompt 使用了兜底模板：模型返回格式异常。建议重新生成，以获得更贴合商品的方案。</span>
+                      <button
+                        type="button"
+                        onClick={() => handleGenerateBranchPrompts('amazon-set', { preserveImages: true })}
+                        disabled={branchPromptStatus !== 'idle' && branchPromptStatus !== 'error'}
+                        className="rounded-xl border border-amber-300 bg-white px-4 py-2 text-xs font-semibold text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {branchPromptStatus !== 'idle' && branchPromptStatus !== 'error'
+                          ? '正在重新生成...'
+                          : '重新生成 Prompt'}
+                      </button>
+                    </div>
+                    {branchPromptStatus !== 'idle' && branchPromptStatus !== 'error' && (
+                      <p className="mt-2 text-xs text-amber-700">
+                        {branchPromptLabel || '正在重新生成 Prompt，请稍候...'}
+                      </p>
+                    )}
+                  </div>
+                )}
                 <div className="panel p-6">
                   <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                     <div>

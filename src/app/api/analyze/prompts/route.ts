@@ -20,6 +20,17 @@ import { ensureSufficientPointsForAnalysisByScene, saveSuccessfulAnalysisWithCha
 import { prisma } from '@/lib/prisma'
 import { createReferenceImagePayloadsFromUrls, areReferenceImagesExpired } from '@/lib/reference-images'
 
+const PROMPT_GENERATION_CLAIM_WINDOW_MS = 12 * 60 * 1000
+
+function getPromptGenerationAnalysisId(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null
+  }
+
+  const record = value as Record<string, unknown>
+  return typeof record.analysisId === 'string' ? record.analysisId : null
+}
+
 function mergePromptResults(
   previous: PromptResults,
   branch: AmazonBranch,
@@ -55,22 +66,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'analysisId and branch are required' }, { status: 400 })
     }
 
-    operationId = (await startAiOperation({
-      userId: user.id,
-      kind: 'ANALYSIS',
-      sourcePage: 'amazon',
-      entryPoint: '/api/analyze/prompts',
-      inputSummary: {
-        analysisId,
-        branch,
-      },
-      requestSnapshot: {
-        analysisId,
-        branch,
-      },
-      expiresAt: getAiOperationExpiryDate(),
-    })).id
-
     const record = await prisma.analysisRecord.findFirst({
       where: {
         id: analysisId,
@@ -101,7 +96,10 @@ export async function POST(request: NextRequest) {
 
     const promptResults = normalizePromptResults(record.promptPlanJson)
     const existingResult = branch === 'amazon-set' ? promptResults.amazonSet : promptResults.aplus
-    if (isPromptGenerationComplete(existingResult)) {
+    // A fallback plan is structurally complete, but it is only a degraded
+    // template. Let an explicit retry regenerate it instead of returning it
+    // immediately forever.
+    if (existingResult && isPromptGenerationComplete(existingResult) && !existingResult.generatedByFallback) {
       return NextResponse.json({
         branch,
         result: existingResult,
@@ -126,6 +124,67 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         error: '这条记录的参考图已按 30 天保存策略自动清理，无法带原图重新生成。请重新上传参考图，或直接新建分析。',
       }, { status: 410 })
+    }
+
+    // Create the diagnostic operation only after the cheap cached-result and
+    // validation checks. Returning a cached plan should not leave a STARTED
+    // operation behind, and it should not participate in the in-flight claim.
+    operationId = (await startAiOperation({
+      userId: user.id,
+      kind: 'ANALYSIS',
+      sourcePage: 'amazon',
+      entryPoint: '/api/analyze/prompts',
+      inputSummary: {
+        analysisId,
+        branch,
+      },
+      requestSnapshot: {
+        analysisId,
+        branch,
+      },
+      expiresAt: getAiOperationExpiryDate(),
+    })).id
+
+    // Opening the same record in several tabs (or retrying while a request is
+    // still running) used to start several prompt generations for the same
+    // analysis. The last one to finish could then overwrite a better result.
+    // The earliest active operation owns the generation; later ones back off.
+    const activePromptOperations = await prisma.aiOperation.findMany({
+      where: {
+        userId: user.id,
+        entryPoint: '/api/analyze/prompts',
+        status: 'STARTED',
+        startedAt: { gte: new Date(Date.now() - PROMPT_GENERATION_CLAIM_WINDOW_MS) },
+      },
+      orderBy: [
+        { startedAt: 'asc' },
+        { id: 'asc' },
+      ],
+      select: {
+        id: true,
+        inputSummaryJson: true,
+      },
+    })
+    const firstActiveOperation = activePromptOperations.find((operation) => {
+      // Serialise all prompt work for one analysis, including the A+ branch,
+      // because both branches merge into the same promptPlanJson field.
+      return getPromptGenerationAnalysisId(operation.inputSummaryJson) === analysisId
+    })
+
+    if (firstActiveOperation && firstActiveOperation.id !== operationId) {
+      await completeAiOperation({
+        operationId,
+        status: 'FAILED',
+        errorMessage: '这个分析已有 Prompt 生成任务在执行',
+        responseSnapshot: {
+          skipped: true,
+          activeOperationId: firstActiveOperation.id,
+        },
+      }).catch(() => undefined)
+      return NextResponse.json(
+        { error: '这个分析正在生成 Prompt，请稍后刷新页面查看结果。' },
+        { status: 409 },
+      )
     }
 
     const imagePayloads = await createReferenceImagePayloadsFromUrls(
@@ -164,7 +223,37 @@ export async function POST(request: NextRequest) {
         )),
       }
 
-    const nextPromptResults = mergePromptResults(promptResults, branch, result)
+    // Another request may have finished while this one was generating. Keep a
+    // complete, model-generated plan instead of letting a slower fallback or a
+    // duplicate request overwrite it.
+    const latestRecord = await prisma.analysisRecord.findUnique({
+      where: { id: record.id },
+      select: { promptPlanJson: true },
+    })
+    const latestPromptResults = normalizePromptResults(latestRecord?.promptPlanJson)
+    const latestResult = branch === 'amazon-set' ? latestPromptResults.amazonSet : latestPromptResults.aplus
+
+    if (latestResult && isPromptGenerationComplete(latestResult) && !latestResult.generatedByFallback) {
+      if (operationId) {
+        await completeAiOperation({
+          operationId,
+          status: 'SUCCEEDED',
+          outputSummary: {
+            branch,
+            promptCount: Object.keys(latestResult.suggestedPrompts).length,
+            reusedExistingResult: true,
+          },
+          responseSnapshot: latestResult,
+        }).catch(() => undefined)
+      }
+      return NextResponse.json({
+        branch,
+        result: latestResult,
+        charged: false,
+      })
+    }
+
+    const nextPromptResults = mergePromptResults(latestPromptResults, branch, result)
 
     await saveSuccessfulAnalysisWithCharge({
       userId: user.id,
@@ -182,6 +271,7 @@ export async function POST(request: NextRequest) {
         outputSummary: {
           branch,
           promptCount: Object.keys(result.suggestedPrompts).length,
+          generatedByFallback: result.generatedByFallback === true,
         },
         responseSnapshot: result,
       }).catch(() => undefined)

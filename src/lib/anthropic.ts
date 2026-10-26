@@ -90,6 +90,8 @@ export interface GeneratePromptsOutput {
     visualForm: string
     prompt: string
   }>
+  generatedByFallback?: boolean
+  fallbackReason?: string
 }
 
 export type GenerateAPlusPromptOutput = GeneratePromptsOutput
@@ -1123,8 +1125,10 @@ async function generateAdaptiveAmazonPrompts(
     })
   }
 
+  let responseText = ''
+  let parsedSlotIds: unknown[] | null = null
   try {
-    const responseText = await requestJsonChatCompletion(content, 8000, {
+    responseText = await requestJsonChatCompletion(content, 8000, {
       operationId,
       sourcePage: 'amazon',
       entryPoint,
@@ -1142,8 +1146,11 @@ async function generateAdaptiveAmazonPrompts(
     const parsed = parseModelJsonResponse(responseText, ['items']) as { items?: unknown }
     if (!Array.isArray(parsed.items)) throw new Error('Adaptive gallery result is invalid')
 
-    const rawItems: AdaptiveGalleryItem[] = parsed.items
+    const parsedItems = parsed.items
       .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
+    parsedSlotIds = parsedItems.map((item) => item.slotId)
+
+    const rawItems: AdaptiveGalleryItem[] = parsedItems
       .filter((item) => isAdaptiveGallerySlotId(item.slotId))
       .map((item) => ({
         slotId: item.slotId as AdaptiveGallerySlotId,
@@ -1184,13 +1191,22 @@ async function generateAdaptiveAmazonPrompts(
       suggestedPrompts,
     }
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error)
     console.warn('[amazon-prompt] generation:fallback', {
       operationId: operationId ?? null,
       durationMs: Date.now() - generationStartedAt,
       errorName: error instanceof Error ? error.name : 'UnknownError',
-      errorMessage: error instanceof Error ? error.message : String(error),
+      errorMessage,
+      errorStack: error instanceof Error ? error.stack : null,
+      responseLength: responseText.length,
+      parsedSlotIds,
+      responsePreview: responseText.slice(0, 2000),
     })
-    return buildAdaptiveFallbackResult(requiresTwoLifestyleScenes)
+    return {
+      ...buildAdaptiveFallbackResult(requiresTwoLifestyleScenes),
+      generatedByFallback: true,
+      fallbackReason: errorMessage,
+    }
   }
 }
 

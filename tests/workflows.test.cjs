@@ -158,3 +158,31 @@ test('user cancellation aborts model work without penalizing provider health or 
   await assert.rejects(model.requestTextJsonCompletion([], 100, { operationId: 'op', signal: controller.signal }), /user cancelled/)
   assert.equal(calls, 1); assert.equal(failures, 0)
 })
+test('legacy fallback prompt plans are detected so they can be regenerated', () => {
+  const { normalizePromptResults } = load('src/lib/amazon-workflow.ts')
+  const plan = {
+    amazonSet: {
+      status: 'completed',
+      recommendedImagePlan: [{ type: 'main-white', index: 1, title: '白底主图', goal: '', notes: [] }],
+      suggestedPrompts: { 'main-white': 'prompt' },
+      workflowVersion: 2,
+      items: [
+        { slotId: 'main-white', title: '白底主图', visualForm: 'white', prompt: 'p1' },
+        { slotId: 'secondary-1', title: '核心利益与使用场景', visualForm: 'life', prompt: 'p2' },
+        { slotId: 'secondary-2', title: '关键细节', visualForm: 'detail', prompt: 'p3' },
+        { slotId: 'secondary-3', title: '尺寸与比例', visualForm: 'size', prompt: 'p4' },
+        { slotId: 'secondary-4', title: '功能卖点', visualForm: 'feature', prompt: 'p5' },
+      ],
+    },
+    aplus: null,
+  }
+  assert.equal(normalizePromptResults(plan).amazonSet.generatedByFallback, true)
+
+  const custom = JSON.parse(JSON.stringify(plan))
+  custom.amazonSet.items[0].title = '完整 L 型主图'
+  assert.equal(normalizePromptResults(custom).amazonSet.generatedByFallback, undefined)
+
+  const marked = JSON.parse(JSON.stringify(custom))
+  marked.amazonSet.generatedByFallback = true
+  assert.equal(normalizePromptResults(marked).amazonSet.generatedByFallback, true)
+})

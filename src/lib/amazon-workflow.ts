@@ -112,6 +112,8 @@ export interface PromptGenerationResult {
   suggestedPrompts: Record<string, string>
   workflowVersion?: 2
   items?: AmazonGalleryPromptItem[]
+  generatedByFallback?: boolean
+  fallbackReason?: string
 }
 
 export type APlusPromptGenerationResult = PromptGenerationResult
@@ -346,6 +348,28 @@ function isPromptResults(value: unknown): value is PromptResults {
   )
 }
 
+// Older deployments did not persist a fallback marker. Their plans can be
+// recognised by the fixed fallback titles so they remain regenerable.
+const LEGACY_FALLBACK_TITLES = new Set([
+  '白底主图',
+  '核心利益与使用场景',
+  '关键细节',
+  '尺寸与比例',
+  '功能卖点',
+  '包装与配件',
+  '补充使用方式',
+  '选择与适用信息',
+  '信任与包装收束',
+])
+
+function isLegacyFallbackItems(items: AmazonGalleryPromptItem[] | undefined) {
+  return Boolean(
+    items
+      && items.length > 0
+      && items.every((item) => LEGACY_FALLBACK_TITLES.has(item.title)),
+  )
+}
+
 export function normalizePromptResults(value: unknown): PromptResults {
   if (isPromptResults(value)) {
     const normalizeResult = (candidate: unknown): PromptGenerationResult | null => {
@@ -371,12 +395,16 @@ export function normalizePromptResults(value: unknown): PromptResults {
           }))
         : undefined
 
+      const generatedByFallback = raw.generatedByFallback === true || isLegacyFallbackItems(items)
+
       return {
         status: raw.status === 'completed' ? 'completed' : 'idle',
         recommendedImagePlan: raw.recommendedImagePlan as RecommendedImagePlanItem[],
         suggestedPrompts: raw.suggestedPrompts as Record<string, string>,
         ...(items ? { items } : {}),
         ...(raw.workflowVersion === 2 ? { workflowVersion: 2 as const } : {}),
+        ...(generatedByFallback ? { generatedByFallback: true } : {}),
+        ...(typeof raw.fallbackReason === 'string' ? { fallbackReason: raw.fallbackReason } : {}),
       }
     }
 
