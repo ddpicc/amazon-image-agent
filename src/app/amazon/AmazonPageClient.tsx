@@ -382,8 +382,9 @@ function buildStructuredPromptDirectives(type: PromptKey): string[] {
       '这是 Amazon A+ module image，不是 listing 白底主图。',
       '产品必须是视觉主角，且与参考图保持一致。',
       '视觉方向优先服从商品类目、使用对象和核心利益；如果真实使用语境需要，可以自然呈现相应用户、婴儿、儿童或照护者，帮助表达尺度、动作和情绪。',
-      '图片内不得出现中文、中文字符或中文标点；如果出现任何标题、说明或标签，全部使用简短自然的英文，无法保证英文准确时不要放文字。',
-      '整体感觉要像成熟、干净、有生活感和叙事的 A+ 模块，而不是复杂编辑稿或杂乱海报；每个装饰元素都要服务于购买理解。',
+      '图片内不得出现中文、中文字符或中文标点；每张图最多 1 个短英文标题和 2-4 个短标签/参数，且只能使用商品事实，无法保证英文准确时保留信息分区但不要强行生成文字。',
+      'A+ 使用中等信息密度：Hero 加 1 个核心利益信息区和 1-2 个辅助证据；Transform 表现 2-3 步动作或状态关系；Grid 使用不超过 3 个卖点分区或局部放大；Lifestyle + Specs 保留 1 个真实场景并加入 2-3 个简短参数/利益标签。',
+      '整体感觉要像成熟、干净、有生活感和叙事的 A+ 模块，而不是复杂编辑稿或杂乱海报；信息组件要服务购买理解，不能退化成单一产品摆拍。',
     ]
   }
 
@@ -406,11 +407,11 @@ function buildStructuredPromptDirectives(type: PromptKey): string[] {
   }
 
   if (type === 'infographic-1') {
-    directives.push('分工要求：这是卖点图一，只讲最强的 1-2 个核心卖点，信息量克制，不要堆满。')
+    directives.push('分工要求：这是卖点图一，只讲最强的 1-2 个核心卖点，可加入 2-3 个清晰的信息组件或局部特写，但保持移动端可读。')
   }
 
   if (type === 'infographic-2') {
-    directives.push('分工要求：这是卖点图二，用来承接另一组卖点或使用收益，与卖点图一明确分工，不重复。')
+    directives.push('分工要求：这是卖点图二，用来承接另一组卖点或使用收益，可加入 2-3 个信息组件或局部特写，与卖点图一明确分工，不重复。')
   }
 
   if (type === 'lifestyle-1') {
@@ -422,7 +423,7 @@ function buildStructuredPromptDirectives(type: PromptKey): string[] {
   }
 
   if (baseType === 'infographic') {
-    directives.push('版式要求：信息图保持清晰留白，避免密集小字和过多模块。')
+    directives.push('版式要求：信息图保持清晰层级和适度留白，允许 2-3 个信息组件；每张图最多 1 个短英文标题和 2-4 个短标签/参数。')
   }
 
   if (baseType === 'lifestyle') {
